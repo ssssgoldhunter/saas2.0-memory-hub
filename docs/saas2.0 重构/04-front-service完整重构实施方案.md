@@ -240,9 +240,10 @@ flowchart LR
 catering-api/
 └── catering-api-front/
 
-catering-modules/catering-front/
-├── pom.xml
-└── catering-front-service/
+catering-modules/
+└── catering-front/
+    ├── pom.xml
+    └── src/
 ```
 
 ### 6.1 `catering-api-front`
@@ -268,9 +269,9 @@ catering-modules/catering-front/
 
 不再建立独立 `catering-front-common`。对外契约会直接引用的错误码和公共异常进入
 `catering-api-front`；仅由运行时使用的常量、流水号生成、校验、JSON 脱敏等实现进入
-`catering-front-service` 对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
+`catering-front` 对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
 
-### 6.3 `front-service`
+### 6.3 `catering-front`
 
 保存所有运行时实现：
 
@@ -288,7 +289,7 @@ catering-modules/catering-front/
 
 | 旧项目做法 | 新项目处理 |
 |---|---|
-| `api/common/service` 三模块 | API/Common 合并到既有 `catering-api-front`，Front 侧只保留 Service |
+| `api/common/service` 三模块 | API/Common 合并到既有 `catering-api-front`，运行时直接使用 `catering-front` 单模块 |
 | Controller → Service → Router → Handle | 保留主调用层次 |
 | 每个交易建立一个 Router | 收敛为 `TransactionRouter` 和 `QueryRouter` |
 | Router 使用 `BeanPostProcessor` 扫描 | 改为构造器注入 `List<Handle>` 并创建不可变 Registry |
@@ -345,7 +346,7 @@ catering-api/catering-api-front
       ├─ error
       └─ exception
 
-catering-front-service
+catering-modules/catering-front
 └─ com.chinaums.front
    ├─ controller
    ├─ application
@@ -1293,9 +1294,9 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 19.1 工程和依赖
 
-- [x] 复用 `catering-api-front`，创建 `catering-front-service` 聚合模块；
+- [x] 复用 `catering-api-front`，将 `catering-front` 建成可运行 Jar 服务模块；
 - [x] 对齐 Java 17、Spring Boot 3.5.15、LiteFlow 2.12.1；
-- [x] 配置模块单向依赖：`catering-front-service → catering-api-front`；
+- [x] 配置模块单向依赖：`catering-front → catering-api-front`；
 - [x] 银行 DTO 不进入 `catering-api-front`。
 
 ### 19.2 API 契约
@@ -1344,7 +1345,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 - [x] 当前 Router、重复注册、能力状态和二段式序列化测试通过（7 个）；
 - [x] 合并前 `catering-front-api/common/service` 及其 Reactor 依赖执行 `mvn test` 通过；
-- [ ] 合并后的 `catering-api-front/catering-front-service` 未执行 Reactor 测试（按用户要求不运行验证代码）；
+- [ ] 扁平化后的 `catering-api-front/catering-front` 未执行 Reactor 测试（按用户要求不运行验证代码）；
 - [x] 当前骨架执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试通过；
 - [ ] 使用 Fake Handle 完成公共框架测试；
 - [ ] Router、配置、幂等、状态机测试通过；

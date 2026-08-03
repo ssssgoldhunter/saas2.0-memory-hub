@@ -827,7 +827,7 @@ catering-api
    └─ 对外 API、请求响应、业务枚举、错误码和公共异常
 
 catering-modules/catering-front
-└─ catering-front-service
+└─ 可运行 Front 服务源码与配置
 ```
 
 Service 内按 `application/controller/route/handle/channel/context/handler` 分层。银行协议 DTO、配置、
