@@ -253,7 +253,7 @@ catering-modules/
 - Feign/API 接口；
 - 对外请求对象；
 - 对外响应对象；
-- 通用常量和业务枚举（包括 Front 错误码枚举）；
+- API 常量和业务枚举；
 - Bean Validation 注解。
 
 禁止放入：
@@ -267,8 +267,9 @@ catering-modules/
 ### 6.2 公共代码归属
 
 不再建立独立 `catering-front-common`。API 接口签名使用的请求响应模型、常量和枚举进入
-`catering-api-front`；公共异常、流水号生成、校验、JSON 脱敏等功能实现进入 `catering-front`
-对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
+`catering-api-front`；统一返回主体 `R` 和 Front 公共错误码进入 `catering-common-core`；公共异常、
+流水号生成、校验、JSON 脱敏等功能实现进入 `catering-front` 对应内部包。中信、平安钱包请求对象
+仍只能放在各银行适配器包中。
 
 ### 6.3 `catering-front`
 
@@ -341,8 +342,12 @@ catering-api/catering-api-front
    │        ├─ AccountStatus
    │        ├─ TransactionDirection
    │        └─ IntegrationStatus
-   └─ common
-      └─ error
+catering-common/catering-common-core
+└─ com.chinaums.common.core
+   ├─ domain
+   │  └─ R
+   └─ error
+      └─ FrontErrorCode
 
 catering-modules/catering-front
 └─ com.chinaums.front
@@ -497,7 +502,7 @@ POST /front/v1/transactions/platform-receive
 除授权码接口外，统一返回：
 
 ```java
-FrontResponse<FrontTransactionResult>
+R<FrontResponse<FrontTransactionResult>>
 ```
 
 ### 8.3 查询 API
@@ -514,6 +519,14 @@ POST /front/v1/queries/transactions/details
 
 ### 8.4 通用响应外壳
 
+所有 API 使用工程公共 `R` 作为最外层返回主体：
+
+```java
+R<FrontResponse<具体基础结果>>
+```
+
+`R.code/msg` 表达工程统一调用结果，`R.data` 使用 Front 两段式业务响应：
+
 ```java
 public class FrontResponse<T extends FrontBaseResult> {
     private T baseData;
@@ -521,22 +534,27 @@ public class FrontResponse<T extends FrontBaseResult> {
 }
 ```
 
-响应 `baseData` 保存跨银行统一结果及 Front 响应码，`specialData` 保存当前银行和接口的特殊返回。
-这里的泛型由每个 API 方法固定，例如 `FrontResponse<FrontTransactionResult>`，不同于旧 Handle 的任意 `<T> T`。
+响应 `data.baseData` 保存跨银行统一结果及 Front 响应码，`data.specialData` 保存当前银行和接口的特殊返回。
+这里的泛型由每个 API 方法固定，例如 `R<FrontResponse<FrontTransactionResult>>`，不同于旧 Handle 的任意 `<T> T`。
 
 未接入能力的响应示例：
 
 ```json
 {
-  "baseData": {
-    "frontRespCode": "F200003",
-    "frontRespDesc": "银行适配器尚未完成接入"
-  },
-  "specialData": {}
+  "code": 500,
+  "msg": "银行适配器尚未完成接入",
+  "data": {
+    "baseData": {
+      "frontRespCode": "F200003",
+      "frontRespDesc": "银行适配器尚未完成接入"
+    },
+    "specialData": {}
+  }
 }
 ```
 
-无论成功或失败，响应都保留 `baseData`、`specialData` 两个顶层字段；没有银行特殊返回时使用空对象。
+`R` 始终是接口顶层对象。Front 可识别的业务失败在 `R.data` 中保留 `baseData`、`specialData`；
+没有银行特殊返回时使用空对象。
 
 交易结果保留已确认字段：
 
@@ -866,7 +884,8 @@ Handle 不负责：
 | `PingAnQueryHandle` | 继承 `BankQueryHandle` 的 5 个查询方法 | 当前只覆盖 `bankCode/capabilityStatus` |
 
 银行字段确认后，在上述具体银行类中覆盖对应的强类型方法。旧项目任意 `<T> T` 返回不再复用，
-改为每个 API 固定 `FrontResponse<具体基础结果>`，银行差异继续通过响应 `specialData` 返回。
+改为每个 API 固定 `R<FrontResponse<具体基础结果>>`；Handle 内部仍返回确定类型的
+`FrontResponse<具体基础结果>`，银行差异继续通过响应 `specialData` 返回。
 
 ---
 
@@ -1034,7 +1053,7 @@ THEN(
 如果银行调用尚未开始：流水记FAILED；
 如果已开始发送但没有明确响应：流水记UNKNOWN；
 如果收到银行明确拒绝：流水记FAILED；
-最后返回统一FrontResponse。
+最后由 Controller 或异常处理器返回统一 `R<FrontResponse<具体基础结果>>`。
 ```
 
 资金交易发生超时或无响应时禁止自动盲目重发。
@@ -1144,6 +1163,9 @@ INIT
 
 ## 16. 通用错误码
 
+`FrontErrorCode` 统一定义在 `catering-common-core` 的 `com.chinaums.common.core.error` 包中，
+API 和功能模块只引用，不得各自复制错误码枚举。
+
 | 错误码 | 含义 |
 |---|---|
 | `F000000` | 成功 |
@@ -1164,7 +1186,8 @@ INIT
 | `F400004` | 银行明确拒绝 |
 | `F900001` | Front 内部异常 |
 
-银行原始错误码保存到渠道流水，不直接作为 Front `code`。
+银行原始错误码保存到渠道流水，不直接作为 `R.code`。`R.code/msg` 表达工程统一调用结果；
+Front 错误码放在 `R.data.baseData.frontRespCode`，银行原始响应码只进入渠道流水或受控特殊返回。
 
 ---
 
@@ -1279,6 +1302,8 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 18.5 API 测试
 
+- 每个 API 返回结构必须包含 `R.code/msg/data`；
+- `R.data` 必须包含 `baseData/specialData`；
 - 每个接口绑定正确的强类型 `baseData`；
 - 金额必须大于零；
 - 日期、时间格式合法；
@@ -1296,7 +1321,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 - [x] 复用 `catering-api-front`，将 `catering-front` 建成可运行 Jar 服务模块；
 - [x] 对齐 Java 17、Spring Boot 3.5.15、LiteFlow 2.12.1；
-- [x] 配置模块单向依赖：`catering-front → catering-api-front`；
+- [x] 配置模块单向依赖：`catering-front → catering-api-front/catering-common-core`；
 - [x] 银行 DTO 不进入 `catering-api-front`。
 
 ### 19.2 API 契约
@@ -1305,6 +1330,8 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 创建 8 个交易接口；
 - [x] 创建 5 个查询接口；
 - [x] 创建两段式请求、响应和枚举；
+- [x] 所有 API 使用 `R<FrontResponse<具体基础结果>>` 作为返回类型；
+- [x] `FrontErrorCode` 统一迁入 `catering-common-core`；
 - [x] 补齐基础 Bean Validation 和 OpenAPI。
 
 ### 19.3 公共执行框架
@@ -1343,9 +1370,9 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 19.7 测试和交付
 
-- [x] 当前 Router、重复注册、能力状态和二段式序列化测试通过（7 个）；
+- [x] 引入 `R` 前 Router、重复注册、能力状态和二段式序列化测试通过（7 个）；
 - [x] 合并前 `catering-front-api/common/service` 及其 Reactor 依赖执行 `mvn test` 通过；
-- [ ] 扁平化后的 `catering-api-front/catering-front` 未执行 Reactor 测试（按用户要求不运行验证代码）；
+- [ ] 扁平化并引入 `R` 后的 `catering-api-front/catering-front` 未执行 Reactor 测试（按用户要求不运行验证代码）；
 - [x] 当前骨架执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试通过；
 - [ ] 使用 Fake Handle 完成公共框架测试；
 - [ ] Router、配置、幂等、状态机测试通过；

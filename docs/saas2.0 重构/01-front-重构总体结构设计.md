@@ -761,14 +761,19 @@ version
 ## 15. 交易统一响应
 
 ```java
+R<FrontResponse<FrontTransactionResult>>
+
 public class FrontResponse<T extends FrontBaseResult> {
     private T baseData;
     private JSONObject specialData;
 }
 ```
 
-`baseData` 保存跨银行统一的强类型结果，`specialData` 保存当前银行和接口的特殊响应字段。API
-方法可以使用 `FrontResponse<FrontTransactionResult>` 等确定的泛型类型，禁止 Handle 使用无法约束的 `<T> T` 返回。
+所有对外 API 必须返回公共 `R`，例如 `R<FrontResponse<FrontTransactionResult>>`。`R.code/msg`
+表达统一调用结果；`R.data.baseData` 保存跨银行统一强类型结果，`R.data.specialData` 保存当前银行
+和接口的特殊响应字段。Handle 内部仍使用确定的 `FrontResponse<具体结果>`，禁止无法约束的 `<T> T` 返回。
+
+`R` 与 `FrontErrorCode` 统一位于 `catering-common-core`，API 和功能模块不得重复定义。
 
 ```java
 public class FrontTransactionResult extends FrontBaseResult {
@@ -825,6 +830,9 @@ UNKNOWN
 catering-api
 └─ catering-api-front
    └─ 对外 API、请求响应模型、常量和枚举
+
+catering-common/catering-common-core
+└─ 统一返回主体 R 与 Front 公共错误码
 
 catering-modules/catering-front
 └─ 功能实现、公共异常、服务配置与测试
