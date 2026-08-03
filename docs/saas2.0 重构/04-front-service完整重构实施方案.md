@@ -365,9 +365,8 @@ catering-modules/catering-front
    │  │  └─ FrontExecutionStage
    │  └─ component
    │     ├─ FrontRequestValidateCmp
-   │     ├─ TenantBankConfigLoadCmp
-   │     ├─ BankConfigParseCmp
-   │     ├─ FrontSpecialDataValidateCmp
+   │     ├─ FrontRouteAndCapabilityCheckCmp
+   │     ├─ BankHandleContextPrepareCmp
    │     ├─ FrontIdempotencyCheckCmp
    │     ├─ FrontTransactionRecordCreateCmp
    │     ├─ FrontTransactionDispatchCmp
@@ -381,16 +380,18 @@ catering-modules/catering-front
    │  └─ QueryHandleRegistry
    ├─ handle
    │  ├─ BankHandle
+   │  ├─ AbstractBankHandle
    │  ├─ BankTransactionHandle
    │  ├─ BankQueryHandle
-   │  ├─ BankRequestContext
    │  └─ BankExecutionMetadata
+   ├─ context
+   │  └─ BankRequestContext
    ├─ config
    │  ├─ TenantBankConfigProvider
-   │  ├─ TenantBankConfigService
    │  ├─ TenantBankConfigSnapshot
-   │  ├─ BankConfigParser
-   │  └─ BankConfigParserRegistry
+   │  ├─ RemoteTenantBankConfigProvider（待接入）
+   │  ├─ BankConfigParser（待接入）
+   │  └─ BankConfigParserRegistry（待接入）
    ├─ reserve
    │  ├─ FrontSpecialDataContract
    │  ├─ FrontSpecialDataContractRegistry
@@ -403,21 +404,23 @@ catering-modules/catering-front
    │  └─ FrontIdempotencyService
    ├─ channel
    │  ├─ citic
-   │  │  ├─ config
-   │  │  ├─ handle
-   │  │  ├─ client
-   │  │  ├─ protocol/request
-   │  │  ├─ protocol/response
-   │  │  ├─ mapper
-   │  │  └─ reserve
+   │  │  ├─ CiticTransactionHandle
+   │  │  ├─ CiticQueryHandle
+   │  │  ├─ config（待接入）
+   │  │  ├─ client（待接入）
+   │  │  ├─ protocol/request（待接入）
+   │  │  ├─ protocol/response（待接入）
+   │  │  ├─ mapper（待接入）
+   │  │  └─ crypto（待接入）
    │  └─ pingan
-   │     ├─ config
-   │     ├─ handle
-   │     ├─ client
-   │     ├─ protocol/request
-   │     ├─ protocol/response
-   │     ├─ mapper
-   │     └─ reserve
+   │     ├─ PingAnTransactionHandle
+   │     ├─ PingAnQueryHandle
+   │     ├─ config（待接入）
+   │     ├─ client（待接入）
+   │     ├─ protocol/request（待接入）
+   │     ├─ protocol/response（待接入）
+   │     ├─ mapper（待接入）
+   │     └─ crypto（待接入）
    └─ infrastructure
       ├─ configclient
       ├─ http
@@ -891,6 +894,38 @@ Handle 不负责：
 银行字段确认后，在上述具体银行类中覆盖对应的强类型方法。旧项目任意 `<T> T` 返回不再复用，
 改为每个 API 固定 `R<FrontResponse<具体基础结果>>`；Handle 内部仍返回确定类型的
 `FrontResponse<具体基础结果>`，银行差异继续通过响应 `specialData` 返回。
+
+#### 11.6.6 当前 Handle 实际目录结构
+
+当前已经创建的 Handle 契约、统一父类、上下文和四个银行实现类位置如下：
+
+```text
+com.chinaums.front
+├─ handle
+│  ├─ BankHandle.java
+│  ├─ AbstractBankHandle.java
+│  ├─ BankTransactionHandle.java
+│  └─ BankQueryHandle.java
+├─ context
+│  └─ BankRequestContext.java
+├─ config
+│  ├─ TenantBankConfigProvider.java
+│  └─ TenantBankConfigSnapshot.java
+└─ channel
+   ├─ citic
+   │  ├─ CiticTransactionHandle.java
+   │  └─ CiticQueryHandle.java
+   └─ pingan
+      ├─ PingAnTransactionHandle.java
+      └─ PingAnQueryHandle.java
+```
+
+`channel/{bank}` 下暂不再增加一层 `handle` 目录，银行 Handle 实现类直接放在银行根包。
+后续确认银行协议后，再在同级增加 `config/client/protocol/mapper/crypto` 子目录。
+
+当前四个银行实现类只覆盖 `bankCode()` 和 `capabilityStatus()`；`prepareContext()` 由
+`AbstractBankHandle` 统一实现。13 个具体交易/查询方法尚未在银行类中覆盖，当前仍使用 SPI 默认的
+`ADAPTER_NOT_READY` 行为，不能描述为已经完成银行业务实现。
 
 ---
 
