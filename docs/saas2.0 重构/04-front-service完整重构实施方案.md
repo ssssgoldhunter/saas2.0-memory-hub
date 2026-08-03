@@ -1436,7 +1436,8 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 引入 `R` 前 Router、重复注册、能力状态和二段式序列化测试通过（7 个）；
 - [x] 合并前 `catering-front-api/common/service` 及其 Reactor 依赖执行 `mvn test` 通过；
 - [ ] 扁平化并引入 `R` 后的 `catering-api-front/catering-front` 未执行 Reactor 测试（按用户要求不运行验证代码）；
-- [x] 当前骨架执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试通过；
+- [x] 早期骨架曾执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试；
+- [ ] 当前代码不保留测试类；只有用户明确要求后才新增测试或执行编译验证；
 - [ ] 使用 Fake Handle 完成公共框架测试；
 - [ ] Router、配置、幂等、状态机测试通过；
 - [ ] Controller 集成测试通过；
