@@ -148,10 +148,10 @@ flowchart LR
 | 分层 | 主要职责 |
 |---|---|
 | API 层 | 接收请求、基础格式校验、确定业务接口 |
-| Application/LiteFlow 层 | 配置加载、幂等、渠道流水、Router 调用、公共异常处理 |
+| Application/LiteFlow 层 | Router 与能力校验、调用 Handle 上下文装配、幂等、渠道流水、公共异常处理 |
 | Router 层 | 根据 `platformCode` 选择银行大类 Handle |
-| Handle 层 | 银行请求组装、`bizFunc/channelNo` 确定、银行调用、响应转换 |
-| Config 层 | 根据 `tenantId + platformCode` 获取租户银行配置 |
+| Handle 层 | 统一父类装配配置上下文；具体银行完成请求组装、`bizFunc/channelNo` 确定、银行调用、响应转换 |
+| Config 层 | `TenantBankConfigProvider` 根据 `tenantId + bankCode` 获取租户银行配置 |
 | Infrastructure 层 | HTTP、签名、加密、配置客户端、数据库持久化 |
 
 ---
@@ -184,31 +184,25 @@ public class FrontBaseRequestData {
 
 ### 5.2 内部执行上下文
 
-Front 进入公共编排后形成内部执行上下文：
+Front 完成 Router 与能力校验后，由 `AbstractBankHandle` 形成只传给银行 Handle 的三段式上下文：
 
 ```java
-public class FrontExecuteContext<T> {
-
-    // a. 请求传入的统一基础数据
-    private T baseData;
-
-    // b. Front从配置系统获取
-    private JSONObject tenantBankConfig;
-
-    // c. 请求传入，Front负责校验和映射
-    private JSONObject specialData;
-
-    // Front内部执行信息
-    private FrontExecutionInfo executionInfo;
+public record BankRequestContext<T extends FrontBaseRequestData>(
+    T baseData,
+    JSONObject specialData,
+    TenantBankConfigSnapshot tenantBankConfig) {
 }
 ```
+
+用于 LiteFlow、渠道流水和幂等的 `FrontExecutionInfo` 属于更外层执行上下文，不混入对外请求，
+也不改变上述三段式 Handle 上下文。
 
 ### 5.3 数据来源
 
 | 数据部分 | 来源 | Front 职责 |
 |---|---|---|
 | `baseData` | 业务系统 | 校验租户、门店、银行并使用具体接口强类型字段 |
-| `tenantBankConfig` | 配置系统 | 加载、解析、生成请求上下文 |
+| `tenantBankConfig` | 配置系统 | 统一父类按 `tenantId + bankCode` 加载、校验并生成 Handle 上下文 |
 | `specialData` | 业务系统 | 校验、解析、显式映射 |
 | `executionInfo` | Front | 生成 `frontSsn`、接口编码、执行时间等 |
 
@@ -250,7 +244,8 @@ public class FrontExecuteContext<T> {
 
 ### 6.2 银行配置解析器
 
-配置系统边界使用 `JSONObject`，进入具体银行 Handle 前由银行解析器转换：
+配置系统边界使用 `JSONObject`。统一父类只负责加载、校验和装配快照；进入具体银行业务方法后，
+由银行解析器转换：
 
 ```java
 public interface BankConfigParser<C> {
@@ -613,13 +608,13 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 ```text
 请求校验
-  → 加载租户银行配置
-  → 解析银行配置
-  → 校验specialData
+  → TransactionRouter
+  → 能力校验
+  → AbstractBankHandle.prepareContext
   → 生成frontSsn/幂等检查
   → 创建渠道交易流水
-  → TransactionRouter
   → 银行TransactionHandle
+  → 解析银行配置和校验specialData
   → 统一响应转换
   → 更新渠道交易流水
   → 返回
@@ -630,11 +625,11 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 ```text
 请求校验
   → 确定QueryCapability
-  → 加载租户银行配置
-  → 解析银行配置
-  → 校验specialData
   → QueryRouter
+  → 能力校验
+  → AbstractBankHandle.prepareContext
   → 银行QueryHandle
+  → 解析银行配置和校验specialData
   → QueryCapability方法分派
   → 统一查询响应转换
   → 返回
@@ -644,8 +639,8 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 | LiteFlow | Router/Handle |
 |---|---|
-| 编排公共步骤 | 选择银行实现 |
-| 配置加载 | 确定银行请求参数 |
+| 编排公共步骤 | Router 选择银行实现并校验能力 |
+| 调用上下文装配步骤 | `AbstractBankHandle` 统一加载、校验租户银行配置 |
 | 幂等控制 | 组装钱包报文 |
 | 渠道流水记录 | 调用银行接口 |
 | 公共异常处理 | 转换银行响应 |
@@ -656,15 +651,19 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 每个银行 Handle 负责：
 
-1. 获取已经解析的租户银行配置；
-2. 按接口契约解析和校验 `specialData`；
-3. 读取强类型 `baseData`；
-4. 确定 `channelNo`；
-5. 确定 `bizFunc`；
-6. 确定具体银行接口路径；
-7. 组装钱包请求对象及钱包 `reserve`；
-8. 执行签名、加密和银行调用；
-9. 将银行响应转换为 Front 统一响应。
+1. 继承 `AbstractBankHandle`，统一按 `tenantId + bankCode` 加载并校验租户银行配置；
+2. 从三段式 `BankRequestContext` 获取基础数据、特殊数据和配置快照；
+3. 把配置快照解析为当前银行强类型配置；
+4. 按接口契约解析和校验 `specialData`；
+5. 读取强类型 `baseData`；
+6. 确定 `channelNo`；
+7. 确定 `bizFunc`；
+8. 确定具体银行接口路径；
+9. 组装钱包请求对象及钱包 `reserve`；
+10. 执行签名、加密和银行调用；
+11. 将银行响应转换为 Front 统一响应。
+
+具体银行 Handle 不得绕过统一父类自行查询租户配置，也不得将完整配置写入日志。
 
 银行调用上下文与银行业务请求对象必须分离，密钥、URL 等配置不得序列化进钱包业务报文。
 

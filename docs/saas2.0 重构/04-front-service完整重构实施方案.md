@@ -190,11 +190,11 @@ flowchart LR
     A["内部业务系统"] --> B["Front API"]
     B --> C["Application Service"]
     C --> D["LiteFlow公共链路"]
-    D --> E["租户银行配置加载"]
-    D --> F["幂等与渠道流水"]
     D --> G["TransactionRouter或QueryRouter"]
-    G --> H["Citic Handle"]
-    G --> I["PingAn Handle"]
+    G --> E["能力校验与AbstractBankHandle配置装配"]
+    E --> F["幂等与渠道流水"]
+    F --> H["Citic Handle"]
+    F --> I["PingAn Handle"]
     H --> J["钱包HTTP/签名/加密"]
     I --> J
     J --> K["通用响应转换"]
@@ -206,14 +206,13 @@ flowchart LR
 
 ```text
 请求校验
-→ 加载租户银行配置
-→ 解析银行配置
-→ 校验specialData
+→ Router选择银行Handle
+→ 能力校验
+→ AbstractBankHandle按tenantId+bankCode装配配置上下文
 → 幂等检查
 → 生成frontSsn
 → 创建渠道流水
-→ Router选择银行Handle
-→ Handle调用钱包
+→ 具体银行Handle解析配置和specialData并调用钱包
 → 统一响应
 → 更新渠道流水
 → 返回
@@ -223,11 +222,10 @@ flowchart LR
 
 ```text
 请求校验
-→ 加载租户银行配置
-→ 解析银行配置
-→ 校验specialData
 → Router选择银行QueryHandle
-→ 调用具体查询方法
+→ 能力校验
+→ AbstractBankHandle按tenantId+bankCode装配配置上下文
+→ 具体银行Handle解析配置和specialData并调用查询方法
 → 统一查询响应
 → 返回
 ```
@@ -740,6 +738,7 @@ public TransactionHandleRegistry(List<BankTransactionHandle> handles) {
 public interface BankHandle {
     BankCode bankCode();
     IntegrationStatus capabilityStatus(FrontCapability capability);
+    <T extends FrontBaseRequestData> BankRequestContext<T> prepareContext(FrontRequest<T> request);
 }
 ```
 
@@ -768,32 +767,35 @@ public interface BankQueryHandle extends BankHandle {
 }
 ```
 
-`BankRequestContext<T>` 只包含当前调用所需数据：
+`BankRequestContext<T>` 是只在 Handle 内部使用的三段式上下文：
 
 ```text
 baseData
 specialData
-typedBankConfig（配置加载阶段加入）
-executionInfo
-originalTransaction（退款、状态查询时可用）
+tenantBankConfig: TenantBankConfigSnapshot
 ```
+
+对外 `FrontRequest<T>` 仍固定为 `baseData + specialData` 两段。`tenantBankConfig` 由
+`AbstractBankHandle.prepareContext()` 使用 `tenantId + bankCode` 查询并装配，不由调用方传入。
 
 ### 11.4 Handle 职责边界
 
 Handle 必须完成：
 
 1. 判断当前银行是否支持能力；
-2. 解析当前能力的 `specialData`；
-3. 确定 `channelNo/bizFunc/path`；
-4. 组装钱包请求及 `reserve`；
-5. 触发签名、加密和 HTTP 调用；
-6. 判断钱包受理、银行响应和交易终态；
-7. 转换 Front 通用结果；
-8. 写入 `BankExecutionMetadata` 供渠道流水保存。
+2. 由统一父类加载并校验租户银行配置，装配 `BankRequestContext`；
+3. 解析当前能力的 `specialData`；
+4. 将配置快照解析为当前银行的强类型配置；
+5. 确定 `channelNo/bizFunc/path`；
+6. 组装钱包请求及 `reserve`；
+7. 触发签名、加密和 HTTP 调用；
+8. 判断钱包受理、银行响应和交易终态；
+9. 转换 Front 通用结果；
+10. 写入 `BankExecutionMetadata` 供渠道流水保存。
 
 Handle 不负责：
 
-- 从远程配置系统加载配置；
+- 在各个中信、平安具体 Handle 中重复实现远程配置查询；
 - 创建 Front 渠道流水；
 - 业务幂等；
 - Controller 参数绑定；
@@ -832,6 +834,7 @@ Handle 不负责：
 | `bankCode()` | `getPlatformCode()` | 保留银行定位语义，类型改为新的 `BankCode` |
 | `capabilityStatus(capability)` | 无直接对应 | 新增，显式返回 `SUPPORTED/UNSUPPORTED/PENDING_INTEGRATION` |
 | `requireCapability(capability)` | 无直接对应 | 新增，统一能力校验、日志和错误码 |
+| `prepareContext(request)` | 无直接对应 | 新增，由统一父类按 `tenantId + bankCode` 加载配置并形成三段式 Handle 上下文 |
 | 无直接方法 | `getLockTimeOut()` | 后续进入配置或执行策略，不作为 Handle 路由方法 |
 | 无直接方法 | `getSupportAccountType()` | 后续由请求、能力矩阵或租户银行配置决定 |
 | 无直接方法 | `getMode()` | 后续进入银行配置，不进入 Router Key |
@@ -880,10 +883,10 @@ Handle 不负责：
 
 | 当前实现类 | 业务方法来源 | 当前职责 |
 |---|---|---|
-| `CiticTransactionHandle` | 继承 `BankTransactionHandle` 的 8 个交易方法 | 当前只覆盖 `bankCode/capabilityStatus` |
-| `PingAnTransactionHandle` | 继承 `BankTransactionHandle` 的 8 个交易方法 | 当前只覆盖 `bankCode/capabilityStatus` |
-| `CiticQueryHandle` | 继承 `BankQueryHandle` 的 5 个查询方法 | 当前只覆盖 `bankCode/capabilityStatus` |
-| `PingAnQueryHandle` | 继承 `BankQueryHandle` 的 5 个查询方法 | 当前只覆盖 `bankCode/capabilityStatus` |
+| `CiticTransactionHandle` | `AbstractBankHandle` + `BankTransactionHandle` 的 8 个交易方法 | 复用配置装配，当前覆盖 `bankCode/capabilityStatus` |
+| `PingAnTransactionHandle` | `AbstractBankHandle` + `BankTransactionHandle` 的 8 个交易方法 | 复用配置装配，当前覆盖 `bankCode/capabilityStatus` |
+| `CiticQueryHandle` | `AbstractBankHandle` + `BankQueryHandle` 的 5 个查询方法 | 复用配置装配，当前覆盖 `bankCode/capabilityStatus` |
+| `PingAnQueryHandle` | `AbstractBankHandle` + `BankQueryHandle` 的 5 个查询方法 | 复用配置装配，当前覆盖 `bankCode/capabilityStatus` |
 
 银行字段确认后，在上述具体银行类中覆盖对应的强类型方法。旧项目任意 `<T> T` 返回不再复用，
 改为每个 API 固定 `R<FrontResponse<具体基础结果>>`；Handle 内部仍返回确定类型的
@@ -911,9 +914,29 @@ public class TenantBankConfigSnapshot {
 }
 ```
 
-真实配置系统协议未确定时，先实现该端口和测试 Fake，不让配置系统的不确定性扩散到业务层。真实接口确定后只新增或替换 `RemoteTenantBankConfigProvider`。
+真实配置系统协议未确定时，先实现该端口和配置快照，不让配置系统的不确定性扩散到银行业务方法。
+真实接口确定后只新增 `RemoteTenantBankConfigProvider`。不得为了让骨架返回成功而提供伪造的生产配置。
 
-### 12.2 配置 JSON
+### 12.2 统一父类装配流程
+
+四个银行 Handle 统一继承 `AbstractBankHandle`，应用服务完成 Router 和能力校验后调用：
+
+```text
+AbstractBankHandle.prepareContext(request)
+  → 校验 request.platformCode == handle.bankCode()
+  → TenantBankConfigProvider.load(tenantId, bankCode)
+  → 校验配置存在、启用、内容非空
+  → 校验配置 tenantId/bankCode 与请求一致
+  → BankRequestContext(baseData, specialData, tenantBankConfig)
+  → 具体银行业务方法
+```
+
+只允许注册一个 `TenantBankConfigProvider`。多个 Provider 立即启动失败；真实 Provider 尚未接入时
+允许骨架启动，但任何标记为 `SUPPORTED` 并进入配置装配的能力必须明确失败，不能模拟配置或成功结果。
+
+配置加载日志只记录 `tenantId/storeId/bankCode/configVersion`、结果和耗时，不记录 `config` 内容。
+
+### 12.3 配置 JSON
 
 ```json
 {
@@ -942,10 +965,10 @@ PingAnBankConfig
 
 公共层不定义包含所有银行特殊字段的 `TenantBankChannelConfig` 大对象。
 
-### 12.3 必须校验
+### 12.4 必须校验
 
 - 配置存在且启用；
-- 配置返回的 `tenantId/platformCode` 与请求一致；
+- 配置返回的 `tenantId/bankCode` 与请求一致；
 - `schemaVersion` 可识别；
 - 必需密钥引用、商户号、URL 存在；
 - 算法属于 Front 支持的白名单；
@@ -1019,9 +1042,8 @@ LiteFlow 只编排公共步骤。银行路由仍由 Java Router 完成。
 chainFrontTransaction =
 THEN(
   frontRequestValidate,
-  tenantBankConfigLoad,
-  bankConfigParse,
-  specialDataValidate,
+  frontRouteAndCapabilityCheck,
+  bankHandleContextPrepare,
   frontIdempotencyCheck,
   frontTransactionRecordCreate,
   frontTransactionDispatch,
@@ -1036,9 +1058,8 @@ THEN(
 chainFrontQuery =
 THEN(
   frontRequestValidate,
-  tenantBankConfigLoad,
-  bankConfigParse,
-  specialDataValidate,
+  frontRouteAndCapabilityCheck,
+  bankHandleContextPrepare,
   frontQueryDispatch,
   frontResponseNormalize
 )
@@ -1276,9 +1297,11 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 18.2 配置测试
 
-- 使用 `tenantId + platformCode` 加载配置；
+- 统一父类使用 `tenantId + bankCode` 加载配置；
 - 请求银行与配置银行不一致时失败；
 - 配置未启用时失败；
+- 配置内容为空时失败；
+- 同时注册多个 Provider 时启动失败；
 - 配置 schema 版本未知时失败；
 - 请求不能覆盖密钥、URL、`bizFunc/channelNo`。
 
@@ -1352,12 +1375,13 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 创建不可变 Handle Registry；
 - [x] 创建 Handle SPI；
 - [x] 创建中信、平安四个 Handle 骨架；
+- [x] 创建 `AbstractBankHandle`，统一按租户和银行装配 Handle 上下文；
 - [x] 用 `IntegrationStatus` 明确未接入/不支持。
 
 ### 19.5 配置、Reserve 和基础设施
 
-- [ ] 创建配置 Provider 端口；
-- [ ] 创建配置快照、Parser SPI 和 Registry；
+- [x] 创建配置 Provider 端口和配置快照；
+- [ ] 创建真实远程配置 Provider、Parser SPI 和 Registry；
 - [ ] 创建 `specialData` 契约和保护字段校验；
 - [ ] 创建 HTTP、签名、加密 SPI；
 - [ ] 创建日志脱敏器；

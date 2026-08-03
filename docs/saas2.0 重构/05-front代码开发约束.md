@@ -16,6 +16,10 @@
 5. Controller 负责包装 `R`；Application、Router、Handle 不返回 `R`。
 6. 业务可预期异常统一抛出 `FrontException`，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
+8. 对外请求固定为 `baseData + specialData` 两段；进入 Handle 后由统一父类增加
+   `tenantBankConfig`，形成三段式内部上下文。
+9. 租户银行配置只能由 Front 使用 `tenantId + bankCode` 查询，禁止由调用方传入或由具体银行
+   Handle 各自重复查询。
 
 ---
 
@@ -128,6 +132,7 @@ Application Service 负责：
 - 读取请求上下文；
 - 调用 Router；
 - 能力校验；
+- 调用已选 Handle 的 `prepareContext()` 完成内部上下文装配；
 - 幂等、渠道流水和状态机协调；
 - 记录业务分派、结果与耗时日志。
 
@@ -162,6 +167,7 @@ Handle 负责：
 
 - 声明银行编码；
 - 声明能力状态；
+- 通过统一父类加载并校验当前租户的银行账户配置；
 - 解析本银行、本能力的 `specialData`；
 - 选择功能码、路径和协议；
 - 组装银行请求；
@@ -177,7 +183,46 @@ Handle 方法必须使用明确请求和明确返回类型，禁止使用无法�
 - `PENDING_INTEGRATION`：抛出 `ADAPTER_NOT_READY`；
 - 非法或未知状态：记录错误并抛出明确异常。
 
-### 3.5 `channel/{bank}`
+### 3.5 Handle 统一父类与配置端口
+
+中信、平安的 Transaction/Query Handle 必须继承统一的 `AbstractBankHandle`。统一父类负责：
+
+1. 使用当前 Handle 的 `bankCode()`，禁止信任调用方传入另一个银行编码；
+2. 通过 `TenantBankConfigProvider.load(tenantId, bankCode)` 查询配置；
+3. 校验配置存在、已启用、内容非空；
+4. 校验配置中的 `tenantId/bankCode` 与请求一致；
+5. 组装三段式 `BankRequestContext`；
+6. 记录配置加载开始、完成、失败日志，但不记录配置内容。
+
+配置端口和快照固定放在 `catering-front`：
+
+```java
+public interface TenantBankConfigProvider {
+    TenantBankConfigSnapshot load(String tenantId, BankCode bankCode);
+}
+```
+
+```text
+TenantBankConfigSnapshot
+├─ tenantId
+├─ bankCode
+├─ configVersion
+├─ enabled
+└─ config: JSONObject
+```
+
+只允许存在一个 `TenantBankConfigProvider` 实现；多个实现必须在启动阶段失败。当前真实配置系统协议
+尚未确定时，可以只保留端口、不提供伪造配置实现；一旦某项银行能力标记为 `SUPPORTED`，部署环境
+必须提供真实 Provider。
+
+具体银行 Handle 禁止：
+
+- 直接调用租户配置服务；
+- 自行用 `tenantId/storeId` 或其他组合重新定位配置；
+- 接受调用方通过 `specialData` 覆盖配置；
+- 输出完整配置或密钥字段日志。
+
+### 3.6 `channel/{bank}`
 
 银行差异实现统一放在对应银行包下：
 
@@ -244,6 +289,29 @@ JSON 顶层固定为：
 - 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 等受保护字段；
 - 不得传密钥、私钥、完整银行配置；
 - 日志不得直接打印完整内容。
+
+### 4.3 Handle 内部三段式上下文
+
+外部 `FrontRequest<T>` 只能有两段。完成路由和能力校验后，由 `AbstractBankHandle` 生成：
+
+```java
+public record BankRequestContext<T extends FrontBaseRequestData>(
+    T baseData,
+    JSONObject specialData,
+    TenantBankConfigSnapshot tenantBankConfig) {
+}
+```
+
+三段数据来源固定：
+
+| 字段 | 来源 | 是否允许调用方传入 |
+|---|---|---|
+| `baseData` | `FrontRequest.baseData` | 是 |
+| `specialData` | `FrontRequest.specialData` | 是 |
+| `tenantBankConfig` | Front 配置 Provider | 否 |
+
+`tenantBankConfig.config` 当前使用 `JSONObject` 是配置系统边界对象，不代表具体银行实现可以长期使用
+无类型字段。银行协议确认后，应在对应 `channel/{bank}` 内解析为强类型配置对象。
 
 ---
 
@@ -425,6 +493,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - Handle 类型和能力状态；
 - Front 错误码、处理结果、耗时；
 - 银行调用开始、结束、耗时和归一化状态；
+- 租户银行配置加载开始、完成、失败及 `configVersion`；
 - 未知异常服务端堆栈。
 
 禁止记录：
@@ -451,6 +520,8 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 不把银行 DTO 放入 API 或 Common Core；
 - 不把银行私有字段提升为公共字段；
 - 不在业务请求中开放渠道号、功能码和请求路径；
+- 不让具体银行 Handle 绕过 `AbstractBankHandle` 自行加载租户银行配置；
+- 不把 `tenantBankConfig` 增加到对外 `FrontRequest`；
 - 不静默覆盖重复银行 Handle；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
 - 不返回 `null` 或模拟成功；
@@ -485,6 +556,10 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] Application Service 不包含银行协议细节；
 - [ ] Router 只按银行路由；
 - [ ] Handle 请求和返回类型明确；
+- [ ] 对外请求仍只有 `baseData/specialData` 两段；
+- [ ] Handle 内部上下文包含由统一父类装配的 `tenantBankConfig`；
+- [ ] 租户银行配置只按 `tenantId + bankCode` 查询且请求与配置一致；
+- [ ] 具体银行 Handle 没有重复实现配置查询；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；
 - [ ] 新错误码只添加到 `FrontErrorCode`；
 - [ ] 已知业务失败只抛出 `FrontException`；
