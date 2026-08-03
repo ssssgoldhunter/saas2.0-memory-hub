@@ -819,17 +819,19 @@ UNKNOWN
 
 ## 16. 项目模块草案
 
-当前代码已经按三模块结构创建：
+当前代码复用工程既有 API 聚合模块，按以下边界创建：
 
 ```text
+catering-api
+└─ catering-api-front
+   └─ 对外 API、请求响应、业务枚举、错误码和公共异常
+
 catering-modules/catering-front
-├─ catering-front-api
-├─ catering-front-common
 └─ catering-front-service
 ```
 
 Service 内按 `application/controller/route/handle/channel/context/handler` 分层。银行协议 DTO、配置、
-客户端、签名与加密实现后续放入各自银行包，不能进入 API/Common。
+客户端、签名与加密实现后续放入各自银行包，不能进入 `catering-api-front`。
 
 ---
 

@@ -1,6 +1,6 @@
 # SaaS 2.0 多银行渠道 Front Service 完整重构实施方案
 
-> 状态：framework-implemented（三模块、API、Router、Handle 骨架已创建）
+> 状态：framework-implemented（公共 API 模块、Front Service、Router、Handle 骨架已创建）
 > 创建日期：2026-08-03
 > 适用范围：新多银行渠道支付 Front
 > 参考项目：`fund-catering-front-service`
@@ -234,24 +234,26 @@ flowchart LR
 
 ## 6. Maven 模块设计
 
-保留旧项目三模块形式，但重新约束模块职责：
+复用工程既有 `catering-api-front`，不在 Front 业务模块下重复创建 API/Common：
 
 ```text
-catering-front/
+catering-api/
+└── catering-api-front/
+
+catering-modules/catering-front/
 ├── pom.xml
-├── catering-front-api/
-├── catering-front-common/
 └── catering-front-service/
 ```
 
-### 6.1 `front-api`
+### 6.1 `catering-api-front`
 
-只保存其他业务系统编译期需要依赖的内容：
+集中保存其他业务系统和 Front Service 编译期需要依赖的内容：
 
 - Feign/API 接口；
 - 对外请求对象；
 - 对外响应对象；
 - 通用业务枚举；
+- Front 错误码与公共异常；
 - Bean Validation 注解。
 
 禁止放入：
@@ -262,19 +264,11 @@ catering-front/
 - Mapper、Entity；
 - 签名、加密和 HTTP 实现。
 
-### 6.2 `front-common`
+### 6.2 公共代码归属
 
-保存 Front 内部多个模块共同使用、但与具体银行无关的代码：
-
-- Front 错误码；
-- 公共异常；
-- 常量；
-- 流水号生成接口；
-- 金额和日期校验工具；
-- JSON 脱敏接口；
-- 受保护字段集合。
-
-禁止像旧项目一样把中信、平安钱包请求对象放入 `common`。
+不再建立独立 `catering-front-common`。对外契约会直接引用的错误码和公共异常进入
+`catering-api-front`；仅由运行时使用的常量、流水号生成、校验、JSON 脱敏等实现进入
+`catering-front-service` 对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
 
 ### 6.3 `front-service`
 
@@ -294,7 +288,7 @@ catering-front/
 
 | 旧项目做法 | 新项目处理 |
 |---|---|
-| `api/common/service` 三模块 | 保留，但重新约束依赖和内容 |
+| `api/common/service` 三模块 | API/Common 合并到既有 `catering-api-front`，Front 侧只保留 Service |
 | Controller → Service → Router → Handle | 保留主调用层次 |
 | 每个交易建立一个 Router | 收敛为 `TransactionRouter` 和 `QueryRouter` |
 | Router 使用 `BeanPostProcessor` 扫描 | 改为构造器注入 `List<Handle>` 并创建不可变 Registry |
@@ -311,53 +305,45 @@ catering-front/
 ## 7. 完整 package 结构
 
 ```text
-catering-front-api
+catering-api/catering-api-front
 └─ com.chinaums.front
    ├─ api
    │  ├─ FrontTransactionApi
-   │  └─ FrontQueryApi
-   └─ model
-      ├─ request
-      │  ├─ FrontRequest
-      │  ├─ FrontBaseRequestData
-      │  ├─ TransferBusinessData
-      │  ├─ AuthTransferBusinessData
-      │  ├─ TransferAuthCodeBusinessData
-      │  ├─ ConsumeBusinessData
-      │  ├─ RefundBusinessData
-      │  ├─ WithdrawBusinessData
-      │  ├─ PlatformTransferBusinessData
-      │  ├─ AccountStatusQueryData
-      │  ├─ AccountBalanceQueryData
-      │  ├─ TransactionStatusQueryData
-      │  └─ TransactionDetailQueryData
-      ├─ response
-      │  ├─ FrontResponse
-      │  ├─ FrontTransactionResult
-      │  ├─ AccountStatusResult
-      │  ├─ AccountBalanceResult
-      │  ├─ TransactionStatusResult
-      │  ├─ TransactionDetailItem
-      │  └─ FrontPageResult
-      └─ enums
-         ├─ BankCode
-         ├─ FrontCapability
-         ├─ FrontTransactionStatus
-         ├─ AccountScope
-         ├─ AccountStatus
-         ├─ TransactionDirection
-         └─ IntegrationStatus
-
-catering-front-common
-└─ com.chinaums.front.common
-   ├─ constant
-   ├─ error
-   ├─ exception
-   ├─ id
-   ├─ json
-   ├─ mask
-   ├─ money
-   └─ time
+   │  ├─ FrontQueryApi
+   │  └─ model
+   │     ├─ request
+   │     │  ├─ FrontRequest
+   │     │  ├─ FrontBaseRequestData
+   │     │  ├─ TransferBusinessData
+   │     │  ├─ AuthTransferBusinessData
+   │     │  ├─ TransferAuthCodeBusinessData
+   │     │  ├─ ConsumeBusinessData
+   │     │  ├─ RefundBusinessData
+   │     │  ├─ WithdrawBusinessData
+   │     │  ├─ PlatformTransferBusinessData
+   │     │  ├─ AccountStatusQueryData
+   │     │  ├─ AccountBalanceQueryData
+   │     │  ├─ TransactionStatusQueryData
+   │     │  └─ TransactionDetailQueryData
+   │     ├─ response
+   │     │  ├─ FrontResponse
+   │     │  ├─ FrontTransactionResult
+   │     │  ├─ AccountStatusResult
+   │     │  ├─ AccountBalanceResult
+   │     │  ├─ TransactionStatusResult
+   │     │  ├─ TransactionDetailItem
+   │     │  └─ FrontPageResult
+   │     └─ enums
+   │        ├─ BankCode
+   │        ├─ FrontCapability
+   │        ├─ FrontTransactionStatus
+   │        ├─ AccountScope
+   │        ├─ AccountStatus
+   │        ├─ TransactionDirection
+   │        └─ IntegrationStatus
+   └─ common
+      ├─ error
+      └─ exception
 
 catering-front-service
 └─ com.chinaums.front
@@ -861,12 +847,13 @@ Handle 不负责：
 
 - `transTransferRecall()`：转账召回或交易回溯；
 - `sendCodeVerification()`：旧代码未形成稳定对外入口；
-- `queryWithDrawFee()`：提现手续费查询；
-- `queryReceiptVerify()`：回执单验证码查询；
+- `queryWithDrawFee()`：不再新增独立 API，由平台明细/账户交易查询通过交易类型筛选覆盖；
+- `queryReceiptVerify()`：旧代码仅平安有真实实现，中信返回 `null`；实际语义是查询明细单验证码，若后续纳入应改为 `queryDetailCheckCode()` 或 `queryReceiptCheckCode()`，并作为平安特有能力单独设计；
 - `bindCard/whiteName/openAccount/unBindCard/updateAccountInfo/acctClose/depositReg`：账户维护能力；
 - `BasFileProcessHandle` 下的文件上传、下载和对账文件能力。
 
-这些能力后续必须经过业务范围确认后再增加明确 API，不放入 `specialData` 伪装成现有能力。
+除已确认由现有查询覆盖的提现手续费外，其余能力后续必须经过业务范围确认后再增加明确 API，
+不放入 `specialData` 伪装成现有能力。中信的电子回执文件下载与平安的明细单验证码不是同一能力。
 
 #### 11.6.5 当前银行实现方式
 
@@ -1306,10 +1293,10 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 19.1 工程和依赖
 
-- [x] 创建 parent、api、common、service 三模块；
+- [x] 复用 `catering-api-front`，创建 `catering-front-service` 聚合模块；
 - [x] 对齐 Java 17、Spring Boot 3.5.15、LiteFlow 2.12.1；
-- [x] 配置模块单向依赖：`service → api/common`；
-- [x] 银行 DTO 不进入 api/common。
+- [x] 配置模块单向依赖：`catering-front-service → catering-api-front`；
+- [x] 银行 DTO 不进入 `catering-api-front`。
 
 ### 19.2 API 契约
 
@@ -1356,7 +1343,8 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 ### 19.7 测试和交付
 
 - [x] 当前 Router、重复注册、能力状态和二段式序列化测试通过（7 个）；
-- [x] `catering-front-api/common/service` 及其 Reactor 依赖执行 `mvn test` 通过；
+- [x] 合并前 `catering-front-api/common/service` 及其 Reactor 依赖执行 `mvn test` 通过；
+- [ ] 合并后的 `catering-api-front/catering-front-service` 未执行 Reactor 测试（按用户要求不运行验证代码）；
 - [x] 当前骨架执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试通过；
 - [ ] 使用 Fake Handle 完成公共框架测试；
 - [ ] Router、配置、幂等、状态机测试通过；
