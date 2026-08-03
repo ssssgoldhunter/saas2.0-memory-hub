@@ -832,10 +832,10 @@ catering-api
    └─ 对外 API、请求响应模型、常量和枚举
 
 catering-common/catering-common-core
-└─ 统一返回主体 R 与 Front 公共错误码
+└─ 统一返回主体 R、Front 公共错误码与 FrontException
 
 catering-modules/catering-front
-└─ 功能实现、公共异常、服务配置与测试
+└─ 功能实现、异常转换、服务配置与测试
 ```
 
 Service 内按 `application/controller/route/handle/channel/context/handler` 分层。银行协议 DTO、配置、

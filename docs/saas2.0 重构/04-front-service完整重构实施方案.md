@@ -267,9 +267,9 @@ catering-modules/
 ### 6.2 公共代码归属
 
 不再建立独立 `catering-front-common`。API 接口签名使用的请求响应模型、常量和枚举进入
-`catering-api-front`；统一返回主体 `R` 和 Front 公共错误码进入 `catering-common-core`；公共异常、
-流水号生成、校验、JSON 脱敏等功能实现进入 `catering-front` 对应内部包。中信、平安钱包请求对象
-仍只能放在各银行适配器包中。
+`catering-api-front`；统一返回主体 `R`、Front 公共错误码和 `FrontException` 进入
+`catering-common-core`；流水号生成、校验、JSON 脱敏、异常转换等功能实现进入 `catering-front`
+对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
 
 ### 6.3 `catering-front`
 
@@ -346,8 +346,10 @@ catering-common/catering-common-core
 └─ com.chinaums.common.core
    ├─ domain
    │  └─ R
-   └─ error
-      └─ FrontErrorCode
+   ├─ error
+   │  └─ FrontErrorCode
+   └─ exception
+      └─ FrontException
 
 catering-modules/catering-front
 └─ com.chinaums.front
@@ -356,8 +358,6 @@ catering-modules/catering-front
    │  ├─ FrontTransactionApplicationService
    │  ├─ FrontQueryApplicationService
    │  └─ FrontFlowExecutor
-   ├─ common
-   │  └─ exception
    ├─ flow
    │  ├─ context
    │  │  ├─ FrontFlowContext
@@ -1164,7 +1164,8 @@ INIT
 ## 16. 通用错误码
 
 `FrontErrorCode` 统一定义在 `catering-common-core` 的 `com.chinaums.common.core.error` 包中，
-API 和功能模块只引用，不得各自复制错误码枚举。
+`FrontException` 统一定义在 `com.chinaums.common.core.exception` 包中。API 和功能模块只引用，
+不得各自复制错误码或公共异常类型。
 
 | 错误码 | 含义 |
 |---|---|
@@ -1332,6 +1333,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 创建两段式请求、响应和枚举；
 - [x] 所有 API 使用 `R<FrontResponse<具体基础结果>>` 作为返回类型；
 - [x] `FrontErrorCode` 统一迁入 `catering-common-core`；
+- [x] `FrontException` 统一迁入 `catering-common-core`；
 - [x] 补齐基础 Bean Validation 和 OpenAPI。
 
 ### 19.3 公共执行框架
