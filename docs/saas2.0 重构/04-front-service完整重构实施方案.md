@@ -253,8 +253,7 @@ catering-modules/
 - Feign/API 接口；
 - 对外请求对象；
 - 对外响应对象；
-- 通用业务枚举；
-- Front 错误码与公共异常；
+- 通用常量和业务枚举（包括 Front 错误码枚举）；
 - Bean Validation 注解。
 
 禁止放入：
@@ -267,9 +266,9 @@ catering-modules/
 
 ### 6.2 公共代码归属
 
-不再建立独立 `catering-front-common`。对外契约会直接引用的错误码和公共异常进入
-`catering-api-front`；仅由运行时使用的常量、流水号生成、校验、JSON 脱敏等实现进入
-`catering-front` 对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
+不再建立独立 `catering-front-common`。API 接口签名使用的请求响应模型、常量和枚举进入
+`catering-api-front`；公共异常、流水号生成、校验、JSON 脱敏等功能实现进入 `catering-front`
+对应内部包。中信、平安钱包请求对象仍只能放在各银行适配器包中。
 
 ### 6.3 `catering-front`
 
@@ -343,8 +342,7 @@ catering-api/catering-api-front
    │        ├─ TransactionDirection
    │        └─ IntegrationStatus
    └─ common
-      ├─ error
-      └─ exception
+      └─ error
 
 catering-modules/catering-front
 └─ com.chinaums.front
@@ -353,6 +351,8 @@ catering-modules/catering-front
    │  ├─ FrontTransactionApplicationService
    │  ├─ FrontQueryApplicationService
    │  └─ FrontFlowExecutor
+   ├─ common
+   │  └─ exception
    ├─ flow
    │  ├─ context
    │  │  ├─ FrontFlowContext

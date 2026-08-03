@@ -824,10 +824,10 @@ UNKNOWN
 ```text
 catering-api
 └─ catering-api-front
-   └─ 对外 API、请求响应、业务枚举、错误码和公共异常
+   └─ 对外 API、请求响应模型、常量和枚举
 
 catering-modules/catering-front
-└─ 可运行 Front 服务源码与配置
+└─ 功能实现、公共异常、服务配置与测试
 ```
 
 Service 内按 `application/controller/route/handle/channel/context/handler` 分层。银行协议 DTO、配置、
