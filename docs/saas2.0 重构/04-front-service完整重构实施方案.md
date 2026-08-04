@@ -1246,19 +1246,31 @@ THEN(
 
 ### 14.4 异常收口
 
-不要假设正常链路的最后一个节点一定会执行。
+不要假设正常链路的最后一个节点一定会执行。异常按来源分两类收口：
 
-`FrontFlowExecutor` 在 LiteFlow 外层统一捕获异常：
+**业务异常**（配置缺失、银行不支持、能力不支持、适配器未接入、`specialData` 校验失败、银行明确拒绝
+等可预期业务失败）：节点内不抛异常，而是：
 
 ```text
-如果渠道流水尚未创建：转换为公共错误；
-如果银行调用尚未开始：流水记FAILED；
-如果已开始发送但没有明确响应：流水记UNKNOWN；
-如果收到银行明确拒绝：流水记FAILED；
-最后由 Controller 或异常处理器返回统一 `R<具体结果>`。
+1. 把 FrontErrorCode 的 code/msg 写入 FrontFlowContext Slot 的 frontRespCode/frontRespDesc；
+2. 调用 this.setIsEnd(true) 中断流程（LiteFlow 视为用户主动结束，response.isSuccess 仍为 true）；
+3. FrontFlowExecutor 执行后检查 Slot.isBusinessFailed()，
+   若已标记业务失败则返回 R.fail(code, msg, FrontBaseResult)。
 ```
 
-资金交易发生超时或无响应时禁止自动盲目重发。
+`BankHandle.requireCapability()` 不再直接 `throw FrontException`，而是返回 `IntegrationStatus`；
+由调用它的通用节点（`frontRouteAndCapabilityCheck`）判断状态后决定 `setIsEnd`，保持"业务异常不
+throw"的一致原则。
+
+**系统级异常**（`NullPointerException`、数据库连接失败、JSON 解析异常等非业务错误）：直接 throw，
+由 `FrontExceptionHandler` 统一收口，返回 `R.fail(INTERNAL_ERROR, FrontBaseResult)`，不向调用方
+泄漏堆栈。
+
+两类异常都不改变 `R` 的语义：业务结果只通过 `R.data.frontRespCode/frontRespDesc/frontStatus`
+表达，顶层 `R.code=200` 表示 Front 已正常完成本次处理判定。
+
+资金交易发生超时或无响应时仍禁止自动盲目重发，应进入 `UNKNOWN` 状态由交易状态查询确认；
+`UNKNOWN` 也属于业务异常，由 Handle 节点写入 Slot 后 `setIsEnd`。
 
 ### 14.5 LiteFlow Context
 

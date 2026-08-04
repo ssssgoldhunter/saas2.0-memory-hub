@@ -108,14 +108,14 @@
 
 当前没有完成、应由后续具体任务实现的内容：
 
-- 真实 `TenantBankConfigProvider` 远程查询；
-- LiteFlow `FlowExecutor`、组件、EL 规则和链路配置；
-- 中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射；
-- 平安查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约；
-- `transSsn` 的银行生成算法和真实落库调用；
-- 渠道 Entity、Mapper、Repository、显式表路由、幂等和状态机；
+- ~~真实 `TenantBankConfigProvider` 远程查询~~（已实现 `RemoteTenantBankConfigProvider`）；
+- ~~LiteFlow `FlowExecutor`、组件、EL 规则和链路配置~~（已实现 9 通用节点 + 11 链 + FrontFlowExecutor，业务异常用 setIsEnd+Slot）；
+- ~~中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射~~（已实现，`mvn compile` 通过）；
+- ~~`transSsn` 的银行生成算法~~（已实现，落库调用待持久层）；
+- 平安查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约（部分已实现，明细查询跨 bizFunc 聚合待联调）；
+- 渠道 Entity、Mapper、Repository、显式表路由、幂等和状态机（下一轮，LiteFlow 持久层节点已建空放行）；
 - 数据库迁移执行组件及目标环境建表流程；
-- 未经用户明确要求的测试类和编译验证。
+- 未经用户明确要求的测试类（本轮已授权编译验证，未运行测试）。
 
 ## 5. 固定的数据流
 

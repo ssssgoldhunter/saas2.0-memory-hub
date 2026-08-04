@@ -26,6 +26,8 @@
     交易 `specialData` 与账户 `accountSpecialData` 必须完全分离。
 11. 渠道流水必须按“银行 + 交易业务”拆分；每张表必须保留来源业务主/子记录关联、业务数据加密快照
     和 `reserve1/reserve2/reserve3`，禁止恢复单一统一渠道表。
+12. 持久层 Entity ↔ VO/BO 对象转换必须使用 MapStruct（`@AutoMapper` + `MapstructUtils.convert`），
+    禁止手写 `setXxx(getXxx())`；依赖经 `catering-common-core` 传递，catering-front 不重复声明（见 §3.9）。
 
 ---
 
@@ -98,6 +100,29 @@ catering-common-core
 ```
 
 禁止形成反向依赖或循环依赖。
+
+### 2.5 依赖版本管理约束
+
+所有第三方大依赖的版本必须统一在工程根 `pom.xml` 的 `<properties>` 声明版本号、在
+`<dependencyManagement>` 注册坐标，子模块 `pom.xml` 引用时**只写 groupId + artifactId，禁止写
+`<version>`**。当前已统一管理的第三方依赖包括但不限于：Spring Boot/Cloud（BOM）、MyBatis Plus 全家桶
+（starter/extension/generator/jsqlparser/annotation）、dynamic-datasource、LiteFlow、MapStruct &
+MapStruct Plus、Hutool（BOM）、Fastjson2、BouncyCastle、Redisson、Lock4j、Sa-Token、Velocity、
+p6spy、FastExcel、OpenCSV、SpringDoc、Lombok 等。
+
+新增第三方依赖时必须：
+
+1. 先在根 `pom.xml` 的 `<properties>` 增加版本号属性（如 `<xxx.version>`);
+2. 在根 `pom.xml` 的 `<dependencyManagement>` 注册 `groupId/artifactId/version`;
+3. 子模块 `pom.xml` 只写 `groupId/artifactId`，不写 `version`。
+
+禁止：
+
+- 在 `catering-front`、`catering-api-front` 等子模块 `pom.xml` 内写死第三方依赖 `<version>`;
+- 同一第三方库在多个子模块出现不同版本;
+- 绕过 parent 直接引入未在根 pom 管理的第三方大依赖（如确需引入，先按上述 1、2 步登记再使用）。
+
+目的：保证全工程第三方依赖版本一致，便于统一升级和安全漏洞修复，避免依赖冲突。
 
 ---
 
@@ -337,6 +362,39 @@ channel/pingan
 
 平安 `TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 与普通转账进入平安转账表，通过 `capability`
 区分；不为银行未支持的能力创建或写入空表。退款只能关联同银行原转账或消费表，不建立跨服务外键。
+
+### 3.9 对象转换约束（Converter）
+
+持久层 Entity ↔ VO/BO/Req/Res 之间的对象转换必须使用 MapStruct Converter，禁止手写 `setXxx(getXxx())`。
+工程通过 `catering-common-core` 已传递引入 `mapstruct-plus-spring-boot-starter`，根 `pom.xml` 的
+`annotationProcessorPaths` 全局注册了 `mapstruct-plus-processor` 与 `lombok-mapstruct-binding`，
+catering-front 无需在自身 `pom.xml` 增加任何 MapStruct 依赖。
+
+**强制范式**（参照 `catering-system` 的 `MpConfigDataVo` / `MpConfigData`）：
+
+1. 在 VO/BO 类上标注 `@AutoMapper(target = 对应Entity.class)`，注解来自
+   `io.github.linpeilie.annotations.AutoMapper`；
+2. 字段名相同时无需任何 `@Mapping`；字段名不同时在该字段上补 `@Mapping`；
+3. 转换调用统一使用静态工具 `com.chinaums.common.core.utils.MapstructUtils`：
+
+```java
+// Entity → VO
+FrontCiticTransferVo vo = MapstructUtils.convert(entity, FrontCiticTransferVo.class);
+// VO/BO → Entity
+FrontCiticTransfer entity = MapstructUtils.convert(bo, FrontCiticTransfer.class);
+// 列表批量
+List<FrontCiticTransferVo> voList = MapstructUtils.convert(entityList, FrontCiticTransferVo.class);
+```
+
+4. VO/BO 放在 `com.chinaums.front.domain.vo` / `com.chinaums.front.domain.bo`，Entity 放在
+   `com.chinaums.front.domain`，参照 `catering-system` 的 `domain/domain.vo/domain.bo` 结构；
+5. 仅当 `@AutoMapper` 无法覆盖（如需多源合并、复杂表达式）时，才在
+   `com.chinaums.front.domain.convert` 下新建显式 Converter 接口，使用
+   `@Mapper(componentModel = SPRING, unmappedTargetPolicy = IGNORE) extends BaseMapper<Source, Target>`。
+
+**适用范围**：本约束只约束持久层 Entity ↔ VO/BO 的转换。Handle 内部 `baseData` → 银行协议 DTO 的
+转换属于银行协议组装（字段名与 baseData 不同、需加密和常量映射），不在本约束范围，仍按现有
+Handle 显式组装方式。生成转换类由编译期注解处理器完成，禁止手工编辑 `target/generated-sources`。
 
 ---
 
@@ -688,7 +746,23 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 所有异常响应使用 `R.fail(message, new FrontBaseResult(...))`；
 - 不得将 Java 异常类名、堆栈和银行原始报文返回给调用方。
 
-### 7.3 禁止事项
+### 7.3 LiteFlow 链内节点的业务异常中断
+
+接入 LiteFlow 后，链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期业务失败时，**优先采用
+中断流程方式，不抛 `FrontException`**：
+
+1. 把 `FrontErrorCode` 的 `code/msg` 写入 `FrontFlowContext` Slot 的 `frontRespCode/frontRespDesc`；
+2. 调用 `this.setIsEnd(true)`（LiteFlow 视为用户主动结束，`response.isSuccess` 仍为 `true`）；
+3. `FrontFlowExecutor` 执行后检查 Slot，若已标记业务失败则返回
+   `R.fail(code, msg, FrontBaseResult)`。
+
+`BankHandle.requireCapability()` 因此改为返回 `IntegrationStatus`，由调用节点判断状态后决定 `setIsEnd`，
+不再直接 `throw`。
+
+系统级异常（NPE、数据库连接、JSON 解析等非业务错误）仍直接 throw，由 `FrontExceptionHandler` 收口。
+`FrontException` 与 `FrontExceptionHandler` 兜底机制保留，覆盖非 LiteFlow 路径和系统异常。
+
+### 7.4 禁止事项
 
 - 禁止用 `RuntimeException("字符串")` 表达已知业务失败；
 - 禁止 catch 后忽略异常；
@@ -747,7 +821,10 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 不静默覆盖重复银行 Handle；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
 - 不返回 `null` 或模拟成功；
-- 不在未确认字段时猜测银行协议。
+- 不在未确认字段时猜测银行协议；
+- 持久层 Entity ↔ VO/BO 转换不手写 `setXxx(getXxx())`，必须用 `@AutoMapper` + `MapstructUtils.convert`（见 §3.9）；
+- 不在 catering-front `pom.xml` 重复声明 MapStruct 依赖，统一走 `catering-common-core` 传递；
+- 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）。
 
 ---
 
@@ -800,6 +877,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 银行原始响应码没有直接作为 `R.code/frontRespCode`；
 - [ ] `frontRespCode/frontRespDesc` 同时来自同一个 `FrontErrorCode`；
 - [ ] 返回 `specialData` 只包含当前银行、当前能力的响应白名单字段；
+- [ ] 持久层 Entity ↔ VO/BO 转换使用 `@AutoMapper` + `MapstructUtils.convert`，无手写 `setXxx(getXxx())`；
+- [ ] catering-front `pom.xml` 未重复声明 MapStruct 依赖；
+- [ ] 子模块 `pom.xml` 未写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理；
 - [ ] 如用户明确要求测试，请求、成功响应和异常响应契约已覆盖测试；
 - [ ] 相关设计、能力矩阵和字段映射文档已更新。
 
