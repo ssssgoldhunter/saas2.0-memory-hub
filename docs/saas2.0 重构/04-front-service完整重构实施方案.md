@@ -927,6 +927,80 @@ com.chinaums.front
 `AbstractBankHandle` 统一实现。13 个具体交易/查询方法尚未在银行类中覆盖，当前仍使用 SPI 默认的
 `ADAPTER_NOT_READY` 行为，不能描述为已经完成银行业务实现。
 
+#### 11.6.7 新 Handle 与 mdl 具体实现类关联
+
+本节的 `Zx` 对应新 Front 的中信 `CITIC`，`Pa` 对应平安 `PING_AN`。mdl 实现来源目录：
+
+```text
+fund-catering-front-service/src/main/java/com/chinaums/erp/slhy/catering/front
+├─ service/impl
+├─ service/impl/zx
+├─ service/impl/pa
+├─ handle/impl/zx
+└─ handle/impl/pa
+```
+
+新 Front 按银行聚合 mdl 的细粒度实现：
+
+```text
+CiticTransactionHandle
+  ← ZxTransTransferHandle
+  ← ZxTransSendVerificationHandle
+  ← ZxTransConsumeHandle
+  ← ZxTransConsumeCancelHandle
+  ← ZxTransWithDrawHandle
+
+PingAnTransactionHandle
+  ← PaTransTransferHandle
+  ← PaTransSendVerificationHandle
+  ← PaTransConsumeHandle
+  ← PaTransConsumeCancelHandle
+  ← PaTransWithDrawHandle
+
+CiticQueryHandle
+  ← ZxTransQueryHandle
+  ← ZxTransQueryServiceImpl（银行专用平台明细入口）
+
+PingAnQueryHandle
+  ← PaTransQueryHandle
+  ← PaTransQueryServiceImpl（银行专用平台明细入口）
+```
+
+##### 11.6.7.1 交易方法关联
+
+| 新 `BankTransactionHandle` | mdl API / Service | mdl Handle 方法 | mdl 中信具体类 | mdl 平安具体类 | mdl 实现状态 |
+|---|---|---|---|---|---|
+| `transfer()` | `FrontTransConsumeFacadeApi.transTransfer()` → `TransConsumeServiceImpl.transTransfer()` | `BasTransTransferHandle.transTransfer()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
+| `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
+| `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` | `PaTransSendVerificationHandle` | 两家均有真实实现；mdl 语义未区分首次发送与重发 |
+| `consume()` | `FrontTransConsumeFacadeApi.transConsume()` → `TransConsumeServiceImpl.transConsume()` | `BasTransConsumeHandle.transConsume()` | `ZxTransConsumeHandle` | `PaTransConsumeHandle` | 两家均有真实实现 |
+| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | `ZxTransConsumeCancelHandle` | `PaTransConsumeCancelHandle` | 两家均有真实实现；新方法统一命名为退款 |
+| `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `BasTransWithDrawHandle.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家均有真实实现 |
+| `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `BasTransTransferHandle.platformPay()` | `ZxTransTransferHandle` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安未覆盖，抽象父类直接返回 `null` |
+| `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `BasTransTransferHandle.platformReceive()` | `ZxTransTransferHandle` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安未覆盖，抽象父类直接返回 `null` |
+
+##### 11.6.7.2 交易查询方法关联
+
+| 新 `BankQueryHandle` | mdl API / Service | mdl Handle 方法 | mdl 中信具体类 | mdl 平安具体类 | mdl 实现状态 |
+|---|---|---|---|---|---|
+| `queryAccountStatus()` | mdl 无对应 API / Service | mdl `AccountHandle` 没有 `acctState()` | 无 | 无 | mdl 分支没有账户状态查询实现；不能从 mdl 复制 |
+| `queryAccountBalance()` | `FrontTransQueryFacadeApi.queryAccInfo()` → `TransQueryServiceImpl.queryAccInfo()` | `BasTransQueryHandle.queryAccInfo()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 两家均有真实实现 |
+| `queryTransactionStatus()` | `FrontTransQueryFacadeApi` → `TransQueryServiceImpl.queryTransStatusQuery()/queryTransStatus()` | `queryTransStatus()` + `queryTransStatus_73()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 中信两个入口均实现；平安只实现 `queryTransStatus()`，`queryTransStatus_73()` 返回 `null` |
+| `queryPlatformTransactionDetails()` | 通用入口 `TransQueryServiceImpl.queryPlatformTransPages()`；银行专用入口 `ZxTransQueryServiceImpl/PaTransQueryServiceImpl.queryPlatformTransPages()` | `BasTransQueryHandle.queryPlatformTransPages()` | `ZxTransQueryHandle`；另有 `ZxTransQueryServiceImpl` | `PaTransQueryHandle`；另有 `PaTransQueryServiceImpl` | 中信通用 Handle 和专用 Service 均有实现；平安通用 Handle 返回 `null`，真实实现位于专用 Service |
+| `queryTransactionDetails()` | mdl 没有稳定的统一 Facade；主要由 Handle 内部使用 | `BasTransQueryHandle.queryTransPages()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 中信真实实现；平安方法直接返回 `null` |
+
+##### 11.6.7.3 未纳入方法的 mdl 实现状态
+
+| mdl 方法 | 中信具体类 | 平安具体类 | 当前结论 |
+|---|---|---|---|
+| `queryWithDrawFee()` | `ZxTransQueryHandle` 有真实实现 | `PaTransQueryHandle` 返回 `null` | 不新增独立 API，由平台/账户交易明细按交易类型覆盖 |
+| `queryReceiptVerify()` | `ZxTransQueryHandle` 返回 `null` | `PaTransQueryHandle` 有真实实现 | 仅平安真实支持，后续如纳入应作为平安特有“明细单验证码查询”能力设计 |
+
+上述类只作为银行功能码、请求组装、调用和响应映射的参考。迁移到新 Front 时必须进入
+`CiticTransactionHandle/CiticQueryHandle/PingAnTransactionHandle/PingAnQueryHandle` 的明确方法，
+并改用新的 `BankRequestContext`、`TenantBankConfigSnapshot` 和确定类型 `FrontResponse<T>`；不得复制 mdl
+的复合路由键、任意 `<T> T`、配置定位方式或返回 `null` 行为。
+
 ---
 
 ## 12. 租户银行配置设计
