@@ -460,6 +460,12 @@ R<FrontPageResult<TransactionDetailItem>>
 | `R.data` 的强类型字段 | Front 跨银行统一业务结果和 Front 错误码 |
 | `R.data.specialData` | 当前银行、当前能力的特殊返回字段；由 `FrontBaseResult` 统一定义 |
 
+银行结果已经被 Handle 正常识别时，无论银行业务成功还是明确业务失败，Controller 都使用
+`R.ok(result)`，因此顶层 `R.code` 固定为全局成功码数值 `200`。银行业务成功时
+`data.frontRespCode="200"`；银行业务失败时由 `data.frontRespCode/frontRespDesc/frontStatus`
+表达，不得为了银行拒绝而把顶层 `R.code` 改为 500。只有请求校验、配置、路由、适配器或 Front
+内部异常等未形成正常银行业务结果的场景才使用 `R.fail(...)`。
+
 `FrontBaseResult` 必须统一定义 `frontRespCode/frontRespDesc/specialData`。交易明细查询中，每条
 `TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`；分页结果自身
 继承的 `specialData` 只保存查询级银行扩展字段。
@@ -471,7 +477,7 @@ R<FrontPageResult<TransactionDetailItem>>
   "code": 200,
   "msg": "操作成功",
   "data": {
-    "frontRespCode": "F000000",
+    "frontRespCode": "200",
     "frontRespDesc": "成功",
     "specialData": {}
   }
@@ -527,13 +533,13 @@ catering-common-core
 - 新增错误码必须保证编码唯一、语义稳定；
 - 错误码名称表达业务语义，不能使用银行功能码命名；
 - 银行错误码必须先转换为 Front 错误码；
-- `F000000` 只用于真实成功，禁止模拟成功。
+- `200` 只用于真实成功，复用全局 `R.SUCCESS`，禁止模拟成功。
 
 当前编码分段：
 
 | 范围 | 含义 |
 |---|---|
-| `F000000` | 成功 |
+| `200` | 全局统一成功码，复用 `R.SUCCESS` |
 | `F1xxxxx` | 请求、配置和契约错误 |
 | `F2xxxxx` | 银行、能力和适配状态错误 |
 | `F3xxxxx` | 幂等和处理中状态 |
@@ -544,7 +550,7 @@ catering-common-core
 
 | 错误码 | 统一说明 | 使用边界 |
 |---|---|---|
-| `F000000` | 成功 | 钱包平台和银行渠道均满足当前接口成功条件 |
+| `200` | 成功 | 钱包平台和银行渠道均满足当前接口成功条件 |
 | `F400001` | 钱包通信失败 | 可确认未完成正常通信 |
 | `F400002` | 钱包处理结果未知 | 可能已发送但无法确认终态，必须查询 |
 | `F400003` | 钱包响应格式错误 | 缺少必需字段或格式无法解析 |

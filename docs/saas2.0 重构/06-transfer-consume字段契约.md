@@ -230,6 +230,10 @@ R.data.specialData
 └─ 银行特有且允许业务系统使用的响应字段
 ```
 
+只要 Handle 已经完成银行结果判定，业务成功和明确业务失败的顶层 `R.code` 都是数值 `200`。
+`R.code=200` 表示 Front 正常完成本次请求处理，不代表银行交易一定成功；交易是否成功必须读取
+`data.frontRespCode/frontRespDesc/frontStatus`。
+
 所有具体结果都继承 `FrontBaseResult`。Handle 应调用：
 
 ```java
@@ -242,7 +246,7 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 
 | 原始结果 | Front 统一结果 | 状态建议 |
 |---|---|---|
-| 平台成功且银行成功 | `F000000 / 成功` | `SUCCESS` |
+| 平台成功且银行成功 | `200 / 成功` | `SUCCESS` |
 | 明确未完成正常钱包通信 | `F400001 / 钱包通信失败` | `FAILED` |
 | 请求可能已发送但无可靠终态 | `F400002 / 钱包处理结果未知` | `UNKNOWN`，随后查询 |
 | 响应缺少必需字段或格式错误 | `F400003 / 钱包响应格式错误` | `UNKNOWN` 或 `FAILED`，按是否已发送判断 |
@@ -250,6 +254,21 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 | `errCode/errInfo` 明确表示钱包平台失败 | `F400005 / 钱包平台拒绝请求` | `FAILED` |
 
 中信 `00000`、平安 `000000`、钱包 `D5000000/success` 均不得成为 `frontRespCode`。
+
+例如银行明确拒绝时，完整外层仍为：
+
+```json
+{
+  "code": 200,
+  "msg": "操作成功",
+  "data": {
+    "frontRespCode": "F400004",
+    "frontRespDesc": "银行拒绝交易",
+    "frontStatus": "FAILED",
+    "specialData": {}
+  }
+}
+```
 
 ### 6.3 原始响应的保存边界
 
@@ -268,7 +287,7 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
   "code": 200,
   "msg": "操作成功",
   "data": {
-    "frontRespCode": "F000000",
+    "frontRespCode": "200",
     "frontRespDesc": "成功",
     "frontSsn": "FRONT生成的渠道交易流水",
     "frontStatus": "SUCCESS",
@@ -289,7 +308,7 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
   "code": 200,
   "msg": "操作成功",
   "data": {
-    "frontRespCode": "F000000",
+    "frontRespCode": "200",
     "frontRespDesc": "成功",
     "frontSsn": "FRONT生成的渠道交易流水",
     "frontStatus": "SUCCESS",

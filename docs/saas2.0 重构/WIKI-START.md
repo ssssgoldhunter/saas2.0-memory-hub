@@ -145,6 +145,8 @@ AbstractBankHandle.prepareContext
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
 - 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，
   `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
+- Handle 已正常识别的银行业务成功或失败，顶层 `R.code` 都必须是全局成功码数值 `200`；
+  业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`，银行失败由 data 内统一错误码和状态表达；
 - 日志不得输出密钥、完整账户配置、完整 `specialData`、卡号、手机号、证件号或验证码；
 - 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
 
