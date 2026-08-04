@@ -258,6 +258,12 @@ CiticBankAccountConfigAssembler     → 组装中信 accountSpecialData
 同一银行重复策略必须启动失败。新增银行只增加自己的组装策略和 Handle，不扩充
 `TenantBankAccountConfig` 的银行专属字段。
 
+配置查询原始 key 和账户配置 `JSONObject` 字段 key 统一放在
+`catering-common-core/com.chinaums.common.core.constant.front`：查询 key 使用
+`FrontBankConfigQueryKeys` 保存 `zx_bank_config/pa_bank_config`；通用、平安、中信字段分别使用
+`FrontBankAccountConfigKeys/PingAnBankAccountConfigKeys/CiticBankAccountConfigKeys`。
+查询 key 在公共层只保存原始值，不绑定银行，最终映射由真实 Provider 显式选择。
+
 ---
 
 ## 7. specialData 设计

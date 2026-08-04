@@ -34,7 +34,7 @@
 - `com.chinaums.common.core.domain.R`：工程统一返回主体；
 - `com.chinaums.common.core.error.FrontErrorCode`：Front 公共错误码；
 - `com.chinaums.common.core.exception.FrontException`：Front 公共业务异常；
-- `com.chinaums.common.core.constant.front`：Front 银行账户配置字段 key 常量；
+- `com.chinaums.common.core.constant.front`：Front 银行配置查询 key 和账户配置 `JSONObject` 字段 key 常量；
 - 真正跨业务模块复用、与具体银行无关的基础能力。
 
 禁止保存：
@@ -256,7 +256,18 @@ BankAccountConfigAssemblerRouter
 中信上述 7 个字段对中信交易能力是通用账户配置，但不是跨银行通用字段，
 不得添加到 `TenantBankAccountConfig` 强类型属性中。银行字段 key 在
 `catering-common-core/com.chinaums.common.core.constant.front` 中集中定义，对象和组装策略仍属于
-`catering-front`。
+`catering-front`。常量类职责固定如下：
+
+| 常量类 | 内容 |
+|---|---|
+| `FrontBankConfigQueryKeys` | 配置查询原始 key：`zx_bank_config`、`pa_bank_config` |
+| `FrontBankAccountConfigKeys` | `appId/appKey/url/mchntId/mchntMbrId/chnlNo` |
+| `PingAnBankAccountConfigKeys` | `txnClientNo/mrchCode` |
+| `CiticBankAccountConfigKeys` | 中信 7 个 `accountSpecialData` 字段 |
+
+配置查询 key 的常量名称只表达配置系统中的原始值，不在 `catering-common-core` 内绑定具体银行。
+真实 `TenantBankConfigProvider` 接入时必须根据最终确认的银行与配置 key 对应关系显式选择，禁止根据
+`zx/pa` 前缀自行推断。
 
 策略路由必须通过构造器注入 `List<BankAccountConfigAssembler>` 建立不可变映射，
 同一银行出现两个策略时必须启动失败，不得静默覆盖。组装日志只记录银行、策略、

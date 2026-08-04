@@ -1104,7 +1104,10 @@ chnlNo
 `AbstractBankAccountConfigAssembler` 只负责通用字段；`CiticBankAccountConfigAssembler`、
 `PingAnBankAccountConfigAssembler` 只负责各自的 `accountSpecialData`。策略路由构造器注入
 `List<BankAccountConfigAssembler>`，同银行重复注册必须启动失败。字段 key 常量放在
-`catering-common-core/com.chinaums.common.core.constant.front`。
+`catering-common-core/com.chinaums.common.core.constant.front`：`FrontBankConfigQueryKeys` 保存
+`zx_bank_config/pa_bank_config` 两个配置查询原始 key；`FrontBankAccountConfigKeys`、
+`PingAnBankAccountConfigKeys`、`CiticBankAccountConfigKeys` 分别保存通用、平安和中信
+`JSONObject` 字段 key。查询 key 不在公共层绑定银行，最终映射由真实 Provider 显式确定。
 
 ### 12.4 必须校验
 
