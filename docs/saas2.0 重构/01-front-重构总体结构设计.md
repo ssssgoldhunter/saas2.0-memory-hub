@@ -210,60 +210,53 @@ public record BankRequestContext<T extends FrontBaseRequestData>(
 
 ## 6. 租户银行配置
 
-### 6.1 配置存储结构
+### 6.1 配置存储与 Front 对象结构
 
-配置系统以 `JSONObject` 形式返回：
+配置系统以扁平 `JSONObject` 形式返回，Front 组装后的账户配置对象为：
 
-```json
-{
-  "schemaVersion": "1.0",
-  "common": {
-    "mchntId": "",
-    "mchntMbrId": "",
-    "appIdBank": "",
-    "appKeyRef": "",
-    "baseUrl": "",
-    "publicKeyRef": "",
-    "privateKeyRef": "",
-    "signAlgorithm": "",
-    "encryptAlgorithm": "",
-    "environment": ""
-  },
-  "extension": {
-  }
-}
+```text
+TenantBankAccountConfig
+├─ appId
+├─ appKey
+├─ url
+├─ mchntId
+├─ mchntMbrId
+├─ chnlNo
+└─ accountSpecialData: JSONObject
 ```
 
 说明：
 
-- `common` 保存多银行公共调用配置；
-- `extension` 保存当前银行特有静态配置；
-- `channelNo`、`bizFunc` 不由业务系统传入；
-- 配置系统可以保存密钥引用，Front 调用时解析真实密钥；
-- 配置中的算法值只能是 Front 支持的枚举编码。
+- `appId/appKey/url/mchntId/mchntMbrId/chnlNo` 为跨银行共有的账户配置属性；
+- 平安 `accountSpecialData` 只保存 `txnClientNo/mrchCode`；
+- 中信 `accountSpecialData` 保存 `default_role/default_fund_type/self_role/self_fund_type/`
+  `self_dealType/self_store_no/self_store_id`；这些字段对中信是通用账户配置，但不是跨银行字段；
+- `transTime/transSsn` 每次请求生成，`bizFunc` 由银行和能力决定，三者不进入账户配置；
+- `specialData` 是单次业务请求特定参数，`accountSpecialData` 是租户银行账户特定静态配置，
+  两者是独立 `JSONObject`，不得互相覆盖。
 
-### 6.2 银行配置解析器
+### 6.2 银行账户配置组装策略
 
-配置系统边界使用 `JSONObject`。统一父类只负责加载、校验和装配快照；进入具体银行业务方法后，
-由银行解析器转换：
+配置系统边界使用 `JSONObject`。通用父类组装强类型通用字段，银行策略只挑选各自账户特定字段：
 
 ```java
-public interface BankConfigParser<C> {
-
-    String platformCode();
-
-    C parse(JSONObject source);
+public interface BankAccountConfigAssembler {
+    BankCode bankCode();
+    TenantBankAccountConfig assemble(JSONObject sourceConfig);
 }
 ```
 
 示例：
 
 ```text
-PingAnBankConfigParser → PingAnBankConfig
-CiticBankConfigParser  → CiticBankConfig
+AbstractBankAccountConfigAssembler → 组装通用字段
+PingAnBankAccountConfigAssembler    → 组装平安 accountSpecialData
+CiticBankAccountConfigAssembler     → 组装中信 accountSpecialData
 ```
 
-新增银行只增加自己的解析器、配置对象和 Handle，不扩充统一配置对象的银行专属字段。
+策略路由使用构造器注入 `List<BankAccountConfigAssembler>` 建立不可变 `EnumMap`，
+同一银行重复策略必须启动失败。新增银行只增加自己的组装策略和 Handle，不扩充
+`TenantBankAccountConfig` 的银行专属字段。
 
 ---
 
@@ -653,7 +646,7 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 1. 继承 `AbstractBankHandle`，统一按 `tenantId + bankCode` 加载并校验租户银行配置；
 2. 从三段式 `BankRequestContext` 获取基础数据、特殊数据和配置快照；
-3. 把配置快照解析为当前银行强类型配置；
+3. 从配置快照读取通用账户配置及当前银行 `accountSpecialData`；
 4. 按接口契约解析和校验 `specialData`；
 5. 读取强类型 `baseData`；
 6. 确定 `channelNo`；

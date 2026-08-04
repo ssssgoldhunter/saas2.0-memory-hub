@@ -1,7 +1,7 @@
 # Front 代码开发约束
 
 > 状态：current
-> 生效日期：2026-08-03
+> 生效日期：2026-08-04
 > 适用模块：`catering-api-front`、`catering-front` 及其使用的 `catering-common-core`
 > 约束级别：后续 Front 代码开发必须遵守
 
@@ -20,6 +20,8 @@
    `tenantBankConfig`，形成三段式内部上下文。
 9. 租户银行配置只能由 Front 使用 `tenantId + bankCode` 查询，禁止由调用方传入或由具体银行
    Handle 各自重复查询。
+10. 银行账户配置必须按“通用强类型对象 + 银行 `accountSpecialData` 策略”组装；
+    交易 `specialData` 与账户 `accountSpecialData` 必须完全分离。
 
 ---
 
@@ -32,12 +34,14 @@
 - `com.chinaums.common.core.domain.R`：工程统一返回主体；
 - `com.chinaums.common.core.error.FrontErrorCode`：Front 公共错误码；
 - `com.chinaums.common.core.exception.FrontException`：Front 公共业务异常；
+- `com.chinaums.common.core.constant.front`：Front 银行账户配置字段 key 常量；
 - 真正跨业务模块复用、与具体银行无关的基础能力。
 
 禁止保存：
 
 - Front Controller、Application Service、Router、Handle；
 - 中信、平安协议 DTO；
+- 中信、平安账户配置对象或组装实现；
 - 银行地址、渠道号、功能码、签名和加密实现；
 - 只被单个 Front 实现类使用的工具。
 
@@ -208,7 +212,14 @@ TenantBankConfigSnapshot
 ├─ bankCode
 ├─ configVersion
 ├─ enabled
-└─ config: JSONObject
+└─ accountConfig: TenantBankAccountConfig
+   ├─ appId
+   ├─ appKey
+   ├─ url
+   ├─ mchntId
+   ├─ mchntMbrId
+   ├─ chnlNo
+   └─ accountSpecialData: JSONObject
 ```
 
 只允许存在一个 `TenantBankConfigProvider` 实现；多个实现必须在启动阶段失败。当前真实配置系统协议
@@ -222,7 +233,36 @@ TenantBankConfigSnapshot
 - 接受调用方通过 `specialData` 覆盖配置；
 - 输出完整配置或密钥字段日志。
 
-### 3.6 `channel/{bank}`
+### 3.6 银行账户配置组装
+
+账户配置组装固定使用以下分层：
+
+```text
+BankAccountConfigAssemblerRouter
+└─ AbstractBankAccountConfigAssembler       # 只组装跨银行通用字段
+   ├─ PingAnBankAccountConfigAssembler       # 只组装平安 accountSpecialData
+   └─ CiticBankAccountConfigAssembler        # 只组装中信 accountSpecialData
+```
+
+通用对象只包含 `appId/appKey/url/mchntId/mchntMbrId/chnlNo`。
+`transTime/transSsn` 是每笔请求运行时字段，`bizFunc` 由具体银行和能力选择，
+禁止将这三个字段固化为账户配置。
+
+| 银行 | `accountSpecialData` 允许字段 |
+|---|---|
+| 平安 | `txnClientNo`、`mrchCode` |
+| 中信 | `default_role`、`default_fund_type`、`self_role`、`self_fund_type`、`self_dealType`、`self_store_no`、`self_store_id` |
+
+中信上述 7 个字段对中信交易能力是通用账户配置，但不是跨银行通用字段，
+不得添加到 `TenantBankAccountConfig` 强类型属性中。银行字段 key 在
+`catering-common-core/com.chinaums.common.core.constant.front` 中集中定义，对象和组装策略仍属于
+`catering-front`。
+
+策略路由必须通过构造器注入 `List<BankAccountConfigAssembler>` 建立不可变映射，
+同一银行出现两个策略时必须启动失败，不得静默覆盖。组装日志只记录银行、策略、
+结果和耗时，不得记录原始配置、`appKey`、`accountSpecialData` 内容。
+
+### 3.7 `channel/{bank}`
 
 银行差异实现统一放在对应银行包下：
 
@@ -310,8 +350,10 @@ public record BankRequestContext<T extends FrontBaseRequestData>(
 | `specialData` | `FrontRequest.specialData` | 是 |
 | `tenantBankConfig` | Front 配置 Provider | 否 |
 
-`tenantBankConfig.config` 当前使用 `JSONObject` 是配置系统边界对象，不代表具体银行实现可以长期使用
-无类型字段。银行协议确认后，应在对应 `channel/{bank}` 内解析为强类型配置对象。
+`tenantBankConfig.accountConfig` 是强类型通用账户配置加银行 `accountSpecialData`。
+`specialData` 和 `accountSpecialData` 是两个独立 `JSONObject`：前者只保存当前交易/查询的
+银行特定动态参数，后者只保存租户银行账户特定静态配置。禁止两者共享引用、
+`putAll`、互相覆盖或透传。
 
 ---
 
@@ -453,7 +495,8 @@ throw new FrontException(FrontErrorCode.CAPABILITY_NOT_SUPPORTED);
 throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说明");
 ```
 
-禁止在异常消息中包含密钥、完整卡号、手机号、证件号、验证码或完整 `specialData`。
+禁止在异常消息中包含密钥、完整卡号、手机号、证件号、验证码、完整 `specialData`
+或 `accountSpecialData`。
 
 ### 7.2 异常收口
 
@@ -499,6 +542,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 禁止记录：
 
 - 完整 `specialData`；
+- 完整 `accountSpecialData`；
 - 租户完整银行配置；
 - 密钥、私钥、签名原文；
 - 完整卡号、手机号、证件号、短信验证码；
@@ -559,12 +603,16 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 对外请求仍只有 `baseData/specialData` 两段；
 - [ ] Handle 内部上下文包含由统一父类装配的 `tenantBankConfig`；
 - [ ] 租户银行配置只按 `tenantId + bankCode` 查询且请求与配置一致；
+- [ ] 账户通用配置已进入 `TenantBankAccountConfig` 强类型字段；
+- [ ] 银行账户特定配置只进入 `accountSpecialData`；
+- [ ] 交易 `specialData` 与账户 `accountSpecialData` 没有合并、共享引用或互相覆盖；
+- [ ] 银行账户配置组装策略按 `bankCode` 唯一注册；
 - [ ] 具体银行 Handle 没有重复实现配置查询；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；
 - [ ] 新错误码只添加到 `FrontErrorCode`；
 - [ ] 已知业务失败只抛出 `FrontException`；
 - [ ] 未知异常不会泄漏堆栈给调用方；
-- [ ] 日志不包含完整 `specialData` 和敏感字段；
+- [ ] 日志不包含完整 `specialData`、`accountSpecialData`、账户配置和敏感字段；
 - [ ] 银行原始响应码没有直接作为 `R.code/frontRespCode`；
 - [ ] 请求、成功响应和异常响应契约已覆盖测试；
 - [ ] 相关设计、能力矩阵和字段映射文档已更新。

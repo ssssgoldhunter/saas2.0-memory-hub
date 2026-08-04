@@ -296,7 +296,7 @@ catering-modules/
 | Router Key 包含银行和账户类型 | Router Key 只使用 `platformCode` |
 | Handle 大量使用 `<T> T` 返回 | 改成明确请求和明确响应类型 |
 | 中信、平安钱包 DTO 放入 common | 移入各自 `channel/{bank}/protocol` 包 |
-| 使用旧平台结算配置对象 | 改为 `TenantBankConfigProvider` 和银行配置解析器 |
+| 使用旧平台结算配置对象 | 改为 `TenantBankConfigProvider`、通用账户配置对象和银行组装策略 |
 | `reserveMap` 字符串 Key 分散硬编码 | 改为版本化 `specialData` 契约和显式映射 |
 | 部分银行方法返回 `null` 或模拟成功 | 改为 `UNSUPPORTED/PENDING_INTEGRATION` 明确错误 |
 | 没有统一 Front 渠道交易流水 | 新增单表、幂等和状态机 |
@@ -389,9 +389,14 @@ catering-modules/catering-front
    ├─ config
    │  ├─ TenantBankConfigProvider
    │  ├─ TenantBankConfigSnapshot
+   │  ├─ TenantBankAccountConfig
    │  ├─ RemoteTenantBankConfigProvider（待接入）
-   │  ├─ BankConfigParser（待接入）
-   │  └─ BankConfigParserRegistry（待接入）
+   │  └─ assemble
+   │     ├─ BankAccountConfigAssembler
+   │     ├─ AbstractBankAccountConfigAssembler
+   │     ├─ BankAccountConfigAssemblerRouter
+   │     ├─ CiticBankAccountConfigAssembler
+   │     └─ PingAnBankAccountConfigAssembler
    ├─ reserve
    │  ├─ FrontSpecialDataContract
    │  ├─ FrontSpecialDataContractRegistry
@@ -657,8 +662,7 @@ API 层保留泛型，LiteFlow 内部使用单一非泛型上下文，避免运�
 public class FrontFlowContext {
     private FrontCapability capability;
     private Object baseData;
-    private JSONObject tenantBankConfig;
-    private Object parsedBankConfig;
+    private TenantBankConfigSnapshot tenantBankConfig;
     private JSONObject specialData;
     private Object result;
     private FrontExecutionInfo executionInfo;
@@ -671,7 +675,6 @@ public class FrontFlowContext {
 
 ```java
 <T> T requireBaseData(Class<T> type)
-<C> C requireBankConfig(Class<C> type)
 <R> R requireResult(Class<R> type)
 ```
 
@@ -788,7 +791,7 @@ Handle 必须完成：
 1. 判断当前银行是否支持能力；
 2. 由统一父类加载并校验租户银行配置，装配 `BankRequestContext`；
 3. 解析当前能力的 `specialData`；
-4. 将配置快照解析为当前银行的强类型配置；
+4. 从 `accountConfig` 读取通用账户配置及当前银行 `accountSpecialData`；
 5. 确定 `channelNo/bizFunc/path`；
 6. 组装钱包请求及 `reserve`；
 7. 触发签名、加密和 HTTP 调用；
@@ -910,7 +913,14 @@ com.chinaums.front
 │  └─ BankRequestContext.java
 ├─ config
 │  ├─ TenantBankConfigProvider.java
-│  └─ TenantBankConfigSnapshot.java
+│  ├─ TenantBankConfigSnapshot.java
+│  ├─ TenantBankAccountConfig.java
+│  └─ assemble
+│     ├─ BankAccountConfigAssembler.java
+│     ├─ AbstractBankAccountConfigAssembler.java
+│     ├─ BankAccountConfigAssemblerRouter.java
+│     ├─ CiticBankAccountConfigAssembler.java
+│     └─ PingAnBankAccountConfigAssembler.java
 └─ channel
    ├─ citic
    │  ├─ CiticTransactionHandle.java
@@ -1014,12 +1024,22 @@ public interface TenantBankConfigProvider {
 ```
 
 ```java
-public class TenantBankConfigSnapshot {
-    private String tenantId;
-    private BankCode bankCode;
-    private String configVersion;
-    private boolean enabled;
-    private JSONObject config;
+public record TenantBankConfigSnapshot(
+    String tenantId,
+    BankCode bankCode,
+    String configVersion,
+    boolean enabled,
+    TenantBankAccountConfig accountConfig) {
+}
+
+public record TenantBankAccountConfig(
+    String appId,
+    String appKey,
+    String url,
+    String mchntId,
+    String mchntMbrId,
+    String chnlNo,
+    JSONObject accountSpecialData) {
 }
 ```
 
@@ -1043,44 +1063,56 @@ AbstractBankHandle.prepareContext(request)
 只允许注册一个 `TenantBankConfigProvider`。多个 Provider 立即启动失败；真实 Provider 尚未接入时
 允许骨架启动，但任何标记为 `SUPPORTED` 并进入配置装配的能力必须明确失败，不能模拟配置或成功结果。
 
-配置加载日志只记录 `tenantId/storeId/bankCode/configVersion`、结果和耗时，不记录 `config` 内容。
+配置加载日志只记录 `tenantId/storeId/bankCode/configVersion`、结果和耗时，不记录
+`accountConfig/accountSpecialData` 内容。
 
-### 12.3 配置 JSON
-
-```json
-{
-  "schemaVersion": "1.0",
-  "common": {
-    "mchntId": "",
-    "mchntMbrId": "",
-    "appIdBank": "",
-    "appKeyRef": "",
-    "baseUrl": "",
-    "publicKeyRef": "",
-    "privateKeyRef": "",
-    "signAlgorithm": "",
-    "encryptAlgorithm": ""
-  },
-  "extension": {}
-}
-```
-
-中信、平安解析器分别转换为：
+### 12.3 账户配置通用对象与银行策略
 
 ```text
-CiticBankConfig
-PingAnBankConfig
+原始配置 JSONObject
+  → BankAccountConfigAssemblerRouter(bankCode)
+  → AbstractBankAccountConfigAssembler 组装通用字段
+  → 平安/中信策略组装 accountSpecialData
+  → TenantBankAccountConfig
 ```
 
-公共层不定义包含所有银行特殊字段的 `TenantBankChannelConfig` 大对象。
+账户通用强类型字段：
+
+```text
+appId
+appKey
+url
+mchntId
+mchntMbrId
+chnlNo
+```
+
+账户特定静态配置放入独立 `accountSpecialData`：
+
+| 银行 | `accountSpecialData` 字段 |
+|---|---|
+| 平安 | `txnClientNo`、`mrchCode` |
+| 中信 | `default_role`、`default_fund_type`、`self_role`、`self_fund_type`、`self_dealType`、`self_store_no`、`self_store_id` |
+
+中信上述 7 个字段是中信各交易能力可复用的账户配置，但仍是银行特定字段，
+不添加到跨银行通用对象。`transTime/transSsn` 按请求生成，`bizFunc` 由银行交易策略选择，
+不属于账户配置。
+
+`specialData` 是当前交易/查询的银行特定动态参数；`accountSpecialData` 是租户银行账户的
+特定静态配置。两者必须是不同的 `JSONObject`，禁止 `putAll`、共享引用、相互覆盖或透传。
+
+`AbstractBankAccountConfigAssembler` 只负责通用字段；`CiticBankAccountConfigAssembler`、
+`PingAnBankAccountConfigAssembler` 只负责各自的 `accountSpecialData`。策略路由构造器注入
+`List<BankAccountConfigAssembler>`，同银行重复注册必须启动失败。字段 key 常量放在
+`catering-common-core/com.chinaums.common.core.constant.front`。
 
 ### 12.4 必须校验
 
 - 配置存在且启用；
 - 配置返回的 `tenantId/bankCode` 与请求一致；
-- `schemaVersion` 可识别；
-- 必需密钥引用、商户号、URL 存在；
-- 算法属于 Front 支持的白名单；
+- 当前银行策略已注册且唯一；
+- 当前银行和能力必需的 `appId/appKey/url/mchntId` 等字段存在；
+- 银行必需的 `accountSpecialData` 字段存在；
 - 请求不能覆盖配置字段。
 
 ---
