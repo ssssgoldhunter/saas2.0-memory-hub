@@ -41,6 +41,7 @@
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
 → 09-channel-transaction-ddl（实现任何交易落库、幂等、状态查询或退款关联时）
 → 09A-channel-transaction-table-field-catalog（生成或审查建表 SQL 时）
+→ 10-transaction-query-field-contract（实现交易状态或交易明细查询时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -68,7 +69,9 @@
     必须完整阅读，渠道记录固定按“银行 + 交易业务”拆分。
 11. [09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md)：生成、迁移或
     审查数据库 SQL 时必须阅读，其中 10 张表的全部字段、默认值、更新规则和索引均已逐表展开。
-12. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+12. [10-transaction-query-field-contract](10-transaction-query-field-contract.md)：实现单笔状态、平台交易明细或
+    账户/登记簿交易明细查询时必须完整阅读。
+13. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -89,6 +92,8 @@
 - transfer/consume 公共金额、收付款会员字段，两家银行字段常量和原始响应码常量；
 - 平安 transferAuth/授权码发送重发的基础对象、专用结果、字段常量和明确映射契约；
 - 中信、平安 withdraw/refund 的请求对象和字段常量；中信平台收付款字段常量；
+- 中信平台交易资金账户明细固定 `bizFunc=25/chnlNo=0010`，登记簿交易明细固定
+  `bizFunc=24/chnlNo=0010`，两个查询的 specialData Key、交易类型、账户类型和响应字段常量；
 - 中信退款固定为真退款 `/refund + bizFunc=23`，禁止迁移 mdl 的反向转账退款；
 - 中信退款字段已与 lsym UAT 分支 `lsym_20260625_limeng_refundTask` 的真退款 Handle 核对；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
@@ -106,7 +111,7 @@
 - 真实 `TenantBankConfigProvider` 远程查询；
 - LiteFlow `FlowExecutor`、组件、EL 规则和链路配置；
 - 中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射；
-- 查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约；
+- 平安查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约；
 - `transSsn` 的银行生成算法和真实落库调用；
 - 渠道 Entity、Mapper、Repository、显式表路由、幂等和状态机；
 - 数据库迁移执行组件及目标环境建表流程；
@@ -172,6 +177,8 @@ AbstractBankHandle.prepareContext
 - 每张渠道交易表必须保存业务主/子记录关联字段、业务基础数据加密快照和
   `reserve1/reserve2/reserve3`；
 - 不把银行差异字段放入公共 `baseData`；
+- 中信明细查询的日期范围、交易类型、登记簿/账户类型必须放入 `specialData`；业务系统不得提交
+  `TRANS_DATE/PAGE/bizFunc/chnlNo`，Handle 必须按日期范围逐日组装银行单日查询；
 - 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
 - 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及

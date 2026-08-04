@@ -376,6 +376,8 @@ JSON 顶层固定为：
 不得把这些已有公共语义的字段塞入 `specialData`。
 单笔状态查询基础对象必须包含 `frontSsn/bizOrderNo/bizSubOrderNo`；其中 `bizOrderNo` 是业务主流水，
 `bizSubOrderNo` 是业务子流水。
+交易明细查询基础对象只保存 `accountId/pageNo/pageSize/continuationToken` 等跨银行公共定位与分页字段；
+银行交易类型、日期范围和登记簿/账户类型不得在 `TransactionDetailQueryData` 重复定义。
 
 ### 4.2 统一业务 Slot
 
@@ -436,6 +438,17 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 
 `FUND_TP` 优先取原渠道交易记录保存的资金类型；若原交易固定使用中信默认资金类型，可以读取
 `accountSpecialData.default_fund_type` 并与原交易校验。任何 role 字段都不能代替资金类型。
+
+中信交易状态和两个交易明细查询的字段边界以
+[10-transaction-query-field-contract](10-transaction-query-field-contract.md) 为准。中信平台交易资金账户
+明细固定使用 `/query-trans-details + bizFunc=25 + chnlNo=0010`，登记簿交易明细固定使用同一路径的
+`bizFunc=24 + chnlNo=0010`。两个 Front 方法都不得继续按提现、手续费、来账等类型拆分 Handle 方法。
+
+中信明细查询的 `startDate/endDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
+`specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
+银行一次只支持一个交易日，真实 Handle 必须把日期范围按日展开，并通过 Front 生成的
+`continuationToken` 维护当前日期和银行页码。银行文档标注忽略的 `beginDate/endDate` 不得当作有效银行
+字段透传。中信 `24` 每页固定最多 50 条，`25` 每页固定最多 20 条，业务 `pageSize` 不得覆盖银行限制。
 
 ### 4.4 Handle 内部三段式上下文
 

@@ -651,10 +651,6 @@ bizSubOrderNo（业务子流水号）
 平台交易明细和交易明细：
 
 ```text
-startDate
-endDate
-transactionType
-direction
 accountId（交易明细条件必填）
 pageNo
 pageSize
@@ -662,8 +658,10 @@ continuationToken
 ```
 
 交易、交易查询和账户查询的请求均保留 `FrontRequest.specialData`，由业务系统组装，具体银行 Handle
-按当前能力的契约解析并映射到银行请求 `reserveMap`。`transactionType`、`accountScope`、`direction`
-是公共业务条件，不放入 `specialData`。
+按当前能力的契约解析并映射到银行请求 `reserveMap`。账户查询的 `accountScope` 仍是公共强类型条件；
+交易明细的日期范围、交易类型和银行账户/登记簿类型属于“银行 + 查询能力”筛选条件，放入
+`specialData`。中信字段规则以 [10-transaction-query-field-contract](10-transaction-query-field-contract.md)
+为准。中信协议没有请求方向筛选字段，`direction` 当前不进入明细请求对象，避免分页后再过滤导致结果错误。
 
 单笔交易状态查询返回一个 `TransactionStatusResult.specialData`；两个明细查询除分页结果自身继承的
 查询级 `specialData` 外，每条 `TransactionDetailItem` 还必须包含独立 `specialData`，用于承载该笔银行返回的
@@ -895,12 +893,12 @@ commit: 3dff8255d6
 |---|---|---|
 | `queryAccountStatus()` | `AccountHandle.acctState()` | 账户状态查询；该方法存在于 lsym 版本，mdl 版本的 `AccountHandle` 接口中没有 |
 | `queryAccountBalance()` | `BasTransQueryHandle.queryAccInfo()` | 从旧“账户信息”能力中收敛出账户余额查询 |
-| `queryTransactionStatus()` | `queryTransStatus()` + `queryTransStatus_73()` | 合并旧的两个交易状态入口，协议选择留在具体银行 Handle 内部 |
-| `queryPlatformTransactionDetails()` | `queryPlatformTransPages()` | 一对一，平台交易明细 |
-| `queryTransactionDetails()` | `queryTransPages()` | 一对一，子账户或普通交易明细 |
+| `queryTransactionStatus()` | `queryTransStatus()` | 单笔交易状态；中信固定映射 `bizFunc=74`，不得合并文件状态 `73` |
+| `queryPlatformTransactionDetails()` | `queryPlatformTransPages()` | 中信映射交易资金账户明细 `bizFunc=25/chnlNo=0010`；不按交易类型拆方法 |
+| `queryTransactionDetails()` | `queryTransPages()` + `queryWithDrawFee()` 的协议参考 | 中信统一映射登记簿明细 `bizFunc=24/chnlNo=0010`；手续费等由 specialData 交易类型筛选 |
 
-`queryTransStatus_73()` 不再单独暴露，不属于能力遗漏。新 API 只表达“交易状态查询”这一业务语义，
-由中信、平安 Handle 根据银行协议和请求数据选择真实接口。
+`queryTransStatus_73()` 不再单独暴露，不属于能力遗漏。中信 `73` 是文件处理状态查询，后续若纳入必须
+设计明确的文件查询 API，不能作为 `queryTransactionStatus()` 的协议分支。
 
 #### 11.6.4 首期未纳入的旧方法
 
@@ -1027,9 +1025,9 @@ PingAnQueryHandle
 |---|---|---|---|---|---|
 | `queryAccountStatus()` | mdl 无对应 API / Service | mdl `AccountHandle` 没有 `acctState()` | 无 | 无 | mdl 分支没有账户状态查询实现；不能从 mdl 复制 |
 | `queryAccountBalance()` | `FrontTransQueryFacadeApi.queryAccInfo()` → `TransQueryServiceImpl.queryAccInfo()` | `BasTransQueryHandle.queryAccInfo()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 两家均有真实实现 |
-| `queryTransactionStatus()` | `FrontTransQueryFacadeApi` → `TransQueryServiceImpl.queryTransStatusQuery()/queryTransStatus()` | `queryTransStatus()` + `queryTransStatus_73()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 中信两个入口均实现；平安只实现 `queryTransStatus()`，`queryTransStatus_73()` 返回 `null` |
-| `queryPlatformTransactionDetails()` | 通用入口 `TransQueryServiceImpl.queryPlatformTransPages()`；银行专用入口 `ZxTransQueryServiceImpl/PaTransQueryServiceImpl.queryPlatformTransPages()` | `BasTransQueryHandle.queryPlatformTransPages()` | `ZxTransQueryHandle`；另有 `ZxTransQueryServiceImpl` | `PaTransQueryHandle`；另有 `PaTransQueryServiceImpl` | 中信通用 Handle 和专用 Service 均有实现；平安通用 Handle 返回 `null`，真实实现位于专用 Service |
-| `queryTransactionDetails()` | mdl 没有稳定的统一 Facade；主要由 Handle 内部使用 | `BasTransQueryHandle.queryTransPages()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 中信真实实现；平安方法直接返回 `null` |
+| `queryTransactionStatus()` | `FrontTransQueryFacadeApi` → `TransQueryServiceImpl.queryTransStatusQuery()` | `queryTransStatus()` | `ZxTransQueryHandle` | `PaTransQueryHandle` | 两家均有单笔状态实现；中信使用 `74`，`queryTransStatus_73()` 是文件状态，不纳入本方法 |
+| `queryPlatformTransactionDetails()` | 通用入口 `TransQueryServiceImpl.queryPlatformTransPages()`；银行专用入口 `ZxTransQueryServiceImpl/PaTransQueryServiceImpl.queryPlatformTransPages()` | `BasTransQueryHandle.queryPlatformTransPages()` | `ZxTransQueryHandle`；另有 `ZxTransQueryServiceImpl`，中信 `25/0010` | `PaTransQueryHandle`；另有 `PaTransQueryServiceImpl` | 中信通用 Handle 和专用 Service 均有实现；平安通用 Handle 返回 `null`，真实实现位于专用 Service |
+| `queryTransactionDetails()` | mdl 没有稳定统一 Facade | `queryTransPages()`；`queryWithDrawFee()` 提供中信 `24` 的真实协议参考 | `ZxTransQueryHandle` 中 `queryTransPages()` 返回 `null`，但 `queryWithDrawFee()` 和 UAT 示例真实调用 `24/0010` | `PaTransQueryHandle.queryTransPages()` 返回 `null` | 新中信方法统一使用 `24/0010`，交易类型和日期范围来自 specialData，不复制旧方法拆分 |
 
 ##### 11.6.7.3 未纳入方法的 mdl 实现状态
 
