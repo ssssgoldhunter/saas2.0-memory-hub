@@ -235,7 +235,7 @@ TenantBankAccountConfig
 说明：
 
 - `appId/appKey/url/mchntId/mchntMbrId` 为跨银行共有的账户配置属性；
-- 平安 `accountSpecialData` 只保存 `txnClientNo/mrchCode`；
+- 平安 `accountSpecialData` 只保存 `txnClientNo/mrchCode/stlAcctNo`，其中 `stlAcctNo` 是资金汇总账号；
 - 中信 `accountSpecialData` 保存 `default_role/default_fund_type/self_role/self_fund_type/`
   `self_dealType/self_store_no/self_store_id`；这些字段对中信是通用账户配置，但不是跨银行字段；
 - `transSsn` 由具体银行 Handle 按银行规则生成，`transTime` 每次请求生成，`bizFunc/chnlNo`

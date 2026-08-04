@@ -112,6 +112,8 @@ AbstractBankHandle.prepareContext
       └─ accountConfig
          ├─ appId/appKey/url/mchntId/mchntMbrId
          └─ accountSpecialData: JSONObject
+            ├─ 平安：txnClientNo/mrchCode/stlAcctNo
+            └─ 中信：default/self 角色、资金类型及自有资金映射配置
 
 具体银行 Handle
 └─ FrontBaseResult 子类
@@ -132,7 +134,8 @@ AbstractBankHandle.prepareContext
 - 不返回 `null` 或模拟成功；
 - 不把银行差异字段放入公共 `baseData`；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
-- 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo`；
+- 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及
+  `txnClientNo/mrchCode/stlAcctNo` 等银行账户配置；
 - 所有请求、响应、配置、Context、record 组件及枚举值必须有字段级业务注释；
 - `bizFunc/chnlNo` 在具体银行 Handle 中按能力使用常量；
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；

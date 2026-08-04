@@ -1104,7 +1104,7 @@ mchntMbrId
 
 | 银行 | `accountSpecialData` 字段 |
 |---|---|
-| 平安 | `txnClientNo`、`mrchCode` |
+| 平安 | `txnClientNo`、`mrchCode`、`stlAcctNo`（资金汇总账号） |
 | 中信 | `default_role`、`default_fund_type`、`self_role`、`self_fund_type`、`self_dealType`、`self_store_no`、`self_store_id` |
 
 中信上述 7 个字段是中信各交易能力可复用的账户配置，但仍是银行特定字段，

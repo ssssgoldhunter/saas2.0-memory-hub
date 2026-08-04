@@ -251,7 +251,7 @@ BankAccountConfigAssemblerRouter
 
 | 银行 | `accountSpecialData` 允许字段 |
 |---|---|
-| 平安 | `txnClientNo`、`mrchCode` |
+| 平安 | `txnClientNo`、`mrchCode`、`stlAcctNo`（资金汇总账号） |
 | 中信 | `default_role`、`default_fund_type`、`self_role`、`self_fund_type`、`self_dealType`、`self_store_no`、`self_store_id` |
 
 中信上述 7 个字段对中信交易能力是通用账户配置，但不是跨银行通用字段，
@@ -263,7 +263,7 @@ BankAccountConfigAssemblerRouter
 |---|---|
 | `FrontBankConfigQueryKeys` | 配置查询原始 key：`zx_bank_config`、`pa_bank_config` |
 | `FrontBankAccountConfigKeys` | `appId/appKey/url/mchntId/mchntMbrId` |
-| `PingAnBankAccountConfigKeys` | `txnClientNo/mrchCode` |
+| `PingAnBankAccountConfigKeys` | `txnClientNo/mrchCode/stlAcctNo` |
 | `CiticBankAccountConfigKeys` | 中信 7 个 `accountSpecialData` 字段 |
 
 配置查询 key 的常量名称只表达配置系统中的原始值，不在 `catering-common-core` 内绑定具体银行。
@@ -362,7 +362,8 @@ failure
 
 - 无特殊字段时传空对象；
 - 后续按银行和能力定义 schema；
-- 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 等受保护字段；
+- 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 以及
+  `txnClientNo/mrchCode/stlAcctNo` 等账户配置字段；
 - 不得传密钥、私钥、完整银行配置；
 - 日志不得直接打印完整内容。
 
