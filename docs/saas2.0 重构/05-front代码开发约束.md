@@ -383,6 +383,11 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 [06-transfer-consume字段契约](06-transfer-consume字段契约.md) 为准。没有进入该契约的银行字段，
 不得凭旧代码猜测后直接透传。
 
+平安 `transferAuth/resendTransferAuthCode` 的字段白名单、加密边界和响应映射以
+[07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)
+为准。`transferAuth` 请求 `specialData` 只允许 `messageOrderNo/messageCheckCode`；授权码发送或重发
+请求当前不需要银行动态 `specialData`。中信这两个能力必须返回 `UNSUPPORTED`，不得复制旧项目挡板。
+
 ### 4.4 Handle 内部三段式上下文
 
 外部 `FrontRequest<T>` 只能有两段。完成路由和能力校验后，由 `AbstractBankHandle` 生成：
@@ -443,6 +448,7 @@ R<具体结果>
 
 ```java
 R<FrontTransactionResult>
+R<FrontTransferAuthCodeResult>
 R<TransactionStatusResult>
 R<AccountBalanceResult>
 R<FrontPageResult<TransactionDetailItem>>
@@ -651,6 +657,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 租户完整银行配置；
 - 密钥、私钥、签名原文；
 - 完整卡号、手机号、证件号、短信验证码；
+- 平安短信指令号 `smsIdx/messageOrderNo`；
 - 未脱敏的银行请求和响应报文。
 
 日志异常级别：

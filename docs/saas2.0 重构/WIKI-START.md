@@ -36,6 +36,7 @@
 当前 catering-front 代码
 → 05-front代码开发约束
 → 06-transfer-consume字段契约（实现 transfer/consume 时）
+→ 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -54,7 +55,9 @@
 5. [02-中信银行接口能力汇总](02-中信银行接口能力汇总.md)：实现中信能力时必读。
 6. [03-平安银行接口能力汇总](03-平安银行接口能力汇总.md)：实现平安能力时必读。
 7. [06-transfer-consume字段契约](06-transfer-consume字段契约.md)：实现 transfer/consume 时必须完整阅读。
-8. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+8. [07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)：
+   实现平安 `transferAuth/resendTransferAuthCode` 时必须完整阅读。
+9. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -73,6 +76,7 @@
 - `FrontExecutionInfo` 和 `FrontExecutionStage` 的执行元数据骨架；
 - `TenantBankConfigProvider`、通用账户配置对象、平安/中信账户特殊配置装配策略；
 - transfer/consume 公共金额、收付款会员字段，两家银行字段常量和原始响应码常量；
+- 平安 transferAuth/授权码发送重发的基础对象、专用结果、字段常量和明确映射契约；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架。
@@ -82,7 +86,7 @@
 - 真实 `TenantBankConfigProvider` 远程查询；
 - LiteFlow `FlowExecutor`、组件、EL 规则和链路配置；
 - 中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射；
-- transfer/consume 以外能力的 `specialData ↔ reserveMap` 最终字段契约；
+- transfer/consume 和平安 transferAuth/授权码以外能力的 `specialData ↔ reserveMap` 最终字段契约；
 - `transSsn` 的银行规则、渠道交易流水、幂等和状态机；
 - 数据库表、Mapper、Repository；
 - 未经用户明确要求的测试类和编译验证。

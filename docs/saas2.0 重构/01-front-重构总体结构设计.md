@@ -860,11 +860,11 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 ```text
 05-front代码开发约束.md（已完成）
 06-transfer-consume字段契约.md（已完成首版）
-07-账户查询详细设计.md
-08-交易状态查询详细设计.md
-09-平台交易明细查询详细设计.md
-10-交易明细查询详细设计.md
-11-授权转账与授权码重发详细设计.md
+07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
+08-账户查询详细设计.md
+09-交易状态查询详细设计.md
+10-平台交易明细查询详细设计.md
+11-交易明细查询详细设计.md
 12-退款详细设计.md
 13-提现详细设计.md
 14-平台收付款详细设计.md

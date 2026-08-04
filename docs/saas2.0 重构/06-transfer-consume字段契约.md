@@ -197,11 +197,12 @@ errCode == D5000000
 | `transType` | Handle 常量 `01` | 普通交易 |
 | `orderId` | `baseData.bizSubOrderNo` | 订单号；按业务规则保证唯一 |
 | `orderInfo` | consume 的 `baseData.orderInfo` 或 transfer 专用白名单 | 订单内容，可选 |
-| `smsIdx` | 短信流程 `specialData` 白名单 | 非短信 transfer/consume 不传 |
-| `sign` | 短信流程 `specialData` 白名单 | 非短信 transfer/consume 不传 |
-
 `functionFlag` 不能由业务系统随意提交一个银行原值。Handle 应根据已确认的 Front 业务场景选择，
 无法映射时返回契约错误，不使用默认值掩盖业务差异。
+
+短信鉴权交易不复用普通 transfer/consume 的 `specialData`。平安 `bizFunc=45` 的短信指令号和验证码
+统一以 [07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)
+为准，避免把不同 `bizFunc` 的 reserve 字段混入本契约。
 
 ### 5.3 平安响应
 

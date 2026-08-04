@@ -145,7 +145,7 @@ com.chinaums.front
 |---|---|---:|---|
 | `TRANSFER` | 普通转账 | 是 | `transfer` |
 | `TRANSFER_AUTH` | 授权转账/短信鉴权转账 | 是 | `transferAuth` |
-| `TRANSFER_AUTH_CODE_RESEND` | 授权码发送或重发 | 否，仅记录脱敏审计日志 | `resendTransferAuthCode` |
+| `TRANSFER_AUTH_CODE_RESEND` | 授权码发送或重发 | 是，按授权码申请类型记录，敏感字段不落明文 | `resendTransferAuthCode` |
 | `CONSUME` | 消费 | 是 | `consume` |
 | `REFUND` | 退款 | 是 | `refund` |
 | `WITHDRAW` | 提现 | 是 | `withdraw` |
@@ -155,7 +155,8 @@ com.chinaums.front
 说明：
 
 - “授权转账”在当前文档中只确认了平安短信鉴权转账；不能写成真正的授信额度转账；
-- 授权码发送和重发对外可以使用同一个接口，通过本次请求号保证防重；
+- 授权码发送和重发对外使用同一个接口；平安没有独立“重发”协议，重发时生成新的
+  `transSsn/transTime` 并重新调用 `bizFunc=26`，不传原短信指令号；
 - 消费和普通转账即使银行底层使用同一个接口，Front 仍保留不同能力编码；
 - 平台收款和平台付款必须拆开，不能使用一个方向字段模糊表达；
 - 平安平台收付款当前没有确认等价接口，Handle 骨架返回待接入或不支持。
@@ -508,10 +509,16 @@ POST /front/v1/transactions/platform-pay
 POST /front/v1/transactions/platform-receive
 ```
 
-除授权码接口外，统一返回：
+普通交易统一返回：
 
 ```java
 R<FrontTransactionResult>
+```
+
+授权码发送或重发返回：
+
+```java
+R<FrontTransferAuthCodeResult>
 ```
 
 ### 8.3 查询 API
@@ -608,8 +615,8 @@ remark             业务备注
 | DTO | 主要补充字段 |
 |---|---|
 | `TransferBusinessData` | 付款账户、收款账户、付款方名称、收款方名称 |
-| `AuthTransferBusinessData` | 普通转账字段、授权码、授权申请号 |
-| `TransferAuthCodeBusinessData` | 付款账户、接收手机号或银行预留标识、原授权申请号 |
+| `AuthTransferBusinessData` | 继承普通转账字段；短信指令号和验证码放请求 `specialData` |
+| `TransferAuthCodeBusinessData` | 交易公共字段、付款账户、付款会员编号、收款账户；不传手机号和原短信指令号 |
 | `ConsumeBusinessData` | 付款账户、收款账户、消费场景、订单信息 |
 | `RefundBusinessData` | 原 `frontSsn`、原业务订单、退款金额、退款原因 |
 | `WithdrawBusinessData` | 提现账户、提现金额、手续费、提现备注 |
@@ -764,7 +771,8 @@ public interface BankHandle {
 public interface BankTransactionHandle extends BankHandle {
     FrontTransactionResult transfer(BankRequestContext<TransferBusinessData> context);
     FrontTransactionResult transferAuth(BankRequestContext<AuthTransferBusinessData> context);
-    FrontBaseResult resendTransferAuthCode(BankRequestContext<TransferAuthCodeBusinessData> context);
+    FrontTransferAuthCodeResult resendTransferAuthCode(
+        BankRequestContext<TransferAuthCodeBusinessData> context);
     FrontTransactionResult consume(BankRequestContext<ConsumeBusinessData> context);
     FrontTransactionResult refund(BankRequestContext<RefundBusinessData> context);
     FrontTransactionResult withdraw(BankRequestContext<WithdrawBusinessData> context);
@@ -865,8 +873,8 @@ Handle 不负责：
 | 当前 `BankTransactionHandle` | 旧 Front Handle 方法 | 映射说明 |
 |---|---|---|
 | `transfer()` | `BasTransTransferHandle.transTransfer()` | 一对一，普通转账 |
-| `transferAuth()` | `BasTransTransferHandle.transTransferAuth()` | 一对一，授权或短信鉴权转账 |
-| `resendTransferAuthCode()` | `BasTransSendVerificationHandle.sendSmsVerification()` | 语义对应；旧方法未区分首次发送与重发，最终字段确认时再决定是否改名或拆分 |
+| `transferAuth()` | `BasTransTransferHandle.transTransferAuth()` | 一对一；仅平安为真实短信鉴权转账，中信旧实现只是挡板成功 |
+| `resendTransferAuthCode()` | `BasTransSendVerificationHandle.sendSmsVerification()` | 语义对应；仅平安真实调用验证码申请接口，中信旧实现只是模拟成功；首次发送与重发复用同一 Front 方法 |
 | `consume()` | `BasTransConsumeHandle.transConsume()` | 一对一，消费 |
 | `refund()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 语义重命名；旧 API 对外描述即“消费退款” |
 | `withdraw()` | `BasTransWithDrawHandle.transWithDraw()` | 一对一，提现 |
@@ -996,8 +1004,8 @@ PingAnQueryHandle
 | 新 `BankTransactionHandle` | mdl API / Service | mdl Handle 方法 | mdl 中信具体类 | mdl 平安具体类 | mdl 实现状态 |
 |---|---|---|---|---|---|
 | `transfer()` | `FrontTransConsumeFacadeApi.transTransfer()` → `TransConsumeServiceImpl.transTransfer()` | `BasTransTransferHandle.transTransfer()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
-| `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
-| `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` | `PaTransSendVerificationHandle` | 两家均有真实实现；mdl 语义未区分首次发送与重发 |
+| `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` 只构造本地挡板成功，不调用中信 | `PaTransTransferHandle.transTransferAuth()` 真实调用 `/transfer` | 仅平安真实支持；中信必须 `UNSUPPORTED` |
+| `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` 只构造模拟手机号和验证码 | `PaTransSendVerificationHandle.sendSmsVerification()` 真实调用 `/gen-auth-code` | 仅平安真实支持；重发与首次发送使用同一银行接口 |
 | `consume()` | `FrontTransConsumeFacadeApi.transConsume()` → `TransConsumeServiceImpl.transConsume()` | `BasTransConsumeHandle.transConsume()` | `ZxTransConsumeHandle` | `PaTransConsumeHandle` | 两家均有真实实现 |
 | `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | `ZxTransConsumeCancelHandle` | `PaTransConsumeCancelHandle` | 两家均有真实实现；新方法统一命名为退款 |
 | `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `BasTransWithDrawHandle.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家均有真实实现 |
@@ -1605,7 +1613,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 1. 中信和平安每个能力的最终 `bizFunc/channelNo/path`；
 2. 消费与普通转账的银行侧模式区分；
-3. 平安授权转账和授权码重发字段；
+3. 平安授权码重复申请的银行限流、旧验证码失效和有效期联调规则；
 4. 平安提现使用 `01`、`36` 或两者；
 5. 平安退款使用 `02`、`06` 的选择规则；
 6. 平安平台收款、平台付款的正式等价能力；
@@ -1626,11 +1634,11 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 ```text
 05-front代码开发约束.md（已完成）
 06-transfer-consume字段契约.md（已完成首版）
-07-账户查询详细设计.md
-08-交易状态查询详细设计.md
-09-平台交易明细查询详细设计.md
-10-交易明细查询详细设计.md
-11-授权转账与授权码重发详细设计.md
+07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
+08-账户查询详细设计.md
+09-交易状态查询详细设计.md
+10-平台交易明细查询详细设计.md
+11-交易明细查询详细设计.md
 12-退款详细设计.md
 13-提现详细设计.md
 14-平台收付款详细设计.md
