@@ -1,5 +1,6 @@
 # Front 代码开发约束
 
+> Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：current
 > 生效日期：2026-08-04
 > 适用模块：`catering-api-front`、`catering-front` 及其使用的 `catering-common-core`
@@ -331,10 +332,29 @@ JSON 顶层固定为：
 
 交易公共基础对象必须包含 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店信息。
 单笔状态查询基础对象必须包含 `frontSsn/bizOrderNo/bizSubOrderNo`；其中 `bizOrderNo` 是业务主流水，
-`bizSubOrderNo` 是业务子流水。当前没有实现 `FrontFlowContext`，不得把
-`FrontRequest -> BankRequestContext` 描述成已经完成的 `FrontRequest -> Slot` 转换。
+`bizSubOrderNo` 是业务子流水。
 
-### 4.2 `specialData`
+### 4.2 统一业务 Slot
+
+Application Service 必须使用 `FrontFlowContext.from(request, capability)` 完成
+`FrontRequest → FrontFlowContext` 转换。该 Context 固定承载：
+
+```text
+capability
+baseData
+specialData
+tenantBankConfig
+result
+executionInfo
+failure
+```
+
+`baseData/result` 在非泛型 Slot 中以公共父类型保存，组件必须通过
+`requireBaseData/requireResult/requireBankRequestContext` 受控读取，禁止散落强制类型转换。
+当前仅完成 Context 和执行阶段维护，尚未接入 LiteFlow 执行器、节点及规则链。后续 AI 必须复用
+`FrontFlowContext`，禁止另建第二套 Slot。
+
+### 4.3 `specialData`
 
 `specialData` 使用 `JSONObject`，只保存“银行 + 能力”特有字段。
 
@@ -346,7 +366,7 @@ JSON 顶层固定为：
 - 不得传密钥、私钥、完整银行配置；
 - 日志不得直接打印完整内容。
 
-### 4.3 Handle 内部三段式上下文
+### 4.4 Handle 内部三段式上下文
 
 外部 `FrontRequest<T>` 只能有两段。完成路由和能力校验后，由 `AbstractBankHandle` 生成：
 
@@ -370,6 +390,25 @@ public record BankRequestContext<T extends FrontBaseRequestData>(
 `specialData` 和 `accountSpecialData` 是两个独立 `JSONObject`：前者只保存当前交易/查询的
 银行特定动态参数，后者只保存租户银行账户特定静态配置。禁止两者共享引用、
 `putAll`、互相覆盖或透传。
+
+### 4.5 对象和字段注释
+
+所有请求、响应、配置、Context、执行信息和枚举必须包含可读的类级及字段级 JavaDoc。禁止只创建
+`data/info/context/metadata` 等名称而不说明内容和用途。
+
+字段注释至少说明适用项：
+
+- 业务含义；
+- 数据来源和写入阶段；
+- 单位或格式，例如“人民币分”“yyyyMMdd”；
+- 为空条件或条件必填规则；
+- 是否属于敏感数据以及日志限制；
+- `specialData/accountSpecialData` 的边界；
+- 枚举值代表的业务状态。
+
+record 组件使用类 JavaDoc 的 `@param` 逐项说明。`FrontFlowContext` 的每个字段还必须说明由谁写入、
+由谁读取以及处于哪个阶段；非泛型 Slot 中的 `Object` 只能通过受控类型方法读取。新增字段没有注释时，
+不得提交。
 
 ---
 
@@ -633,6 +672,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 账户通用配置已进入 `TenantBankAccountConfig` 强类型字段；
 - [ ] 银行账户特定配置只进入 `accountSpecialData`；
 - [ ] 交易 `specialData` 与账户 `accountSpecialData` 没有合并、共享引用或互相覆盖；
+- [ ] 新增对象、字段、record 组件和枚举值均有业务注释；
 - [ ] 银行账户配置组装策略按 `bankCode` 唯一注册；
 - [ ] 具体银行 Handle 没有重复实现配置查询；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；

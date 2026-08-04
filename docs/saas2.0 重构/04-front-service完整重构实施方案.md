@@ -1,5 +1,6 @@
 # SaaS 2.0 多银行渠道 Front Service 完整重构实施方案
 
+> Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：framework-implemented（公共 API 模块、Front Service、Router、Handle 骨架已创建）
 > 创建日期：2026-08-03
 > 适用范围：新多银行渠道支付 Front
@@ -673,9 +674,8 @@ public class FrontFlowContext {
     private Object baseData;
     private TenantBankConfigSnapshot tenantBankConfig;
     private JSONObject specialData;
-    private Object result;
+    private FrontBaseResult result;
     private FrontExecutionInfo executionInfo;
-    private FrontChannelTransaction transactionRecord;
     private Throwable failure;
 }
 ```
@@ -687,7 +687,7 @@ public class FrontFlowContext {
 <R> R requireResult(Class<R> type)
 ```
 
-`FrontExecutionInfo` 至少包含：
+当前 `FrontExecutionInfo` 已包含：
 
 ```text
 frontSsn
@@ -699,8 +699,11 @@ receivedAt
 sendStartedAt
 sendCompletedAt
 executionStage
-bankExecutionMetadata
 ```
+
+`FrontChannelTransaction` 和银行执行元数据将在渠道流水和真实银行协议接入时增加，不使用无约束
+`Object/JSONObject` 提前占位。`FrontFlowContext` 是 LiteFlow 后续使用的已初始化业务 Context；
+项目基线为 LiteFlow 2.12.1，后续执行时传入该实例，不继承 LiteFlow 内部 Slot。
 
 ---
 
@@ -792,8 +795,9 @@ tenantBankConfig: TenantBankConfigSnapshot
 
 对外 `FrontRequest<T>` 仍固定为 `baseData + specialData` 两段。`tenantBankConfig` 由
 `AbstractBankHandle.prepareContext()` 使用 `tenantId + bankCode` 查询并装配，不由调用方传入。
-当前代码只实现了 `FrontRequest<T> → BankRequestContext<T>`；`FrontFlowContext/FrontExecutionInfo`
-仍是 LiteFlow 后续接入设计，尚未实现 `FrontRequest → Slot` 转换，不得把设计稿描述成已落地代码。
+当前 Application Service 已调用 `FrontFlowContext.from(request, capability)` 完成
+`FrontRequest → 统一业务 Slot` 转换，并在路由、配置装配、分派、完成和失败时维护阶段。
+LiteFlow `FlowExecutor`、NodeComponent 和 EL 规则链尚未接入，不得把 Context 骨架描述成完整流程编排已完成。
 
 ### 11.4 Handle 职责边界
 

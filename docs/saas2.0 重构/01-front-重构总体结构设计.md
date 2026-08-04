@@ -1,5 +1,6 @@
 # SaaS 2.0 多银行渠道 Front 重构总体结构设计
 
+> Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：current（总体结构讨论稿）
 > 验证状态：needs-source-check（具体业务字段、银行接口映射待逐业务线确认）
 > 创建日期：2026-07-30
@@ -199,8 +200,10 @@ public record BankRequestContext<T extends FrontBaseRequestData>(
 }
 ```
 
-用于 LiteFlow、渠道流水和幂等的 `FrontExecutionInfo` 属于更外层执行上下文，不混入对外请求，
-也不改变上述三段式 Handle 上下文。
+Application Service 入口使用 `FrontFlowContext.from(request, capability)` 创建统一非泛型业务 Slot。
+`FrontExecutionInfo` 属于该外层执行上下文，用于记录能力、配置版本、执行阶段和关键时间，不混入对外请求，
+也不改变上述三段式 Handle 上下文。当前 Context 创建和阶段维护已落地；LiteFlow 执行器、节点和规则链
+仍待后续接入。
 
 ### 5.3 数据来源
 
