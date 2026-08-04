@@ -14,16 +14,21 @@
 | `platformPay` | 真实 `/transfer`，`bizFunc=2041` | 无等价实现 | 仅中信，平安 `UNSUPPORTED` |
 | `platformReceive` | 真实 `/transfer`，`bizFunc=2042` | 无等价实现 | 仅中信，平安 `UNSUPPORTED` |
 
-最重要的迁移差异：mdl 的 `ZxTransConsumeCancelHandle` 虽然方法名是退款，但实际组装
-`ZxTransferRequest`、写入 `bizFunc=27` 并调用 `zxTransfer`，本质是反向转账。该实现不得复制。
-mdl 已经存在 `ZxRefundRequest`、`SaasZxInterService.zxRefund()` 和 `/refund` 客户端入口，
-但业务 Handle 没有接上。新 Front 中信退款必须接真实 `/refund + bizFunc=23`。
+中信退款存在两个代码版本，必须区分：
 
-## 2. 新 Front 方法与 mdl 具体实现映射
+- 旧 mdl `ZxTransConsumeCancelHandle` 组装 `ZxTransferRequest`、写入 `bizFunc=27` 并调用
+  `zxTransfer`，本质是反向转账，只能作为反例；
+- 最新 `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy` 分支
+  `lsym_20260625_limeng_refundTask`、提交 `3dff8255d6` 已改为构造 `ZxRefundRequest`，固定
+  `bizFunc=23/chnlNo=0010`，调用 `SaasZxInterService.zxRefund()` 和真实 `/refund`。
 
-| 新方法 | mdl 入口/Service | mdl 中信类 | mdl 平安类 | 核对结果 |
+最新 lsym UAT 是当前中信退款字段的代码参考；新 Front 仍按自己的配置、原渠道流水和日志边界实现。
+
+## 2. 新 Front 方法与参考实现映射
+
+| 新方法 | 参考入口/Service | 中信具体类 | 平安具体类 | 核对结果 |
 |---|---|---|---|---|
-| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `ZxTransConsumeCancelHandle` | `PaTransConsumeCancelHandle` | 平安是真退款；中信旧业务 Handle 是反向转账，禁止迁移 |
+| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | 最新 lsym UAT `ZxTransConsumeCancelHandle` | mdl `PaTransConsumeCancelHandle` | 两家都是真退款；中信最新实现调用 `zxRefund/bizFunc=23` |
 | `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家都调用真实提现接口 |
 | `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `ZxTransTransferHandle.platformPay()` | `PaTransTransferHandle` 未覆盖父类空实现 | 只有中信真实支持 |
 | `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `ZxTransTransferHandle.platformReceive()` | `PaTransTransferHandle` 未覆盖父类空实现 | 只有中信真实支持 |
@@ -204,7 +209,7 @@ chnlNo  = 0010
 | `ORI_BUSS_ID/SUB_ID` | `originalBizOrderNo/originalBizSubOrderNo` | 与原渠道记录交叉校验 |
 | `ORI_USER_SSN/ORI_USER_TRANS_DT` | 原渠道交易记录 | 使用银行流水定位方案时写入 |
 | `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 退款业务时间 |
-| `FUND_TP` | 原交易或租户中信配置 | 不允许请求任意覆盖 |
+| `FUND_TP` | 原渠道交易保存的资金类型；原交易固定使用默认类型时读取 `accountSpecialData.default_fund_type` 并校验 | 不允许请求覆盖，不得取 `platformUserRole/default_role/self_role` |
 | `MEMO` | `baseData.refundReason` | 退款原因 |
 | `laasSsn` | Handle 生成 | 外联平台流水 |
 
@@ -321,6 +326,10 @@ com/chinaums/common/core/constant/front/
    响应归一化和异常；
 7. 日志禁止输出完整请求、完整银行响应、银行卡号、账户姓名、证件号、密钥和完整 specialData；
 8. 未经用户明确要求，不写测试类、不执行编译或测试。
+
+最新 lsym UAT 实现只作为字段参考，以下代码不能迁移：调用方直接传 `orgPay/orgRec/orgTrans*`、
+`FUND_TP` 取 `platformUserRole`、未检查 `orgTransTime` 长度就截取日期、记录完整银行请求/响应和
+`appKey/url`。新 Front 日志应完整覆盖执行阶段，但只能记录脱敏定位信息。
 
 ## 10. 仍需业务或银行确认
 

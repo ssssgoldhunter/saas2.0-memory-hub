@@ -854,6 +854,14 @@ Handle 不负责：
 /Users/limeng/workspaces/IdeaProjects_mdl_dep/mdl/fund-catering-front
 ```
 
+中信退款另以最新实现为参考：
+
+```text
+/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy
+branch: lsym_20260625_limeng_refundTask
+commit: 3dff8255d6
+```
+
 两个旧项目的交易和交易查询 Handle 接口基本一致；账户状态方法存在分支差异，详见下文。
 
 #### 11.6.1 公共方法
@@ -960,9 +968,10 @@ com.chinaums.front
 `AbstractBankHandle` 统一实现。13 个具体交易/查询方法尚未在银行类中覆盖，当前仍使用 SPI 默认的
 `ADAPTER_NOT_READY` 行为，不能描述为已经完成银行业务实现。
 
-#### 11.6.7 新 Handle 与 mdl 具体实现类关联
+#### 11.6.7 新 Handle 与参考实现类关联
 
-本节的 `Zx` 对应新 Front 的中信 `CITIC`，`Pa` 对应平安 `PING_AN`。mdl 实现来源目录：
+本节的 `Zx` 对应新 Front 的中信 `CITIC`，`Pa` 对应平安 `PING_AN`。默认参考 mdl 下列目录；
+中信 `refund` 单独使用前文列出的最新 lsym UAT 分支：
 
 ```text
 fund-catering-front-service/src/main/java/com/chinaums/erp/slhy/catering/front
@@ -973,7 +982,7 @@ fund-catering-front-service/src/main/java/com/chinaums/erp/slhy/catering/front
 └─ handle/impl/pa
 ```
 
-新 Front 按银行聚合 mdl 的细粒度实现：
+新 Front 按银行聚合参考项目的细粒度实现：
 
 ```text
 CiticTransactionHandle
@@ -1001,13 +1010,13 @@ PingAnQueryHandle
 
 ##### 11.6.7.1 交易方法关联
 
-| 新 `BankTransactionHandle` | mdl API / Service | mdl Handle 方法 | mdl 中信具体类 | mdl 平安具体类 | mdl 实现状态 |
+| 新 `BankTransactionHandle` | 参考 API / Service | 参考 Handle 方法 | 中信参考类 | 平安参考类 | 实现状态 |
 |---|---|---|---|---|---|
 | `transfer()` | `FrontTransConsumeFacadeApi.transTransfer()` → `TransConsumeServiceImpl.transTransfer()` | `BasTransTransferHandle.transTransfer()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
 | `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` 只构造本地挡板成功，不调用中信 | `PaTransTransferHandle.transTransferAuth()` 真实调用 `/transfer` | 仅平安真实支持；中信必须 `UNSUPPORTED` |
 | `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` 只构造模拟手机号和验证码 | `PaTransSendVerificationHandle.sendSmsVerification()` 真实调用 `/gen-auth-code` | 仅平安真实支持；重发与首次发送使用同一银行接口 |
 | `consume()` | `FrontTransConsumeFacadeApi.transConsume()` → `TransConsumeServiceImpl.transConsume()` | `BasTransConsumeHandle.transConsume()` | `ZxTransConsumeHandle` | `PaTransConsumeHandle` | 两家均有真实实现 |
-| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | `ZxTransConsumeCancelHandle` 实际调用 `zxTransfer/bizFunc=27`；另有未接入业务 Handle 的 `ZxRefundRequest + zxRefund` | `PaTransConsumeCancelHandle` 调用 `/refund/bizFunc=02` | 平安是真退款；中信旧业务 Handle 是反向转账，新 Front 必须改接 `/refund/bizFunc=23` |
+| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 旧 mdl 使用 `zxTransfer/bizFunc=27`；最新 lsym UAT `ZxTransConsumeCancelHandle` 已使用 `ZxRefundRequest + zxRefund/bizFunc=23` | `PaTransConsumeCancelHandle` 调用 `/refund/bizFunc=02` | 两家均有真退款参考；中信以最新 lsym UAT 字段为准，但原交易数据改由 Front 渠道流水加载 |
 | `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `BasTransWithDrawHandle.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家均有真实实现 |
 | `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `BasTransTransferHandle.platformPay()` | `ZxTransTransferHandle`，`bizFunc=2041` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |
 | `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `BasTransTransferHandle.platformReceive()` | `ZxTransTransferHandle`，`bizFunc=2042` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |

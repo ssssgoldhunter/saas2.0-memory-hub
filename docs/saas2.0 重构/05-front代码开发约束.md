@@ -394,6 +394,18 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 `/refund + bizFunc=02`；禁止反向转账模拟退款。`platformPay/platformReceive` 仅中信支持，平安必须
 返回 `UNSUPPORTED`。原退款银行字段必须从原渠道流水加载，平台银行账号必须由 Front 内部解析。
 
+中信退款的最新代码参考为 `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy` 分支
+`lsym_20260625_limeng_refundTask`、提交 `3dff8255d6`。可以参考其 `ZxRefundRequest`、
+`zxRefund` 调用和 `ORI_/REFUND_` reserve 字段；禁止复制以下行为：
+
+- 由调用方直接传入 `orgPay/orgRec/orgTrans*` 原银行交易数据；
+- 将 `platformUserRole` 直接映射为 `FUND_TP`；
+- 对 `orgTransTime` 未校验长度就执行 `substring(0, 8)`；
+- 记录完整退款请求、完整银行响应、账户标识、appKey 或银行 URL。
+
+`FUND_TP` 优先取原渠道交易记录保存的资金类型；若原交易固定使用中信默认资金类型，可以读取
+`accountSpecialData.default_fund_type` 并与原交易校验。任何 role 字段都不能代替资金类型。
+
 ### 4.4 Handle 内部三段式上下文
 
 外部 `FrontRequest<T>` 只能有两段。完成路由和能力校验后，由 `AbstractBankHandle` 生成：

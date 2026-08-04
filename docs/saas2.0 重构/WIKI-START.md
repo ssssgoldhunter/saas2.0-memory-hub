@@ -27,6 +27,7 @@
 |---|---|---|
 | SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`，分支 `limeng_front` | 实际开发目标，以当前代码为准 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
+| 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | mdl 参考实现 | `/Users/limeng/workspaces/IdeaProjects_mdl_dep/mdl/fund-catering-front` | 参考真实银行调用和字段映射，不复制旧框架缺陷 |
 | 旧 Front 结构参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-front` | 只参考目录、方法语义和历史实现 |
 
@@ -42,6 +43,7 @@
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
 → 02/03 银行能力汇总
+→ 中信退款最新 lsym UAT 参考代码（仅实现中信 refund 时）
 → mdl / 旧 Front 参考代码
 ```
 
@@ -82,6 +84,7 @@
 - 平安 transferAuth/授权码发送重发的基础对象、专用结果、字段常量和明确映射契约；
 - 中信、平安 withdraw/refund 的请求对象和字段常量；中信平台收付款字段常量；
 - 中信退款固定为真退款 `/refund + bizFunc=23`，禁止迁移 mdl 的反向转账退款；
+- 中信退款字段已与 lsym UAT 分支 `lsym_20260625_limeng_refundTask` 的真退款 Handle 核对；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
@@ -146,6 +149,10 @@ AbstractBankHandle.prepareContext
 - 不让 Application、Router 或 Handle 返回公共 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
+- 不复制 lsym UAT 退款请求由调用方直接传 `orgPay/orgRec/orgTrans*` 的来源设计；原交易银行字段必须由
+  Front 根据 `originalFrontSsn` 加载；
+- 中信退款 `FUND_TP` 不得取 `platformUserRole/default_role/self_role`，应取原交易资金类型，或在原交易
+  固定使用默认资金类型时读取 `default_fund_type` 并完成校验；
 - 不为平安虚构 `platformPay/platformReceive` 等价接口，这两项固定为 `UNSUPPORTED`；
 - 不把银行差异字段放入公共 `baseData`；
 - 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
