@@ -141,6 +141,7 @@ AbstractBankHandle.prepareContext
 - 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等银行账户配置；
 - 所有请求、响应、配置、Context、record 组件及枚举值必须有字段级业务注释；
+- 银行常量只保留当前真实 Handle 已映射或本次需求明确确认的字段，禁止把 Word 全字段提前搬入代码；
 - `bizFunc/chnlNo` 在具体银行 Handle 中按能力使用常量；
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
 - 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，

@@ -267,12 +267,17 @@ BankAccountConfigAssemblerRouter
 | `CiticBankAccountConfigKeys` | 中信 7 个 `accountSpecialData` 字段 |
 | `FrontBankRequestConstants` | 钱包公共请求字段名及 `transSsn/transTime/bizFunc/chnlNo` 来源约束 |
 | `FrontBankResponseConstants` | 钱包原始响应字段、平台成功标志、中信 5 位和平安 6 位银行成功码 |
-| `CiticTransferContractKeys` | 中信 transfer/consume 固定协议值、请求、reserve、响应特殊字段 |
+| `CiticTransferContractKeys` | 中信 transfer/consume 当前实际 Handle 使用的固定值、请求、reserve、响应特殊字段 |
 | `PingAnTransferContractKeys` | 平安 transfer/consume 固定协议值、请求和 reserve 字段 |
 
 配置查询 key 的常量名称只表达配置系统中的原始值，不在 `catering-common-core` 内绑定具体银行。
 真实 `TenantBankConfigProvider` 接入时必须根据最终确认的银行与配置 key 对应关系显式选择，禁止根据
 `zx/pa` 前缀自行推断。
+
+银行协议常量必须以“当前真实 Handle 已映射或本次需求已确认”为准，禁止把 Word 文档全部字段一次性
+搬进常量类。文档存在但当前 Handle 未使用的字段只能在能力汇总中保留说明，不得成为活动常量或
+`specialData` 白名单。以中信 transfer/consume 为例，当前不启用 `USER_SHARE_*`、
+`REQ_RESERVED`；`P_SELF_FLAG/P_SELF_AMT` 固定使用 `N/0`。
 
 策略路由必须通过构造器注入 `List<BankAccountConfigAssembler>` 建立不可变映射，
 同一银行出现两个策略时必须启动失败，不得静默覆盖。组装日志只记录银行、策略、
@@ -684,7 +689,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 5. 在具体银行 Handle 声明能力状态并实现；
 6. 增加 Front 错误映射；
 7. 增加全链路日志和脱敏；
-8. 增加 API、Router、Handle、异常和序列化测试；
+8. 只有用户明确要求时才增加 API、Router、Handle、异常和序列化测试并执行编译；
 9. 更新能力矩阵、方法映射和本文档相关章节。
 
 字段和协议未确认时，只允许创建 `PENDING_INTEGRATION` 骨架，不允许伪造银行请求或成功响应。

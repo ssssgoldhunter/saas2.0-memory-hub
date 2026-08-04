@@ -109,6 +109,7 @@ BankRequestContext<T>
 | `transSsn` | 中信 Handle | 按中信规则生成、落渠道交易表并回传 `frontSsn` |
 | `bizFunc` | Handle 常量 `27` | 禁止业务系统覆盖 |
 | `chnlNo` | Handle 常量 `0010` | 禁止业务系统覆盖 |
+| `ccy` | Handle 常量 `CNY` | 当前中信普通支付固定人民币 |
 | `transAmt` | `baseData.amount` | 单位为分，必须大于 0 |
 | `outAcctNo` | `baseData.payerAccountId` | 按中信协议加密 |
 | `inAcctNo` | `baseData.payeeAccountId` | 按中信协议加密 |
@@ -121,23 +122,24 @@ BankRequestContext<T>
 | `USER_D_NM` | `baseData.payerName` | 付款用户名称 |
 | `USER_C_NM` | `baseData.payeeName` | 收款用户名称 |
 | `USER_C_AMT` | `baseData.amount` | 收款用户入账金额，单位为分，必须大于 0 |
-| `USER_SHARE_ID1..4` | `specialData` 白名单 | 分润用户编号；不用分润时不传或按协议传空值 |
-| `USER_SHARE_NM1..4` | `specialData` 白名单 | 分润用户名称；有分润编号时配套提交 |
-| `USER_SHARE_AMT1..4` | `specialData` 白名单 | 分润金额，单位为分，不能为负 |
-| `P_SELF_FLAG` | 中信账户策略 + `specialData` | `D` 平台优惠、`C` 平台分成、`N` 无资金动账 |
-| `P_SELF_AMT` | `specialData` 白名单 | 单位为分；`P_SELF_FLAG=N` 时必须为 0 |
+| `P_SELF_FLAG` | Handle 固定值 `N` | 当前普通 transfer/consume 无平台自有资金动账 |
+| `P_SELF_AMT` | Handle 固定值 `0` | 单位为分，与 `P_SELF_FLAG=N` 配套 |
 | `BUSS_ID` | `baseData.bizOrderNo` | 商户业务主订单号 |
 | `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | 商户业务子订单号 |
 | `TRANS_DT` | `baseData.businessDate` | `yyyyMMdd` |
 | `TRANS_TM` | `baseData.businessTime` | `HHmmss` |
-| `FUND_TP` | 中信账户配置策略 | 默认取 `default_fund_type`；自有资金场景由策略选择 `self_fund_type` |
-| `MEMO` | `baseData.remark` | 不再硬编码“API转账”；按银行长度校验 |
-| `REQ_RESERVED` | `specialData` 白名单 | 银行预留业务字段，未定义契约时不得透传 |
+| `FUND_TP` | 中信账户配置 | 当前取 `default_fund_type` |
+| `MEMO` | Handle 固定值 `API转账` | 与当前 mdl transfer/consume 实际映射保持一致 |
 | `laasSsn` | 中信 Handle | 外联平台流水号，Handle 生成并保证不重复 |
 
+当前 mdl 的 `ZxTransTransferHandle/ZxTransConsumeHandle` 没有映射 `USER_SHARE_*` 和
+`REQ_RESERVED`，因此本阶段不把这些 Word 字段声明为活动常量，也不开放对应请求 `specialData`。
+中信普通 transfer/consume 当前请求 `specialData` 应为空对象；以后确认分润或自有资金场景后，必须
+先明确业务来源、条件校验和真实 Handle 映射，再扩展契约。
+
 中信账户配置中的 `default_role/default_fund_type/self_role/self_fund_type/self_dealType/`
-`self_store_no/self_store_id` 是账户静态特定配置。它们不属于单次交易 `specialData`，由中信策略结合
-门店和本次自有资金标志选择最终请求字段。
+`self_store_no/self_store_id` 仍是账户静态特定配置，不属于单次交易 `specialData`。当前普通
+transfer/consume 只按已确认规则使用默认资金类型，其余自有资金配置不提前映射进银行请求。
 
 ### 4.3 中信响应
 
@@ -349,6 +351,7 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 | `PingAnBankAccountConfigKeys` | 平安账户静态特殊配置 |
 
 业务系统如需实现自己的银行组装策略，应引用这些常量和注释，不得在业务模块重新定义同名字符串。
+协议文档中存在但当前实际 Handle 未使用的字段，不得仅为“以后可能使用”而提前加入常量类。
 
 ## 8. 后续 Handle 实现要求
 
