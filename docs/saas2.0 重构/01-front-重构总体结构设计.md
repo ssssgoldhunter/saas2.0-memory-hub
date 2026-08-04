@@ -182,6 +182,11 @@ public class FrontBaseRequestData {
 
 具体交易、交易查询和账户查询对象继承 `FrontBaseRequestData`，不得把已有公共语义的字段放入 `specialData`。
 
+交易公共基础对象增加 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店字段。
+单笔状态查询基础对象使用 `frontSsn/bizOrderNo/bizSubOrderNo`，其中后两者分别是业务主流水和
+业务子流水。交易明细返回的每条 `TransactionDetailItem` 包含自己的 `JSONObject specialData`，
+用于承接该笔银行明细的 `reserveMap`；分页结果继承的 `specialData` 只保存查询级扩展字段。
+
 ### 5.2 内部执行上下文
 
 Front 完成 Router 与能力校验后，由 `AbstractBankHandle` 形成只传给银行 Handle 的三段式上下文：
@@ -221,17 +226,17 @@ TenantBankAccountConfig
 ├─ url
 ├─ mchntId
 ├─ mchntMbrId
-├─ chnlNo
 └─ accountSpecialData: JSONObject
 ```
 
 说明：
 
-- `appId/appKey/url/mchntId/mchntMbrId/chnlNo` 为跨银行共有的账户配置属性；
+- `appId/appKey/url/mchntId/mchntMbrId` 为跨银行共有的账户配置属性；
 - 平安 `accountSpecialData` 只保存 `txnClientNo/mrchCode`；
 - 中信 `accountSpecialData` 保存 `default_role/default_fund_type/self_role/self_fund_type/`
   `self_dealType/self_store_no/self_store_id`；这些字段对中信是通用账户配置，但不是跨银行字段；
-- `transTime/transSsn` 每次请求生成，`bizFunc` 由银行和能力决定，三者不进入账户配置；
+- `transSsn` 由具体银行 Handle 按银行规则生成，`transTime` 每次请求生成，`bizFunc/chnlNo`
+  由银行和能力使用常量确定，四者不进入账户配置；
 - `specialData` 是单次业务请求特定参数，`accountSpecialData` 是租户银行账户特定静态配置，
   两者是独立 `JSONObject`，不得互相覆盖。
 
@@ -758,30 +763,27 @@ version
 
 ---
 
-## 15. 交易统一响应
+## 15. 统一响应
 
 ```java
-R<FrontResponse<FrontTransactionResult>>
+R<FrontTransactionResult>
 
-public class FrontResponse<T extends FrontBaseResult> {
-    private T baseData;
+public class FrontBaseResult {
+    private String frontRespCode;
+    private String frontRespDesc;
     private JSONObject specialData;
 }
 ```
 
-所有对外 API 必须返回公共 `R`，例如 `R<FrontResponse<FrontTransactionResult>>`。`R.code/msg`
-表达统一调用结果；`R.data.baseData` 保存跨银行统一强类型结果，`R.data.specialData` 保存当前银行
-和接口的特殊响应字段。Handle 内部仍使用确定的 `FrontResponse<具体结果>`，禁止无法约束的 `<T> T` 返回。
+所有对外 API 必须由公共 `R` 直接包装确定类型结果，例如 `R<FrontTransactionResult>` 和
+`R<FrontPageResult<TransactionDetailItem>>`。`R.code/msg` 表达统一调用结果；`R.data` 保存跨银行
+统一强类型结果，`R.data.specialData` 保存当前银行和接口的特殊响应字段。Handle 内部直接返回确定的
+`FrontBaseResult` 子类，禁止 `FrontResponse` 中间层和无法约束的 `<T> T` 返回。
 
 `R` 与 `FrontErrorCode` 统一位于 `catering-common-core`，API 和功能模块不得重复定义。
 
 ```java
 public class FrontTransactionResult extends FrontBaseResult {
-
-    private String frontRespCode;
-
-    private String frontRespDesc;
-
     private String frontSsn;
 
     private FrontTransactionStatus frontStatus;

@@ -327,7 +327,7 @@ catering-api/catering-api-front
    │     │  ├─ TransactionStatusQueryData
    │     │  └─ TransactionDetailQueryData
    │     ├─ response
-   │     │  ├─ FrontResponse
+   │     │  ├─ FrontBaseResult
    │     │  ├─ FrontTransactionResult
    │     │  ├─ AccountStatusResult
    │     │  ├─ AccountBalanceResult
@@ -371,7 +371,7 @@ catering-modules/catering-front
    │     ├─ FrontTransactionRecordCreateCmp
    │     ├─ FrontTransactionDispatchCmp
    │     ├─ FrontQueryDispatchCmp
-   │     ├─ FrontResponseNormalizeCmp
+   │     ├─ FrontResultNormalizeCmp
    │     └─ FrontTransactionRecordCompleteCmp
    ├─ route
    │  ├─ TransactionRouter
@@ -510,7 +510,7 @@ POST /front/v1/transactions/platform-receive
 除授权码接口外，统一返回：
 
 ```java
-R<FrontResponse<FrontTransactionResult>>
+R<FrontTransactionResult>
 ```
 
 ### 8.3 查询 API
@@ -525,25 +525,27 @@ POST /front/v1/queries/transactions/details
 
 每个 API 直接确定 `FrontCapability`，调用方不需要在请求里重复传 `QueryCapability`。
 
-### 8.4 通用响应外壳
+### 8.4 通用响应约束
 
-所有 API 使用工程公共 `R` 作为最外层返回主体：
+所有 API 使用工程公共 `R` 直接包装具体结果：
 
 ```java
-R<FrontResponse<具体基础结果>>
+R<具体结果>
 ```
 
-`R.code/msg` 表达工程统一调用结果，`R.data` 使用 Front 两段式业务响应：
+`R.code/msg` 表达工程统一调用结果，`R.data` 是确定类型的 Front 结果。所有结果继承统一基础结果：
 
 ```java
-public class FrontResponse<T extends FrontBaseResult> {
-    private T baseData;
+public class FrontBaseResult {
+    private String frontRespCode;
+    private String frontRespDesc;
     private JSONObject specialData;
 }
 ```
 
-响应 `data.baseData` 保存跨银行统一结果及 Front 响应码，`data.specialData` 保存当前银行和接口的特殊返回。
-这里的泛型由每个 API 方法固定，例如 `R<FrontResponse<FrontTransactionResult>>`，不同于旧 Handle 的任意 `<T> T`。
+响应 `data` 的强类型字段保存跨银行统一结果及 Front 响应码，`data.specialData` 保存当前银行和接口的特殊返回。
+每个 API 方法必须固定具体结果类型，例如 `R<FrontTransactionResult>`；禁止增加 `FrontResponse` 中间层，
+也禁止复用旧 Handle 的任意 `<T> T`。
 
 未接入能力的响应示例：
 
@@ -552,24 +554,20 @@ public class FrontResponse<T extends FrontBaseResult> {
   "code": 500,
   "msg": "银行适配器尚未完成接入",
   "data": {
-    "baseData": {
-      "frontRespCode": "F200003",
-      "frontRespDesc": "银行适配器尚未完成接入"
-    },
+    "frontRespCode": "F200003",
+    "frontRespDesc": "银行适配器尚未完成接入",
     "specialData": {}
   }
 }
 ```
 
-`R` 始终是接口顶层对象。Front 可识别的业务失败在 `R.data` 中保留 `baseData`、`specialData`；
+`R` 始终是接口顶层对象。Front 可识别的业务失败在 `R.data` 中保留基础结果字段和 `specialData`；
 没有银行特殊返回时使用空对象。
 
 交易结果保留已确认字段：
 
 ```java
-public class FrontTransactionResult {
-    private String frontRespCode;
-    private String frontRespDesc;
+public class FrontTransactionResult extends FrontBaseResult {
     private String frontSsn;
     private FrontTransactionStatus frontStatus;
     private String frontQueryId;
@@ -593,6 +591,10 @@ public class FrontTransactionResult {
 bizRequestNo       业务调用唯一号，幂等键组成部分
 bizOrderNo         业务主订单号
 bizSubOrderNo      业务子订单号，可空
+payStoreNo         付款业务门店编码
+payStoreId         付款业务门店 ID
+recStoreNo         收款业务门店编码
+recStoreId         收款业务门店 ID
 amount             Long，人民币分
 currency           默认CNY
 businessDate       yyyyMMdd
@@ -634,7 +636,8 @@ functionalAccountType（仅FUNCTIONAL_ACCOUNT条件必填）
 
 ```text
 frontSsn（优先）
-bizOrderNo（无法提供frontSsn时使用）
+bizOrderNo（业务主流水号）
+bizSubOrderNo（业务子流水号）
 ```
 
 平台交易明细和交易明细：
@@ -650,7 +653,13 @@ pageSize
 continuationToken
 ```
 
-`transactionType`、`accountScope`、`direction` 是公共业务条件，不放入 `specialData`。
+交易、交易查询和账户查询的请求均保留 `FrontRequest.specialData`，由业务系统组装，具体银行 Handle
+按当前能力的契约解析并映射到银行请求 `reserveMap`。`transactionType`、`accountScope`、`direction`
+是公共业务条件，不放入 `specialData`。
+
+单笔交易状态查询返回一个 `TransactionStatusResult.specialData`；两个明细查询除分页结果自身继承的
+查询级 `specialData` 外，每条 `TransactionDetailItem` 还必须包含独立 `specialData`，用于承载该笔银行返回的
+`reserveMap` 映射结果。
 
 ---
 
@@ -750,25 +759,25 @@ public interface BankHandle {
 
 ```java
 public interface BankTransactionHandle extends BankHandle {
-    FrontResponse<FrontTransactionResult> transfer(BankRequestContext<TransferBusinessData> context);
-    FrontResponse<FrontTransactionResult> transferAuth(BankRequestContext<AuthTransferBusinessData> context);
-    FrontResponse<FrontBaseResult> resendTransferAuthCode(BankRequestContext<TransferAuthCodeBusinessData> context);
-    FrontResponse<FrontTransactionResult> consume(BankRequestContext<ConsumeBusinessData> context);
-    FrontResponse<FrontTransactionResult> refund(BankRequestContext<RefundBusinessData> context);
-    FrontResponse<FrontTransactionResult> withdraw(BankRequestContext<WithdrawBusinessData> context);
-    FrontResponse<FrontTransactionResult> platformPay(BankRequestContext<PlatformTransferBusinessData> context);
-    FrontResponse<FrontTransactionResult> platformReceive(BankRequestContext<PlatformTransferBusinessData> context);
+    FrontTransactionResult transfer(BankRequestContext<TransferBusinessData> context);
+    FrontTransactionResult transferAuth(BankRequestContext<AuthTransferBusinessData> context);
+    FrontBaseResult resendTransferAuthCode(BankRequestContext<TransferAuthCodeBusinessData> context);
+    FrontTransactionResult consume(BankRequestContext<ConsumeBusinessData> context);
+    FrontTransactionResult refund(BankRequestContext<RefundBusinessData> context);
+    FrontTransactionResult withdraw(BankRequestContext<WithdrawBusinessData> context);
+    FrontTransactionResult platformPay(BankRequestContext<PlatformTransferBusinessData> context);
+    FrontTransactionResult platformReceive(BankRequestContext<PlatformTransferBusinessData> context);
 }
 ```
 
 ```java
 public interface BankQueryHandle extends BankHandle {
-    FrontResponse<AccountStatusResult> queryAccountStatus(BankRequestContext<AccountStatusQueryData> context);
-    FrontResponse<AccountBalanceResult> queryAccountBalance(BankRequestContext<AccountBalanceQueryData> context);
-    FrontResponse<TransactionStatusResult> queryTransactionStatus(BankRequestContext<TransactionStatusQueryData> context);
-    FrontResponse<FrontPageResult<TransactionDetailItem>> queryPlatformTransactionDetails(
+    AccountStatusResult queryAccountStatus(BankRequestContext<AccountStatusQueryData> context);
+    AccountBalanceResult queryAccountBalance(BankRequestContext<AccountBalanceQueryData> context);
+    TransactionStatusResult queryTransactionStatus(BankRequestContext<TransactionStatusQueryData> context);
+    FrontPageResult<TransactionDetailItem> queryPlatformTransactionDetails(
         BankRequestContext<TransactionDetailQueryData> context);
-    FrontResponse<FrontPageResult<TransactionDetailItem>> queryTransactionDetails(
+    FrontPageResult<TransactionDetailItem> queryTransactionDetails(
         BankRequestContext<TransactionDetailQueryData> context);
 }
 ```
@@ -783,6 +792,8 @@ tenantBankConfig: TenantBankConfigSnapshot
 
 对外 `FrontRequest<T>` 仍固定为 `baseData + specialData` 两段。`tenantBankConfig` 由
 `AbstractBankHandle.prepareContext()` 使用 `tenantId + bankCode` 查询并装配，不由调用方传入。
+当前代码只实现了 `FrontRequest<T> → BankRequestContext<T>`；`FrontFlowContext/FrontExecutionInfo`
+仍是 LiteFlow 后续接入设计，尚未实现 `FrontRequest → Slot` 转换，不得把设计稿描述成已落地代码。
 
 ### 11.4 Handle 职责边界
 
@@ -895,8 +906,8 @@ Handle 不负责：
 | `PingAnQueryHandle` | `AbstractBankHandle` + `BankQueryHandle` 的 5 个查询方法 | 复用配置装配，当前覆盖 `bankCode/capabilityStatus` |
 
 银行字段确认后，在上述具体银行类中覆盖对应的强类型方法。旧项目任意 `<T> T` 返回不再复用，
-改为每个 API 固定 `R<FrontResponse<具体基础结果>>`；Handle 内部仍返回确定类型的
-`FrontResponse<具体基础结果>`，银行差异继续通过响应 `specialData` 返回。
+改为每个 API 固定 `R<具体结果>`；Handle 内部直接返回确定类型的 `FrontBaseResult` 子类，
+银行差异继续通过具体结果的 `specialData` 返回。
 
 #### 11.6.6 当前 Handle 实际目录结构
 
@@ -1008,7 +1019,7 @@ PingAnQueryHandle
 
 上述类只作为银行功能码、请求组装、调用和响应映射的参考。迁移到新 Front 时必须进入
 `CiticTransactionHandle/CiticQueryHandle/PingAnTransactionHandle/PingAnQueryHandle` 的明确方法，
-并改用新的 `BankRequestContext`、`TenantBankConfigSnapshot` 和确定类型 `FrontResponse<T>`；不得复制 mdl
+并改用新的 `BankRequestContext`、`TenantBankConfigSnapshot` 和确定类型 `FrontBaseResult` 子类；不得复制 mdl
 的复合路由键、任意 `<T> T`、配置定位方式或返回 `null` 行为。
 
 ---
@@ -1038,7 +1049,6 @@ public record TenantBankAccountConfig(
     String url,
     String mchntId,
     String mchntMbrId,
-    String chnlNo,
     JSONObject accountSpecialData) {
 }
 ```
@@ -1084,7 +1094,6 @@ appKey
 url
 mchntId
 mchntMbrId
-chnlNo
 ```
 
 账户特定静态配置放入独立 `accountSpecialData`：
@@ -1096,7 +1105,8 @@ chnlNo
 
 中信上述 7 个字段是中信各交易能力可复用的账户配置，但仍是银行特定字段，
 不添加到跨银行通用对象。`transTime/transSsn` 按请求生成，`bizFunc` 由银行交易策略选择，
-不属于账户配置。
+不属于账户配置。`bizFunc/chnlNo` 由具体银行 Handle 按能力使用固定常量写入银行请求；
+`transTime` 在每次调用时生成，`transSsn` 由具体银行 Handle 按该银行规则生成并保存到渠道交易流水。
 
 `specialData` 是当前交易/查询的银行特定动态参数；`accountSpecialData` 是租户银行账户的
 特定静态配置。两者必须是不同的 `JSONObject`，禁止 `putAll`、共享引用、相互覆盖或透传。
@@ -1220,7 +1230,7 @@ THEN(
 如果银行调用尚未开始：流水记FAILED；
 如果已开始发送但没有明确响应：流水记UNKNOWN；
 如果收到银行明确拒绝：流水记FAILED；
-最后由 Controller 或异常处理器返回统一 `R<FrontResponse<具体基础结果>>`。
+最后由 Controller 或异常处理器返回统一 `R<具体结果>`。
 ```
 
 资金交易发生超时或无响应时禁止自动盲目重发。
@@ -1355,7 +1365,7 @@ INIT
 | `F900001` | Front 内部异常 |
 
 银行原始错误码保存到渠道流水，不直接作为 `R.code`。`R.code/msg` 表达工程统一调用结果；
-Front 错误码放在 `R.data.baseData.frontRespCode`，银行原始响应码只进入渠道流水或受控特殊返回。
+Front 错误码放在 `R.data.frontRespCode`，银行原始响应码只进入渠道流水或受控特殊返回。
 
 ---
 
@@ -1473,7 +1483,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 ### 18.5 API 测试
 
 - 每个 API 返回结构必须包含 `R.code/msg/data`；
-- `R.data` 必须包含 `baseData/specialData`；
+- `R.data` 必须包含具体结果的基础字段和 `specialData`；
 - 每个接口绑定正确的强类型 `baseData`；
 - 金额必须大于零；
 - 日期、时间格式合法；
@@ -1500,7 +1510,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 创建 8 个交易接口；
 - [x] 创建 5 个查询接口；
 - [x] 创建两段式请求、响应和枚举；
-- [x] 所有 API 使用 `R<FrontResponse<具体基础结果>>` 作为返回类型；
+- [x] 所有 API 使用 `R<具体结果>` 作为返回类型，不增加 `FrontResponse` 中间层；
 - [x] `FrontErrorCode` 统一迁入 `catering-common-core`；
 - [x] `FrontException` 统一迁入 `catering-common-core`；
 - [x] 补齐基础 Bean Validation 和 OpenAPI。

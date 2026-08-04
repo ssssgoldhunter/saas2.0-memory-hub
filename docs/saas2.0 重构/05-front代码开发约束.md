@@ -12,7 +12,8 @@
 1. `catering-api-front` 只保存 API 契约、请求响应模型、常量和枚举。
 2. `catering-front` 保存全部功能实现，不再建立 `api/common/service` 子模块。
 3. 跨模块公共返回、Front 错误码和 Front 公共异常统一放在 `catering-common-core`。
-4. 所有对外 API 必须返回 `R<FrontResponse<具体基础结果>>`。
+4. 所有对外 API 必须直接返回 `R<具体结果>`，禁止增加 `FrontResponse` 中间包装层；例如交易返回
+   `R<FrontTransactionResult>`。
 5. Controller 负责包装 `R`；Application、Router、Handle 不返回 `R`。
 6. 业务可预期异常统一抛出 `FrontException`，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
@@ -50,7 +51,7 @@
 允许保存：
 
 - Feign/API 接口；
-- `FrontRequest`、`FrontResponse`；
+- `FrontRequest`、`FrontBaseResult` 及其具体结果对象；
 - API 方法签名使用的请求和响应模型；
 - API 路径等契约常量；
 - 银行编码、能力、交易状态等契约枚举；
@@ -109,7 +110,7 @@ Feign/API 接口
 → 银行或钱包平台
 ```
 
-异常统一沿调用栈抛出，由 `FrontExceptionHandler` 转换为 `R<FrontResponse<...>>`。
+异常统一沿调用栈抛出，由 `FrontExceptionHandler` 转换为 `R<FrontBaseResult>`。
 
 ### 3.1 Controller
 
@@ -140,7 +141,7 @@ Application Service 负责：
 - 幂等、渠道流水和状态机协调；
 - 记录业务分派、结果与耗时日志。
 
-Application Service 返回确定类型的 `FrontResponse<T>`，禁止返回 `R`。
+Application Service 返回确定类型的 `FrontBaseResult` 子类，禁止返回 `R`。
 
 Application Service 禁止：
 
@@ -176,7 +177,7 @@ Handle 负责：
 - 选择功能码、路径和协议；
 - 组装银行请求；
 - 调用银行客户端；
-- 把银行结果转换为 `FrontResponse<具体基础结果>`。
+- 把银行结果转换为确定类型的 `FrontBaseResult` 子类。
 
 Handle 方法必须使用明确请求和明确返回类型，禁止使用无法约束的 `<T> T`。
 
@@ -218,7 +219,6 @@ TenantBankConfigSnapshot
    ├─ url
    ├─ mchntId
    ├─ mchntMbrId
-   ├─ chnlNo
    └─ accountSpecialData: JSONObject
 ```
 
@@ -244,9 +244,9 @@ BankAccountConfigAssemblerRouter
    └─ CiticBankAccountConfigAssembler        # 只组装中信 accountSpecialData
 ```
 
-通用对象只包含 `appId/appKey/url/mchntId/mchntMbrId/chnlNo`。
-`transTime/transSsn` 是每笔请求运行时字段，`bizFunc` 由具体银行和能力选择，
-禁止将这三个字段固化为账户配置。
+通用对象只包含 `appId/appKey/url/mchntId/mchntMbrId`。
+`transSsn` 由具体银行 Handle 按银行规则生成，`transTime` 是每笔请求运行时字段，
+`bizFunc/chnlNo` 由具体银行和能力使用常量确定，禁止将这四个字段固化为账户配置。
 
 | 银行 | `accountSpecialData` 允许字段 |
 |---|---|
@@ -261,7 +261,7 @@ BankAccountConfigAssemblerRouter
 | 常量类 | 内容 |
 |---|---|
 | `FrontBankConfigQueryKeys` | 配置查询原始 key：`zx_bank_config`、`pa_bank_config` |
-| `FrontBankAccountConfigKeys` | `appId/appKey/url/mchntId/mchntMbrId/chnlNo` |
+| `FrontBankAccountConfigKeys` | `appId/appKey/url/mchntId/mchntMbrId` |
 | `PingAnBankAccountConfigKeys` | `txnClientNo/mrchCode` |
 | `CiticBankAccountConfigKeys` | 中信 7 个 `accountSpecialData` 字段 |
 
@@ -329,6 +329,11 @@ JSON 顶层固定为：
 
 禁止把银行私有字段放入 `baseData`，也禁止使用 `Object`、无约束 Map 代替已经确认的公共字段。
 
+交易公共基础对象必须包含 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店信息。
+单笔状态查询基础对象必须包含 `frontSsn/bizOrderNo/bizSubOrderNo`；其中 `bizOrderNo` 是业务主流水，
+`bizSubOrderNo` 是业务子流水。当前没有实现 `FrontFlowContext`，不得把
+`FrontRequest -> BankRequestContext` 描述成已经完成的 `FrontRequest -> Slot` 转换。
+
 ### 4.2 `specialData`
 
 `specialData` 使用 `JSONObject`，只保存“银行 + 能力”特有字段。
@@ -372,27 +377,41 @@ public record BankRequestContext<T extends FrontBaseRequestData>(
 
 ### 5.1 对外 API 返回
 
-所有对外接口必须返回：
+所有对外接口必须直接返回：
 
 ```java
-R<FrontResponse<具体基础结果>>
+R<具体结果>
+```
+
+例如：
+
+```java
+R<FrontTransactionResult>
+R<TransactionStatusResult>
+R<AccountBalanceResult>
+R<FrontPageResult<TransactionDetailItem>>
 ```
 
 禁止：
 
-- 直接返回 `FrontResponse<T>`；
+- 使用 `FrontResponse<T>` 再包装具体结果；
+- 直接返回未使用 `R` 包装的具体结果；
 - 直接返回银行响应 DTO；
 - 返回 `Map<String, Object>`；
 - 再创建一套 Front 专用顶层响应类替代 `R`；
 - 返回 `null`。
 
-### 5.2 三层语义
+### 5.2 两层语义
 
 | 层级 | 职责 |
 |---|---|
 | `R.code/msg` | 工程统一调用结果，使用公共 `R.ok/R.fail` |
-| `R.data.baseData` | Front 跨银行统一业务结果和 Front 错误码 |
-| `R.data.specialData` | 当前银行、当前能力的特殊返回字段 |
+| `R.data` 的强类型字段 | Front 跨银行统一业务结果和 Front 错误码 |
+| `R.data.specialData` | 当前银行、当前能力的特殊返回字段；由 `FrontBaseResult` 统一定义 |
+
+`FrontBaseResult` 必须统一定义 `frontRespCode/frontRespDesc/specialData`。交易明细查询中，每条
+`TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`；分页结果自身
+继承的 `specialData` 只保存查询级银行扩展字段。
 
 成功返回示意：
 
@@ -401,10 +420,8 @@ R<FrontResponse<具体基础结果>>
   "code": 200,
   "msg": "操作成功",
   "data": {
-    "baseData": {
-      "frontRespCode": "F000000",
-      "frontRespDesc": "成功"
-    },
+    "frontRespCode": "F000000",
+    "frontRespDesc": "成功",
     "specialData": {}
   }
 }
@@ -417,25 +434,23 @@ R<FrontResponse<具体基础结果>>
   "code": 500,
   "msg": "银行适配器尚未完成接入",
   "data": {
-    "baseData": {
-      "frontRespCode": "F200003",
-      "frontRespDesc": "银行适配器尚未完成接入"
-    },
+    "frontRespCode": "F200003",
+    "frontRespDesc": "银行适配器尚未完成接入",
     "specialData": {}
   }
 }
 ```
 
 `R.code` 是整数统一状态码，Front 的 `Fxxxxxx` 业务错误码不得写入 `R.code`，必须放在
-`data.baseData.frontRespCode`。
+`data.frontRespCode`。
 
 ### 5.3 各层返回职责
 
 ```text
-Handle              → FrontResponse<T>
-Application Service → FrontResponse<T>
-Controller          → R.ok(FrontResponse<T>)
-Exception Handler   → R.fail(message, FrontResponse.failure(...))
+Handle              → FrontBaseResult 的确定子类
+Application Service → FrontBaseResult 的确定子类
+Controller          → R.ok(具体结果)
+Exception Handler   → R.fail(message, new FrontBaseResult(...))
 ```
 
 银行原始响应码不得直接作为 `R.code` 或 `frontRespCode`；应先映射为 Front 公共错误码，原始码保存到
@@ -523,7 +538,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - `FrontException`：保留其 `FrontErrorCode` 和安全消息；
 - 参数异常：映射为 `INVALID_REQUEST`；
 - 未知异常：记录完整服务端堆栈，对外只返回 `INTERNAL_ERROR`；
-- 所有异常响应使用 `R.fail(message, FrontResponse.failure(...))`；
+- 所有异常响应使用 `R.fail(message, new FrontBaseResult(...))`；
 - 不得将 Java 异常类名、堆栈和银行原始报文返回给调用方。
 
 ### 7.3 禁止事项
@@ -606,7 +621,8 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 
 - [ ] 代码放在正确模块和 package；
 - [ ] 依赖方向没有反转或循环；
-- [ ] API 返回类型是 `R<FrontResponse<具体基础结果>>`；
+- [ ] API 返回类型是 `R<具体结果>`，不存在 `FrontResponse` 中间包装层；
+- [ ] `specialData` 由 `FrontBaseResult` 统一提供；
 - [ ] Controller 只做入口和 `R` 包装；
 - [ ] Application Service 不包含银行协议细节；
 - [ ] Router 只按银行路由；
