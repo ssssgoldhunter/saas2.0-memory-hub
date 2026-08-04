@@ -35,6 +35,7 @@
 ```text
 当前 catering-front 代码
 → 05-front代码开发约束
+→ 06-transfer-consume字段契约（实现 transfer/consume 时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -52,7 +53,8 @@
 4. [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)：查看目标流程、Handle 映射和分阶段实施内容。
 5. [02-中信银行接口能力汇总](02-中信银行接口能力汇总.md)：实现中信能力时必读。
 6. [03-平安银行接口能力汇总](03-平安银行接口能力汇总.md)：实现平安能力时必读。
-7. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+7. [06-transfer-consume字段契约](06-transfer-consume字段契约.md)：实现 transfer/consume 时必须完整阅读。
+8. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -70,6 +72,7 @@
 - `FrontRequest → FrontFlowContext → BankRequestContext → Handle` 的上下文骨架；
 - `FrontExecutionInfo` 和 `FrontExecutionStage` 的执行元数据骨架；
 - `TenantBankConfigProvider`、通用账户配置对象、平安/中信账户特殊配置装配策略；
+- transfer/consume 公共金额、收付款会员字段，两家银行字段常量和原始响应码常量；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架。
@@ -79,7 +82,7 @@
 - 真实 `TenantBankConfigProvider` 远程查询；
 - LiteFlow `FlowExecutor`、组件、EL 规则和链路配置；
 - 中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射；
-- 各能力 `specialData ↔ reserveMap` 的最终字段契约；
+- transfer/consume 以外能力的 `specialData ↔ reserveMap` 最终字段契约；
 - `transSsn` 的银行规则、渠道交易流水、幂等和状态机；
 - 数据库表、Mapper、Repository；
 - 未经用户明确要求的测试类和编译验证。
@@ -133,12 +136,15 @@ AbstractBankHandle.prepareContext
 - 不让 Application、Router 或 Handle 返回公共 `R`；
 - 不返回 `null` 或模拟成功；
 - 不把银行差异字段放入公共 `baseData`；
+- 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
 - 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等银行账户配置；
 - 所有请求、响应、配置、Context、record 组件及枚举值必须有字段级业务注释；
 - `bizFunc/chnlNo` 在具体银行 Handle 中按能力使用常量；
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
+- 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，
+  `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
 - 日志不得输出密钥、完整账户配置、完整 `specialData`、卡号、手机号、证件号或验证码；
 - 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
 

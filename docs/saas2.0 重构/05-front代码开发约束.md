@@ -265,6 +265,10 @@ BankAccountConfigAssemblerRouter
 | `FrontBankAccountConfigKeys` | `appId/appKey/url/mchntId/mchntMbrId` |
 | `PingAnBankAccountConfigKeys` | `txnClientNo/mrchCode/stlAcctNo` |
 | `CiticBankAccountConfigKeys` | 中信 7 个 `accountSpecialData` 字段 |
+| `FrontBankRequestConstants` | 钱包公共请求字段名及 `transSsn/transTime/bizFunc/chnlNo` 来源约束 |
+| `FrontBankResponseConstants` | 钱包原始响应字段、平台成功标志、中信 5 位和平安 6 位银行成功码 |
+| `CiticTransferContractKeys` | 中信 transfer/consume 固定协议值、请求、reserve、响应特殊字段 |
+| `PingAnTransferContractKeys` | 平安 transfer/consume 固定协议值、请求和 reserve 字段 |
 
 配置查询 key 的常量名称只表达配置系统中的原始值，不在 `catering-common-core` 内绑定具体银行。
 真实 `TenantBankConfigProvider` 接入时必须根据最终确认的银行与配置 key 对应关系显式选择，禁止根据
@@ -331,6 +335,9 @@ JSON 顶层固定为：
 禁止把银行私有字段放入 `baseData`，也禁止使用 `Object`、无约束 Map 代替已经确认的公共字段。
 
 交易公共基础对象必须包含 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店信息。
+`amount/fee` 均使用 `Long` 保存人民币分，`amount` 必须大于 0，`fee` 不能小于 0；禁止使用浮点数
+或在 Handle 内擅自转换为元。transfer/consume 必须提供双方 `accountId/memberId/name` 公共字段，
+不得把这些已有公共语义的字段塞入 `specialData`。
 单笔状态查询基础对象必须包含 `frontSsn/bizOrderNo/bizSubOrderNo`；其中 `bizOrderNo` 是业务主流水，
 `bizSubOrderNo` 是业务子流水。
 
@@ -366,6 +373,10 @@ failure
   `txnClientNo/mrchCode/stlAcctNo` 等账户配置字段；
 - 不得传密钥、私钥、完整银行配置；
 - 日志不得直接打印完整内容。
+
+transfer/consume 的已确认字段白名单、来源、单位和响应映射以
+[06-transfer-consume字段契约](06-transfer-consume字段契约.md) 为准。没有进入该契约的银行字段，
+不得凭旧代码猜测后直接透传。
 
 ### 4.4 Handle 内部三段式上下文
 
@@ -490,11 +501,13 @@ R<FrontPageResult<TransactionDetailItem>>
 Handle              → FrontBaseResult 的确定子类
 Application Service → FrontBaseResult 的确定子类
 Controller          → R.ok(具体结果)
-Exception Handler   → R.fail(message, new FrontBaseResult(...))
+Exception Handler   → R.fail(message, FrontBaseResult)
 ```
 
-银行原始响应码不得直接作为 `R.code` 或 `frontRespCode`；应先映射为 Front 公共错误码，原始码保存到
-渠道流水或经过白名单控制的特殊响应。
+Handle 和异常处理器必须通过 `FrontBaseResult.applyFrontResponse(FrontErrorCode)` 同时设置
+`frontRespCode/frontRespDesc`，避免码和说明不一致。银行原始响应码不得直接作为 `R.code`、
+`frontRespCode` 或 `frontRespDesc`；应先映射为 Front 公共错误码，原始码默认保存到渠道流水。
+只有具备明确业务价值且进入响应白名单的银行特有字段才能进入返回 `specialData`。
 
 ---
 
@@ -526,6 +539,21 @@ catering-common-core
 | `F3xxxxx` | 幂等和处理中状态 |
 | `F4xxxxx` | 银行通信和结果错误 |
 | `F9xxxxx` | Front 内部错误 |
+
+当前钱包结果统一码：
+
+| 错误码 | 统一说明 | 使用边界 |
+|---|---|---|
+| `F000000` | 成功 | 钱包平台和银行渠道均满足当前接口成功条件 |
+| `F400001` | 钱包通信失败 | 可确认未完成正常通信 |
+| `F400002` | 钱包处理结果未知 | 可能已发送但无法确认终态，必须查询 |
+| `F400003` | 钱包响应格式错误 | 缺少必需字段或格式无法解析 |
+| `F400004` | 银行拒绝交易 | 平台成功但银行渠道明确失败 |
+| `F400005` | 钱包平台拒绝请求 | `errCode/errInfo` 明确表示平台失败 |
+
+中信、平安现有接入的平台成功标志均为 `D5000000 + success`；中信银行成功码为 `00000`
+（5 个 0），平安为 `000000`（6 个 0）。这些值只能使用 `FrontBankResponseConstants` 判断，
+禁止在 Handle 中散落字符串，更禁止直接返回业务系统。
 
 ---
 
@@ -682,7 +710,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 未知异常不会泄漏堆栈给调用方；
 - [ ] 日志不包含完整 `specialData`、`accountSpecialData`、账户配置和敏感字段；
 - [ ] 银行原始响应码没有直接作为 `R.code/frontRespCode`；
-- [ ] 请求、成功响应和异常响应契约已覆盖测试；
+- [ ] `frontRespCode/frontRespDesc` 同时来自同一个 `FrontErrorCode`；
+- [ ] 返回 `specialData` 只包含当前银行、当前能力的响应白名单字段；
+- [ ] 如用户明确要求测试，请求、成功响应和异常响应契约已覆盖测试；
 - [ ] 相关设计、能力矩阵和字段映射文档已更新。
 
 当前骨架在最近一次模块、返回主体和异常迁移后按用户要求未执行编译或测试；后续获得允许时需按本检查表补充验证。

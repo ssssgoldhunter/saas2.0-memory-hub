@@ -270,6 +270,9 @@ CiticBankAccountConfigAssembler     → 组装中信 accountSpecialData
 `catering-common-core/com.chinaums.common.core.constant.front`：查询 key 使用
 `FrontBankConfigQueryKeys` 保存 `zx_bank_config/pa_bank_config`；通用、平安、中信字段分别使用
 `FrontBankAccountConfigKeys/PingAnBankAccountConfigKeys/CiticBankAccountConfigKeys`。
+钱包公共请求字段、transfer/consume 协议字段和响应判定分别使用
+`FrontBankRequestConstants/CiticTransferContractKeys/PingAnTransferContractKeys/FrontBankResponseConstants`，禁止在 Handle
+散落字符串字段名和银行原始成功码。
 查询 key 在公共层只保存原始值，不绑定银行，最终映射由真实 Provider 显式选择。
 
 ---
@@ -784,6 +787,8 @@ public class FrontBaseResult {
 `FrontBaseResult` 子类，禁止 `FrontResponse` 中间层和无法约束的 `<T> T` 返回。
 
 `R` 与 `FrontErrorCode` 统一位于 `catering-common-core`，API 和功能模块不得重复定义。
+具体结果调用 `applyFrontResponse(FrontErrorCode)` 同时设置统一码和统一说明；钱包平台码和银行渠道码
+只用于 Handle 判定及渠道流水审计，不得直接成为 `frontRespCode/frontRespDesc`。
 
 ```java
 public class FrontTransactionResult extends FrontBaseResult {
@@ -806,7 +811,7 @@ public class FrontTransactionResult extends FrontBaseResult {
 ```text
 PROCESSING
 SUCCESS
-FAIL
+FAILED
 UNKNOWN
 ```
 
@@ -854,16 +859,15 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 
 ```text
 05-front代码开发约束.md（已完成）
-06-账户查询详细设计.md
-07-交易状态查询详细设计.md
-08-平台交易明细查询详细设计.md
-09-交易明细查询详细设计.md
-10-普通转账详细设计.md
+06-transfer-consume字段契约.md（已完成首版）
+07-账户查询详细设计.md
+08-交易状态查询详细设计.md
+09-平台交易明细查询详细设计.md
+10-交易明细查询详细设计.md
 11-授权转账与授权码重发详细设计.md
-12-消费详细设计.md
-13-退款详细设计.md
-14-提现详细设计.md
-15-平台收付款详细设计.md
+12-退款详细设计.md
+13-提现详细设计.md
+14-平台收付款详细设计.md
 ```
 
 租户银行配置、`specialData`、渠道流水、LiteFlow、错误码状态机和文件能力文档在对应业务字段确认后
@@ -909,9 +913,9 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 ### 19.1 银行接口文档
 
 ```text
-/Users/limeng/work/ums/文档/内部平台/平安/客户钱包应用平台_接口文档-平安项目(总)v5.5.doc
+/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub/docs/客户钱包应用平台_接口文档-平安项目(总)v5.5.doc
 
-/Users/limeng/work/ums/文档/内部平台/中信/中信E管家产品客户钱包应用平台_接口文档-内部集成平台v5.5.doc
+/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub/docs/中信E管家产品客户钱包应用平台_接口文档-内部集成平台v4.7.doc
 ```
 
 ### 19.2 旧项目结构参考

@@ -1136,6 +1136,12 @@ mchntMbrId
 
 ## 13. specialData 契约
 
+transfer/consume 的中信、平安首版字段契约已经单独固化在
+[06-transfer-consume字段契约](./06-transfer-consume字段契约.md)，并由
+`CiticTransferContractKeys/PingAnTransferContractKeys/FrontBankResponseConstants` 提供代码常量。
+钱包公共请求字段名由 `FrontBankRequestConstants` 集中提供。
+本节继续约束其他能力及后续版本的通用机制。
+
 推荐格式：
 
 ```json
@@ -1366,10 +1372,12 @@ INIT
 | `F400002` | 钱包结果未知，需要查询 |
 | `F400003` | 钱包响应格式错误 |
 | `F400004` | 银行明确拒绝 |
+| `F400005` | 钱包平台明确拒绝请求 |
 | `F900001` | Front 内部异常 |
 
-银行原始错误码保存到渠道流水，不直接作为 `R.code`。`R.code/msg` 表达工程统一调用结果；
-Front 错误码放在 `R.data.frontRespCode`，银行原始响应码只进入渠道流水或受控特殊返回。
+银行原始错误码保存到渠道流水，不直接作为 `R.code/frontRespCode/frontRespDesc`。具体结果通过
+`applyFrontResponse(FrontErrorCode)` 同时设置 Front 统一码和说明。中信银行成功码 `00000` 与平安
+成功码 `000000` 长度不同，只用于对应 Handle 的原始结果判定。
 
 ---
 
@@ -1540,7 +1548,8 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 - [x] 创建配置 Provider 端口和配置快照；
 - [ ] 创建真实远程配置 Provider、Parser SPI 和 Registry；
-- [ ] 创建 `specialData` 契约和保护字段校验；
+- [x] 创建 transfer/consume 首版 `specialData` 字段契约和公共字段常量；
+- [ ] 创建运行时 `specialData` schema 校验和保护字段校验；
 - [ ] 创建 HTTP、签名、加密 SPI；
 - [ ] 创建日志脱敏器；
 - [ ] 真实银行算法实现留在银行包中待接入。
@@ -1616,16 +1625,15 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ```text
 05-front代码开发约束.md（已完成）
-06-账户查询详细设计.md
-07-交易状态查询详细设计.md
-08-平台交易明细查询详细设计.md
-09-交易明细查询详细设计.md
-10-普通转账详细设计.md
+06-transfer-consume字段契约.md（已完成首版）
+07-账户查询详细设计.md
+08-交易状态查询详细设计.md
+09-平台交易明细查询详细设计.md
+10-交易明细查询详细设计.md
 11-授权转账与授权码重发详细设计.md
-12-消费详细设计.md
-13-退款详细设计.md
-14-提现详细设计.md
-15-平台收付款详细设计.md
+12-退款详细设计.md
+13-提现详细设计.md
+14-平台收付款详细设计.md
 ```
 
 每份逐接口文档必须包含：
