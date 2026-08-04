@@ -40,6 +40,7 @@
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
 → 09-channel-transaction-ddl（实现任何交易落库、幂等、状态查询或退款关联时）
+→ 09A-channel-transaction-table-field-catalog（生成或审查建表 SQL 时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -65,7 +66,9 @@
    实现 `withdraw/refund/platformPay/platformReceive` 时必须完整阅读。
 10. [09-channel-transaction-ddl](09-channel-transaction-ddl.md)：实现任何交易落库、幂等、状态查询或退款时
     必须完整阅读，渠道记录固定按“银行 + 交易业务”拆分。
-11. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+11. [09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md)：生成、迁移或
+    审查数据库 SQL 时必须阅读，其中 10 张表的全部字段、默认值、更新规则和索引均已逐表展开。
+12. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -92,6 +95,8 @@
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含
   `reserve1/reserve2/reserve3`，并保留业务明确列和完整业务加密快照；
+- 10 张渠道表的完整字段字典已逐表列出字段顺序、类型、NULL、默认值、更新规则、注释和索引，可交给其他 AI
+  按目标字符集生成最终 SQL；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架。

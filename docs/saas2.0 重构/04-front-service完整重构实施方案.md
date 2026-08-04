@@ -1306,6 +1306,7 @@ front_pingan_withdraw_transaction
 代码：catering-modules/catering-front/src/main/resources/db/migration/
       V001__create_front_bank_business_transaction_tables.sql
 文档：docs/saas2.0 重构/09-channel-transaction-ddl.md
+字段字典：docs/saas2.0 重构/09A-channel-transaction-table-field-catalog.md
 ```
 
 每张表必须保留来源业务关联：

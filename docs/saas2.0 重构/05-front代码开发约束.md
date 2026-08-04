@@ -320,7 +320,9 @@ channel/pingan
 平安：transfer / consume / refund / withdraw
 ```
 
-具体表名和字段以 [09-channel-transaction-ddl](09-channel-transaction-ddl.md) 为准。
+表路由和落库规则以 [09-channel-transaction-ddl](09-channel-transaction-ddl.md) 为准；10 张表的完整
+字段、默认值、更新规则和索引以
+[09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md) 为准。
 
 持久化实现必须：
 
@@ -727,6 +729,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 不建立单一 `front_channel_transaction`，也不把不同银行或不同交易业务写入同一渠道表；
 - 不允许调用方传物理表名，不使用字符串拼接动态表名；
 - 不漏存业务系统、逻辑业务类型、业务主/子记录 ID 和完整业务基础数据加密快照；
+- 不允许生成 SQL 的 AI 因目标字符集不同而静默修改字段、默认值或索引；不兼容项必须先形成差异清单；
 - 不把 `tenantBankConfig` 增加到对外 `FrontRequest`；
 - 不静默覆盖重复银行 Handle；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
@@ -774,6 +777,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 具体银行 Handle 没有重复实现配置查询；
 - [ ] 渠道流水按银行和交易业务选择固定 Repository，没有统一表或动态表名；
 - [ ] 目标渠道表包含业务主/子记录关联、业务基础数据加密快照和三个 reserve 字段；
+- [ ] 最终 SQL 已逐表对照 `09A` 的字段数量、字段顺序、NULL、默认值、更新规则、注释和索引；
 - [ ] 退款只关联同银行原转账或消费记录，原交易累计退款金额受并发控制；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；
 - [ ] 新错误码只添加到 `FrontErrorCode`；

@@ -41,6 +41,16 @@ cateringsass/catering-modules/catering-front/src/main/resources/db/migration/
 V001__create_front_bank_business_transaction_tables.sql
 ```
 
+可直接交给其他 AI 或 DBA 的逐表字段字典：
+
+```text
+09A-channel-transaction-table-field-catalog.md
+```
+
+`09A` 已将 10 张表分别展开，逐字段列出字段名、顺序、数据类型、NULL 约束、默认值、更新规则、业务说明以及
+每张表的主键、唯一键和普通索引。最终 SQL 提供方只根据目标环境补充或调整 `ENGINE/CHARSET/COLLATE/
+ROW_FORMAT`；如果字符集导致索引长度或数据库方言不兼容，必须先给出差异，不得静默改变字段设计。
+
 当前只落地 DDL 和 API 业务关联字段。Entity、Mapper、Repository、显式表路由、状态机服务及真实写入
 流程仍待后续实现；当前项目也尚未接入数据库迁移执行组件，不能把 SQL 文件存在等同于已自动建表。
 
@@ -114,7 +124,8 @@ Java 统一使用 `String` 承载业务记录 ID，以兼容数字 ID 和 UUID�
 
 ## 4. 每张表的通用字段组
 
-10 张表均包含以下字段组；精确类型、长度、默认值、注释和索引以代码仓库的 V001 SQL 为准。
+10 张表均包含以下字段组；精确类型、长度、默认值、注释和索引以
+[09A 逐表完整字段字典](./09A-channel-transaction-table-field-catalog.md) 及代码仓库 V001 SQL 为准。
 
 | 字段组 | 主要字段 | 用途 |
 |---|---|---|
