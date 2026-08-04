@@ -388,6 +388,12 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 为准。`transferAuth` 请求 `specialData` 只允许 `messageOrderNo/messageCheckCode`；授权码发送或重发
 请求当前不需要银行动态 `specialData`。中信这两个能力必须返回 `UNSUPPORTED`，不得复制旧项目挡板。
 
+两家 `withdraw/refund` 和中信 `platformPay/platformReceive` 的字段、资金方向、加密边界及响应映射以
+[08-withdraw-refund-platform-transfer字段契约](08-withdraw-refund-platform-transfer字段契约.md)
+为准。退款必须调用银行真退款产品：中信使用 `/refund + bizFunc=23`，平安当前使用
+`/refund + bizFunc=02`；禁止反向转账模拟退款。`platformPay/platformReceive` 仅中信支持，平安必须
+返回 `UNSUPPORTED`。原退款银行字段必须从原渠道流水加载，平台银行账号必须由 Front 内部解析。
+
 ### 4.4 Handle 内部三段式上下文
 
 外部 `FrontRequest<T>` 只能有两段。完成路由和能力校验后，由 `AbstractBankHandle` 生成：

@@ -861,13 +861,11 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 05-front代码开发约束.md（已完成）
 06-transfer-consume字段契约.md（已完成首版）
 07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
-08-账户查询详细设计.md
-09-交易状态查询详细设计.md
-10-平台交易明细查询详细设计.md
-11-交易明细查询详细设计.md
-12-退款详细设计.md
-13-提现详细设计.md
-14-平台收付款详细设计.md
+08-withdraw-refund-platform-transfer字段契约.md（已完成首版）
+09-账户查询详细设计.md
+10-交易状态查询详细设计.md
+11-平台交易明细查询详细设计.md
+12-交易明细查询详细设计.md
 ```
 
 租户银行配置、`specialData`、渠道流水、LiteFlow、错误码状态机和文件能力文档在对应业务字段确认后

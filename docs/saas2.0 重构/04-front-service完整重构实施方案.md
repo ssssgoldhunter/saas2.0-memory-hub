@@ -159,7 +159,7 @@ com.chinaums.front
   `transSsn/transTime` 并重新调用 `bizFunc=26`，不传原短信指令号；
 - 消费和普通转账即使银行底层使用同一个接口，Front 仍保留不同能力编码；
 - 平台收款和平台付款必须拆开，不能使用一个方向字段模糊表达；
-- 平安平台收付款当前没有确认等价接口，Handle 骨架返回待接入或不支持。
+- 平台付款、平台收款是中信专有能力；平安没有等价实现，Handle 固定返回 `UNSUPPORTED`。
 
 ### 4.2 查询能力
 
@@ -618,8 +618,8 @@ remark             业务备注
 | `AuthTransferBusinessData` | 继承普通转账字段；短信指令号和验证码放请求 `specialData` |
 | `TransferAuthCodeBusinessData` | 交易公共字段、付款账户、付款会员编号、收款账户；不传手机号和原短信指令号 |
 | `ConsumeBusinessData` | 付款账户、收款账户、消费场景、订单信息 |
-| `RefundBusinessData` | 原 `frontSsn`、原业务订单、退款金额、退款原因 |
-| `WithdrawBusinessData` | 提现账户、提现金额、手续费、提现备注 |
+| `RefundBusinessData` | 原 `frontSsn`、原业务主/子订单、退款金额、手续费、退款原因 |
+| `WithdrawBusinessData` | 提现账户、会员、银行卡、账户名称、持卡人名称、提现金额、手续费、备注 |
 | `PlatformTransferBusinessData` | 用户账户、平台账户类型、金额、业务方向由API确定 |
 
 银行特有但不具备公共业务语义的字段留在 `specialData`，不得为迁就某家银行污染公共 DTO。
@@ -876,7 +876,7 @@ Handle 不负责：
 | `transferAuth()` | `BasTransTransferHandle.transTransferAuth()` | 一对一；仅平安为真实短信鉴权转账，中信旧实现只是挡板成功 |
 | `resendTransferAuthCode()` | `BasTransSendVerificationHandle.sendSmsVerification()` | 语义对应；仅平安真实调用验证码申请接口，中信旧实现只是模拟成功；首次发送与重发复用同一 Front 方法 |
 | `consume()` | `BasTransConsumeHandle.transConsume()` | 一对一，消费 |
-| `refund()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 语义重命名；旧 API 对外描述即“消费退款” |
+| `refund()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 语义重命名为真退款；中信不得复制旧反向转账实现 |
 | `withdraw()` | `BasTransWithDrawHandle.transWithDraw()` | 一对一，提现 |
 | `platformPay()` | `BasTransTransferHandle.platformPay()` | 一对一，平台付款 |
 | `platformReceive()` | `BasTransTransferHandle.platformReceive()` | 一对一，平台收款 |
@@ -1007,10 +1007,10 @@ PingAnQueryHandle
 | `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` 只构造本地挡板成功，不调用中信 | `PaTransTransferHandle.transTransferAuth()` 真实调用 `/transfer` | 仅平安真实支持；中信必须 `UNSUPPORTED` |
 | `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` 只构造模拟手机号和验证码 | `PaTransSendVerificationHandle.sendSmsVerification()` 真实调用 `/gen-auth-code` | 仅平安真实支持；重发与首次发送使用同一银行接口 |
 | `consume()` | `FrontTransConsumeFacadeApi.transConsume()` → `TransConsumeServiceImpl.transConsume()` | `BasTransConsumeHandle.transConsume()` | `ZxTransConsumeHandle` | `PaTransConsumeHandle` | 两家均有真实实现 |
-| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | `ZxTransConsumeCancelHandle` | `PaTransConsumeCancelHandle` | 两家均有真实实现；新方法统一命名为退款 |
+| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | `ZxTransConsumeCancelHandle` 实际调用 `zxTransfer/bizFunc=27`；另有未接入业务 Handle 的 `ZxRefundRequest + zxRefund` | `PaTransConsumeCancelHandle` 调用 `/refund/bizFunc=02` | 平安是真退款；中信旧业务 Handle 是反向转账，新 Front 必须改接 `/refund/bizFunc=23` |
 | `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `BasTransWithDrawHandle.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家均有真实实现 |
-| `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `BasTransTransferHandle.platformPay()` | `ZxTransTransferHandle` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安未覆盖，抽象父类直接返回 `null` |
-| `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `BasTransTransferHandle.platformReceive()` | `ZxTransTransferHandle` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安未覆盖，抽象父类直接返回 `null` |
+| `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `BasTransTransferHandle.platformPay()` | `ZxTransTransferHandle`，`bizFunc=2041` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |
+| `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `BasTransTransferHandle.platformReceive()` | `ZxTransTransferHandle`，`bizFunc=2042` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |
 
 ##### 11.6.7.2 交易查询方法关联
 
@@ -1428,8 +1428,8 @@ public enum IntegrationStatus {
 | 消费 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
 | 退款 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
 | 提现 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 平台付款 | `PENDING_INTEGRATION` | 等价能力未确认，初始 `PENDING_INTEGRATION` |
-| 平台收款 | `PENDING_INTEGRATION` | 等价能力未确认，初始 `PENDING_INTEGRATION` |
+| 平台付款 | `PENDING_INTEGRATION` | `UNSUPPORTED` |
+| 平台收款 | `PENDING_INTEGRATION` | `UNSUPPORTED` |
 | 账户状态 | `PENDING_INTEGRATION` | 文档无等价接口，初始 `UNSUPPORTED` |
 | 账户余额 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
 | 交易状态 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
@@ -1614,16 +1614,15 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 1. 中信和平安每个能力的最终 `bizFunc/channelNo/path`；
 2. 消费与普通转账的银行侧模式区分；
 3. 平安授权码重复申请的银行限流、旧验证码失效和有效期联调规则；
-4. 平安提现使用 `01`、`36` 或两者；
-5. 平安退款使用 `02`、`06` 的选择规则；
-6. 平安平台收款、平台付款的正式等价能力；
-7. 中信平台收付款字段及状态映射；
-8. 中信、平安账户余额不同账户范围的请求和单位；
-9. 平安账户状态确认无能力时的业务降级方式；
-10. 平台交易明细无法一一对应时是否允许 Front 多次查询聚合；
-11. 交易明细分页、游标、汇总与明细的统一规则；
-12. 查询通用结果的最终业务字段；
-13. 配置系统真实 HTTP/Feign 协议、认证和版本机制。
+4. 平安是否后续增加 `36` 短信提现；当前只激活 `01`；
+5. 平安是否后续增加 `06` 会员资金支付退款；当前只激活 `02`；
+6. 中信平台收付款租户可用的 `dealType/fundTp` 枚举；
+7. 中信、平安账户余额不同账户范围的请求和单位；
+8. 平安账户状态确认无能力时的业务降级方式；
+9. 平台交易明细无法一一对应时是否允许 Front 多次查询聚合；
+10. 交易明细分页、游标、汇总与明细的统一规则；
+11. 查询通用结果的最终业务字段；
+12. 配置系统真实 HTTP/Feign 协议、认证和版本机制。
 
 ---
 
@@ -1635,13 +1634,11 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 05-front代码开发约束.md（已完成）
 06-transfer-consume字段契约.md（已完成首版）
 07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
-08-账户查询详细设计.md
-09-交易状态查询详细设计.md
-10-平台交易明细查询详细设计.md
-11-交易明细查询详细设计.md
-12-退款详细设计.md
-13-提现详细设计.md
-14-平台收付款详细设计.md
+08-withdraw-refund-platform-transfer字段契约.md（已完成首版）
+09-账户查询详细设计.md
+10-交易状态查询详细设计.md
+11-平台交易明细查询详细设计.md
+12-交易明细查询详细设计.md
 ```
 
 每份逐接口文档必须包含：

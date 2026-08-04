@@ -37,6 +37,7 @@
 → 05-front代码开发约束
 → 06-transfer-consume字段契约（实现 transfer/consume 时）
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
+→ 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -57,7 +58,9 @@
 7. [06-transfer-consume字段契约](06-transfer-consume字段契约.md)：实现 transfer/consume 时必须完整阅读。
 8. [07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)：
    实现平安 `transferAuth/resendTransferAuthCode` 时必须完整阅读。
-9. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+9. [08-withdraw-refund-platform-transfer字段契约](08-withdraw-refund-platform-transfer字段契约.md)：
+   实现 `withdraw/refund/platformPay/platformReceive` 时必须完整阅读。
+10. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -77,6 +80,9 @@
 - `TenantBankConfigProvider`、通用账户配置对象、平安/中信账户特殊配置装配策略；
 - transfer/consume 公共金额、收付款会员字段，两家银行字段常量和原始响应码常量；
 - 平安 transferAuth/授权码发送重发的基础对象、专用结果、字段常量和明确映射契约；
+- 中信、平安 withdraw/refund 的请求对象和字段常量；中信平台收付款字段常量；
+- 中信退款固定为真退款 `/refund + bizFunc=23`，禁止迁移 mdl 的反向转账退款；
+- 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架。
@@ -86,7 +92,7 @@
 - 真实 `TenantBankConfigProvider` 远程查询；
 - LiteFlow `FlowExecutor`、组件、EL 规则和链路配置；
 - 中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射；
-- transfer/consume 和平安 transferAuth/授权码以外能力的 `specialData ↔ reserveMap` 最终字段契约；
+- 查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约；
 - `transSsn` 的银行规则、渠道交易流水、幂等和状态机；
 - 数据库表、Mapper、Repository；
 - 未经用户明确要求的测试类和编译验证。
@@ -139,6 +145,8 @@ AbstractBankHandle.prepareContext
 - 不增加 `FrontResponse`，API 必须直接返回 `R<具体结果>`；
 - 不让 Application、Router 或 Handle 返回公共 `R`；
 - 不返回 `null` 或模拟成功；
+- 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
+- 不为平安虚构 `platformPay/platformReceive` 等价接口，这两项固定为 `UNSUPPORTED`；
 - 不把银行差异字段放入公共 `baseData`；
 - 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
