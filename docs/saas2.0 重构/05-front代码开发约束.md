@@ -24,6 +24,8 @@
    Handle 各自重复查询。
 10. 银行账户配置必须按“通用强类型对象 + 银行 `accountSpecialData` 策略”组装；
     交易 `specialData` 与账户 `accountSpecialData` 必须完全分离。
+11. 渠道流水必须按“银行 + 交易业务”拆分；每张表必须保留来源业务主/子记录关联、业务数据加密快照
+    和 `reserve1/reserve2/reserve3`，禁止恢复单一统一渠道表。
 
 ---
 
@@ -309,6 +311,31 @@ channel/pingan
 
 银行协议 DTO 不得进入 `catering-api-front` 或 `catering-common-core`。
 
+### 3.8 渠道流水持久化
+
+渠道流水物理表固定为：
+
+```text
+中信：transfer / consume / refund / withdraw / platform_pay / platform_receive
+平安：transfer / consume / refund / withdraw
+```
+
+具体表名和字段以 [09-channel-transaction-ddl](09-channel-transaction-ddl.md) 为准。
+
+持久化实现必须：
+
+- 先按 `platformCode` 完成银行路由，再按 `capability` 显式选择该银行固定 Repository；
+- 使用枚举、显式 `switch` 或不可变的类型安全映射，不得接收表名或拼接动态表名；
+- 在调用银行前成功写入目标表 `INIT` 记录，发送前更新为 `SENDING`；
+- 保存来源业务系统、逻辑交易类型、业务主/子记录 ID、主/子订单及收付款门店；
+- 保存完整 `baseData` 和白名单 `specialData` 加密快照；
+- 每张表包含 `reserve1/reserve2/reserve3`，并遵守短期扩展、稳定后建明确列的约束；
+- 使用乐观锁控制状态更新，`UNKNOWN` 资金交易不得盲目重发；
+- 日志记录银行、能力、固定表路由结果、记录 ID、`frontSsn`、业务关联和状态变化，不记录快照内容。
+
+平安 `TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 与普通转账进入平安转账表，通过 `capability`
+区分；不为银行未支持的能力创建或写入空表。退款只能关联同银行原转账或消费表，不建立跨服务外键。
+
 ---
 
 ## 4. 请求对象约束
@@ -340,6 +367,8 @@ JSON 顶层固定为：
 禁止把银行私有字段放入 `baseData`，也禁止使用 `Object`、无约束 Map 代替已经确认的公共字段。
 
 交易公共基础对象必须包含 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店信息。
+还必须包含 `bizSystemCode/bizTransactionType/bizTransactionId/bizSubTransactionId`，用于逻辑关联来源
+业务交易主表和子表；字段值不得是物理表名，业务记录 ID 统一按字符串传递。
 `amount/fee` 均使用 `Long` 保存人民币分，`amount` 必须大于 0，`fee` 不能小于 0；禁止使用浮点数
 或在 Handle 内擅自转换为元。transfer/consume 必须提供双方 `accountId/memberId/name` 公共字段，
 不得把这些已有公共语义的字段塞入 `specialData`。
@@ -695,6 +724,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 不把银行私有字段提升为公共字段；
 - 不在业务请求中开放渠道号、功能码和请求路径；
 - 不让具体银行 Handle 绕过 `AbstractBankHandle` 自行加载租户银行配置；
+- 不建立单一 `front_channel_transaction`，也不把不同银行或不同交易业务写入同一渠道表；
+- 不允许调用方传物理表名，不使用字符串拼接动态表名；
+- 不漏存业务系统、逻辑业务类型、业务主/子记录 ID 和完整业务基础数据加密快照；
 - 不把 `tenantBankConfig` 增加到对外 `FrontRequest`；
 - 不静默覆盖重复银行 Handle；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
@@ -740,6 +772,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 新增对象、字段、record 组件和枚举值均有业务注释；
 - [ ] 银行账户配置组装策略按 `bankCode` 唯一注册；
 - [ ] 具体银行 Handle 没有重复实现配置查询；
+- [ ] 渠道流水按银行和交易业务选择固定 Repository，没有统一表或动态表名；
+- [ ] 目标渠道表包含业务主/子记录关联、业务基础数据加密快照和三个 reserve 字段；
+- [ ] 退款只关联同银行原转账或消费记录，原交易累计退款金额受并发控制；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；
 - [ ] 新错误码只添加到 `FrontErrorCode`；
 - [ ] 已知业务失败只抛出 `FrontException`；

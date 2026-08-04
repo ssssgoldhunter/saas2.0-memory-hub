@@ -701,69 +701,61 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 
 ## 14. Front 渠道交易流水
 
-### 14.1 定位
+### 14.1 定位与物理表边界
 
-渠道交易流水只记录：
+渠道交易流水记录：
 
-- Front 发给钱包/银行的交易请求；
-- 钱包/银行返回及最终结果；
-- Front 统一交易状态；
-- 与业务主订单、子订单的关联关系。
+- Front 发给钱包/银行的交易请求及两层银行原始响应；
+- Front 统一响应和归一化状态；
+- 来源业务系统、业务交易类型、业务主/子记录 ID 及主/子订单；
+- 付款/收款门店、金额、手续费等公共业务数据；
+- 完整业务 `baseData` 和白名单 `specialData` 的加密快照；
+- 退款与同银行原转账、消费记录的关联。
 
-首版使用一张统一表：
+物理表必须按“银行 + 交易业务”拆分：
 
 ```text
-front_channel_transaction
+中信 6 张：transfer / consume / refund / withdraw / platform_pay / platform_receive
+平安 4 张：transfer / consume / refund / withdraw
 ```
 
-不按银行或交易类型拆表。
+平安 `TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 共用平安转账表并通过 `capability` 区分；不为某银行
+不支持的能力创建空表。完整表名、字段和索引以
+[09-channel-transaction-ddl](09-channel-transaction-ddl.md) 为准。
 
-### 14.2 主要字段草案
+### 14.2 路由与业务关联
 
 ```text
-id
-tenant_id
-platform_code
-config_version
+platformCode → 银行 TransactionHandle
+capability   → 当前银行固定业务 Repository
+```
 
-front_ssn
-business_type
-interface_code
+Router 仍只按银行路由。持久化层使用枚举或显式 `switch` 选择固定 Repository，不接收来源业务表名，
+也不使用字符串拼接动态 SQL。
 
+每张表必须明确保存：
+
+```text
+biz_system_code
+biz_transaction_type
+biz_transaction_id
+biz_sub_transaction_id
 biz_request_no
 biz_order_no
 biz_sub_order_no
-original_front_ssn
-original_biz_order_no
-
-wallet_request_json
-wallet_response_json
-
-front_resp_code
-front_resp_desc
-front_status
-front_query_id
-front_remark
-front_trans_dt
-front_trans_tm
-
-channel_ssn
-channel_resp_code
-channel_resp_desc
-
-created_time
-completed_time
-updated_time
-version
+business_base_snapshot_cipher
+business_special_snapshot_cipher
+reserve1 / reserve2 / reserve3
 ```
 
 约束：
 
-- `front_ssn` 唯一；
-- 建议 `(tenant_id, biz_request_no)` 唯一；
-- 钱包请求和响应必须脱敏或加密保存；
-- 不保存完整银行配置和银行密钥；
-- 调用银行前创建 `PROCESSING` 流水；
+- `frontSsn` 使用全局生成算法，每张表再使用唯一索引；
+- 每张表按 `(tenant_id, biz_system_code, capability, biz_request_no)` 保证幂等；
+- 业务记录 ID 使用字符串兼容数字 ID 和 UUID，不建立跨服务数据库外键；
+- 钱包请求和响应必须过滤敏感数据并加密保存；
+- 不保存完整银行配置、银行密钥、验证码或明文账户敏感信息；
+- 调用银行前创建 `INIT`，实际发送前更新为 `SENDING`；
 - 超时或结果不确定时记录 `UNKNOWN`，不能直接记录失败；
 - 资金交易不能因超时自动盲目重发。
 
@@ -862,14 +854,15 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 06-transfer-consume字段契约.md（已完成首版）
 07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
 08-withdraw-refund-platform-transfer字段契约.md（已完成首版）
-09-账户查询详细设计.md
-10-交易状态查询详细设计.md
-11-平台交易明细查询详细设计.md
-12-交易明细查询详细设计.md
+09-channel-transaction-ddl.md（已完成首版）
+10-账户查询详细设计.md
+11-交易状态查询详细设计.md
+12-平台交易明细查询详细设计.md
+13-交易明细查询详细设计.md
 ```
 
-租户银行配置、`specialData`、渠道流水、LiteFlow、错误码状态机和文件能力文档在对应业务字段确认后
-继续追加；文件编号和拆分方式可随业务核对过程调整。
+租户银行配置、`specialData`、LiteFlow、错误码状态机和文件能力文档在对应业务字段确认后继续追加；
+文件编号和拆分方式可随业务核对过程调整。
 
 ---
 

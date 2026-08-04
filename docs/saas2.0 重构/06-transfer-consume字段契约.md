@@ -368,4 +368,16 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 8. 返回 `specialData` 只含响应白名单字段；
 9. 日志覆盖开始、路由、配置加载、请求发送、响应判定、落库、结束和异常，但不输出敏感报文。
 
+落库表固定为：
+
+```text
+中信 transfer → front_citic_transfer_transaction
+中信 consume  → front_citic_consume_transaction
+平安 transfer → front_pingan_transfer_transaction
+平安 consume  → front_pingan_consume_transaction
+```
+
+每条记录必须保存业务主/子记录关联字段、完整业务基础数据加密快照和三个 reserve 字段。详细规则见
+[09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
+
 本阶段只建立契约和代码框架，不在未确认全部字段前实现真实银行 HTTP、签名、加密和交易落库逻辑。

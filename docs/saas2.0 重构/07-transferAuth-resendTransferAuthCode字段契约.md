@@ -344,6 +344,11 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 8. 超时或无法确认银行是否受理时返回 `UNKNOWN/F400002`，资金交易不得盲目重试；
 9. 未经用户明确要求，不新增测试类、不运行测试、不执行编译。
 
+`transferAuth` 和 `resendTransferAuthCode` 每次真实调用均写入
+`front_pingan_transfer_transaction`，通过 `capability` 与普通 `TRANSFER` 区分；中信不支持这两个能力，
+不得创建中信授权空记录。每条记录必须保留业务主/子记录关联和完整业务基础数据加密快照，验证码不得
+进入字段或快照。详细 DDL 见 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
+
 ## 9. 仍需联调确认
 
 以下内容不阻塞框架和字段契约，但生产接入前必须确认：

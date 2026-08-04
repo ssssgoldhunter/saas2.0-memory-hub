@@ -327,6 +327,24 @@ com/chinaums/common/core/constant/front/
 7. 日志禁止输出完整请求、完整银行响应、银行卡号、账户姓名、证件号、密钥和完整 specialData；
 8. 未经用户明确要求，不写测试类、不执行编译或测试。
 
+落库表固定为：
+
+```text
+中信 refund/withdraw/platformPay/platformReceive
+→ front_citic_refund_transaction
+→ front_citic_withdraw_transaction
+→ front_citic_platform_pay_transaction
+→ front_citic_platform_receive_transaction
+
+平安 refund/withdraw
+→ front_pingan_refund_transaction
+→ front_pingan_withdraw_transaction
+```
+
+退款表额外保存同银行原交易能力、原渠道记录及原业务主/子记录；转账、消费原表保存累计确认退款金额。
+平安平台收付款不支持，不得落入其他表。详细 DDL 和并发规则见
+[09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
+
 最新 lsym UAT 实现只作为字段参考，以下代码不能迁移：调用方直接传 `orgPay/orgRec/orgTrans*`、
 `FUND_TP` 取 `platformUserRole`、未检查 `orgTransTime` 长度就截取日期、记录完整银行请求/响应和
 `appKey/url`。新 Front 日志应完整覆盖执行阶段，但只能记录脱敏定位信息。

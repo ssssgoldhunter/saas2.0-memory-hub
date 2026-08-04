@@ -301,7 +301,7 @@ catering-modules/
 | 使用旧平台结算配置对象 | 改为 `TenantBankConfigProvider`、通用账户配置对象和银行组装策略 |
 | `reserveMap` 字符串 Key 分散硬编码 | 改为版本化 `specialData` 契约和显式映射 |
 | 部分银行方法返回 `null` 或模拟成功 | 改为 `UNSUPPORTED/PENDING_INTEGRATION` 明确错误 |
-| 没有统一 Front 渠道交易流水 | 新增单表、幂等和状态机 |
+| 没有 Front 渠道交易流水 | 按银行、交易业务拆表，并新增幂等和状态机 |
 
 ---
 
@@ -442,8 +442,8 @@ catering-modules/catering-front
 src/main/resources/
 ├─ bootstrap.yml
 ├─ liteflow/front-flow.xml
-├─ mapper/FrontChannelTransactionMapper.xml
-└─ db/migration/V001__create_front_channel_transaction.sql
+├─ mapper/{bank}/{business}TransactionMapper.xml（待接入）
+└─ db/migration/V001__create_front_bank_business_transaction_tables.sql
 ```
 
 ---
@@ -1272,76 +1272,67 @@ THEN(
 
 ## 15. 渠道交易流水与幂等
 
-### 15.1 单表设计
+### 15.1 分银行、分交易业务表设计
 
-首期只建立：
+首期建立 10 张物理表：
 
 ```text
-front_channel_transaction
+中信：
+front_citic_transfer_transaction
+front_citic_consume_transaction
+front_citic_refund_transaction
+front_citic_withdraw_transaction
+front_citic_platform_pay_transaction
+front_citic_platform_receive_transaction
+
+平安：
+front_pingan_transfer_transaction
+front_pingan_consume_transaction
+front_pingan_refund_transaction
+front_pingan_withdraw_transaction
 ```
 
-不按银行或交易类型拆表。
+平安 `TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 与 `TRANSFER` 共用平安转账表，由 `capability`
+区分。中信不创建授权空表，平安不创建平台收付款空表。
 
-### 15.2 DDL 基线
+表路由分两步：Router 继续只按 `platformCode` 选银行 Handle，持久化端口再按 `capability` 显式选择该
+银行的固定业务 Repository。禁止接收物理表名或字符串拼接动态 SQL。
 
-```sql
-CREATE TABLE front_channel_transaction (
-    id                    BIGINT       NOT NULL,
-    tenant_id             VARCHAR(64)  NOT NULL,
-    platform_code         VARCHAR(32)  NOT NULL,
-    capability            VARCHAR(64)  NOT NULL,
-    interface_code        VARCHAR(64)  NOT NULL,
-    config_version        VARCHAR(32)  NULL,
+### 15.2 DDL 与业务关联基线
 
-    front_ssn             VARCHAR(64)  NOT NULL,
-    front_query_id        VARCHAR(64)  NULL,
-    biz_request_no        VARCHAR(64)  NOT NULL,
-    biz_order_no          VARCHAR(64)  NOT NULL,
-    biz_sub_order_no      VARCHAR(64)  NULL,
-    original_front_ssn    VARCHAR(64)  NULL,
-    original_biz_order_no VARCHAR(64)  NULL,
-    request_hash          VARCHAR(64)  NOT NULL,
+完整 DDL 不在母文档内重复，统一以以下两处为准：
 
-    bank_channel_no       VARCHAR(16)  NULL,
-    bank_biz_func         VARCHAR(32)  NULL,
-    bank_trans_ssn        VARCHAR(64)  NULL,
-    bank_query_id         VARCHAR(64)  NULL,
-    bank_resp_code        VARCHAR(64)  NULL,
-    bank_resp_desc        VARCHAR(512) NULL,
-
-    request_snapshot      MEDIUMTEXT   NULL,
-    response_snapshot     MEDIUMTEXT   NULL,
-    front_resp_code       VARCHAR(64)  NULL,
-    front_resp_desc       VARCHAR(512) NULL,
-    front_status          VARCHAR(32)  NOT NULL,
-    front_remark          VARCHAR(512) NULL,
-    front_trans_dt        CHAR(8)      NULL,
-    front_trans_tm        CHAR(6)      NULL,
-
-    send_started_at       DATETIME(3)  NULL,
-    completed_at          DATETIME(3)  NULL,
-    created_at            DATETIME(3)  NOT NULL,
-    updated_at            DATETIME(3)  NOT NULL,
-    version               INT          NOT NULL DEFAULT 0,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_front_ssn (front_ssn),
-    UNIQUE KEY uk_tenant_capability_request
-        (tenant_id, capability, biz_request_no),
-    KEY idx_biz_order (tenant_id, biz_order_no),
-    KEY idx_original_front_ssn (original_front_ssn),
-    KEY idx_bank_trans_ssn (platform_code, bank_trans_ssn),
-    KEY idx_status_time (front_status, updated_at)
-);
+```text
+代码：catering-modules/catering-front/src/main/resources/db/migration/
+      V001__create_front_bank_business_transaction_tables.sql
+文档：docs/saas2.0 重构/09-channel-transaction-ddl.md
 ```
 
-请求、响应快照必须先脱敏或加密，不保存密钥和完整租户银行配置。
+每张表必须保留来源业务关联：
+
+```text
+biz_system_code
+biz_transaction_type
+biz_transaction_id
+biz_sub_transaction_id
+biz_request_no
+biz_order_no
+biz_sub_order_no
+```
+
+并保存金额、手续费、币种、业务日期时间、收付款门店、完整 `baseData` 加密快照及白名单
+`specialData` 加密快照。每张表统一包含 `reserve1/reserve2/reserve3` 三个 `VARCHAR(1024)` 临时扩展
+字段。退款表额外关联同银行原转账或消费记录；转账、消费表保存 `refunded_amount`。
+
+不保存来源业务物理表名，不建立跨服务数据库外键。请求、响应快照必须白名单过滤并加密，不保存密钥、
+验证码和完整租户银行配置。
 
 ### 15.3 幂等规则
 
 幂等唯一键：
 
 ```text
-tenantId + capability + bizRequestNo
+tenantId + bizSystemCode + capability + bizRequestNo
 ```
 
 处理规则：
@@ -1350,7 +1341,8 @@ tenantId + capability + bizRequestNo
 2. 已存在且 `requestHash` 相同：返回原结果或当前处理中状态；
 3. 已存在但 `requestHash` 不同：返回 `IDEMPOTENCY_CONFLICT`；
 4. `UNKNOWN` 状态不能再次发起资金请求，应走交易状态查询；
-5. 退款还必须校验原交易、累计退款金额和退款防重。
+5. 幂等键在目标银行、目标业务物理表内检查；`frontSsn` 由全局生成器保证跨表不重复；
+6. 退款还必须校验同银行原交易、累计退款金额和退款防重。
 
 ### 15.4 状态机
 
@@ -1573,8 +1565,10 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 
 ### 19.6 数据和幂等
 
-- [ ] 创建 DDL；
+- [x] 创建按“银行 + 交易业务”拆分的 10 张渠道表 DDL；
+- [x] 交易请求增加业务系统、逻辑交易类型及业务主/子记录 ID；
 - [ ] 创建 Entity、Mapper、Repository、Service；
+- [ ] 创建显式银行业务表路由和仅银行内多表定位器；
 - [ ] 创建流水号生成器；
 - [ ] 创建请求 Hash 和幂等逻辑；
 - [ ] 创建受控状态机；
@@ -1644,10 +1638,11 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 06-transfer-consume字段契约.md（已完成首版）
 07-transferAuth-resendTransferAuthCode字段契约.md（已完成首版）
 08-withdraw-refund-platform-transfer字段契约.md（已完成首版）
-09-账户查询详细设计.md
-10-交易状态查询详细设计.md
-11-平台交易明细查询详细设计.md
-12-交易明细查询详细设计.md
+09-channel-transaction-ddl.md（已完成首版）
+10-账户查询详细设计.md
+11-交易状态查询详细设计.md
+12-平台交易明细查询详细设计.md
+13-交易明细查询详细设计.md
 ```
 
 每份逐接口文档必须包含：
