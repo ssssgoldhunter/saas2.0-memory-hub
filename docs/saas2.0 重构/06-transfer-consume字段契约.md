@@ -233,9 +233,8 @@ R.data.specialData
 └─ 银行特有且允许业务系统使用的响应字段
 ```
 
-只要 Handle 已经完成银行结果判定，业务成功和明确业务失败的顶层 `R.code` 都是数值 `200`。
-`R.code=200` 表示 Front 正常完成本次请求处理，不代表银行交易一定成功；交易是否成功必须读取
-`data.frontRespCode/frontRespDesc/frontStatus`。
+只有 Front 业务成功时顶层 `R.code=200`。银行明确失败或钱包业务失败时顶层也使用失败码（当前
+公共 `R.FAIL=500`），并通过 `data.frontRespCode/frontRespDesc/frontStatus` 保留具体业务原因。
 
 所有具体结果都继承 `FrontBaseResult`。Handle 应调用：
 
@@ -258,12 +257,12 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 
 中信 `00000`、平安 `000000`、钱包 `D5000000/success` 均不得成为 `frontRespCode`。
 
-例如银行明确拒绝时，完整外层仍为：
+例如银行明确拒绝时：
 
 ```json
 {
-  "code": 200,
-  "msg": "操作成功",
+  "code": 500,
+  "msg": "银行拒绝交易",
   "data": {
     "frontRespCode": "F400004",
     "frontRespDesc": "银行拒绝交易",

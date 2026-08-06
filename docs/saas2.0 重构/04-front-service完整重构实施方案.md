@@ -620,7 +620,7 @@ remark             业务备注
 | `ConsumeBusinessData` | 付款账户、收款账户、消费场景、订单信息 |
 | `RefundBusinessData` | 原 `frontSsn`、原业务主/子订单、退款金额、手续费、退款原因 |
 | `WithdrawBusinessData` | 提现账户、会员、银行卡、账户名称、持卡人名称、提现金额、手续费、备注 |
-| `PlatformTransferBusinessData` | 用户账户、平台账户类型、金额、业务方向由API确定 |
+| `PlatformTransferBusinessData` | 用户侧账户和名称、金额；平台侧登记簿由中信商户上下文隐式确定，业务方向由 API 确定 |
 
 银行特有但不具备公共业务语义的字段留在 `specialData`，不得为迁就某家银行污染公共 DTO。
 
@@ -803,7 +803,8 @@ tenantBankConfig: TenantBankConfigSnapshot
 `AbstractBankHandle.prepareContext()` 使用 `tenantId + bankCode` 查询并装配，不由调用方传入。
 当前 Application Service 已调用 `FrontFlowContext.from(request, capability)` 完成
 `FrontRequest → 统一业务 Slot` 转换，并在路由、配置装配、分派、完成和失败时维护阶段。
-LiteFlow `FlowExecutor`、NodeComponent 和 EL 规则链尚未接入，不得把 Context 骨架描述成完整流程编排已完成。
+LiteFlow `FlowExecutor`、NodeComponent 和 EL 规则链已经接入；当前按两种模板定义 13 条具名链。
+持久层相关节点仍为空放行，不能把“流程已编排”误写成“渠道持久化已完成”。
 
 ### 11.4 Handle 职责边界
 
@@ -1213,7 +1214,8 @@ walletReserve.putAll(specialData);
 
 LiteFlow 只编排公共步骤。银行路由仍由 Java Router 完成。
 
-基于当前工程 `2.12.1`，首版使用两个简单串行链，避免在规则中引入银行判断和复杂异常分支。
+基于当前工程 `2.12.1`，运行时使用两种简单串行模板，并按 8 个交易方法、5 个查询方法定义
+13 条具名链。规则中不做银行判断，银行选择仍由 Java Router/Registry 完成。
 
 ### 14.2 交易链
 
@@ -1254,8 +1256,8 @@ THEN(
 ```text
 1. 把 FrontErrorCode 的 code/msg 写入 FrontFlowContext Slot 的 frontRespCode/frontRespDesc；
 2. 调用 this.setIsEnd(true) 中断流程（LiteFlow 视为用户主动结束，response.isSuccess 仍为 true）；
-3. FrontFlowExecutor 执行后检查 Slot.isBusinessFailed()，
-   若已标记业务失败则返回 R.fail(code, msg, FrontBaseResult)。
+3. FrontFlowExecutor 执行后返回带统一错误码的结果，Application Service 检查 Slot，
+   若已标记业务失败则返回 R.fail(message, FrontBaseResult)。
 ```
 
 `BankHandle.requireCapability()` 不再直接 `throw FrontException`，而是返回 `IntegrationStatus`；
@@ -1266,8 +1268,8 @@ throw"的一致原则。
 由 `FrontExceptionHandler` 统一收口，返回 `R.fail(INTERNAL_ERROR, FrontBaseResult)`，不向调用方
 泄漏堆栈。
 
-两类异常都不改变 `R` 的语义：业务结果只通过 `R.data.frontRespCode/frontRespDesc/frontStatus`
-表达，顶层 `R.code=200` 表示 Front 已正常完成本次处理判定。
+`R` 语义固定：只有 Front 业务成功时顶层 `R.code=200`；银行明确失败、钱包业务失败、路由或能力
+失败时顶层也使用失败码，同时通过 `R.data.frontRespCode/frontRespDesc/frontStatus` 表达具体原因。
 
 资金交易发生超时或无响应时仍禁止自动盲目重发，应进入 `UNKNOWN` 状态由交易状态查询确认；
 `UNKNOWN` 也属于业务异常，由 Handle 节点写入 Slot 后 `setIsEnd`。
@@ -1430,23 +1432,23 @@ public enum IntegrationStatus {
 - 禁止空返回；
 - 禁止为通过测试而模拟银行成功。
 
-### 17.2 初始能力矩阵
+### 17.2 当前能力矩阵
 
 | Front 能力 | 中信 | 平安 |
 |---|---|---|
-| 普通转账 | 待按中信文档接入 | 待按平安文档接入 |
-| 授权转账 | 文档未证明支持，初始 `UNSUPPORTED` | `PENDING_INTEGRATION` |
-| 授权码重发 | `UNSUPPORTED` | `PENDING_INTEGRATION` |
-| 消费 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 退款 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 提现 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 平台付款 | `PENDING_INTEGRATION` | `UNSUPPORTED` |
-| 平台收款 | `PENDING_INTEGRATION` | `UNSUPPORTED` |
-| 账户状态 | `PENDING_INTEGRATION` | 文档无等价接口，初始 `UNSUPPORTED` |
-| 账户余额 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 交易状态 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 平台交易明细 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
-| 交易明细 | `PENDING_INTEGRATION` | `PENDING_INTEGRATION` |
+| 普通转账 | `SUPPORTED` | `SUPPORTED` |
+| 授权转账 | `UNSUPPORTED` | `SUPPORTED` |
+| 授权码重发 | `UNSUPPORTED` | `SUPPORTED` |
+| 消费 | `SUPPORTED` | `SUPPORTED` |
+| 退款 | `SUPPORTED`，原交易持久化补全待接入 | `SUPPORTED`，原交易持久化补全待接入 |
+| 提现 | `SUPPORTED` | `SUPPORTED` |
+| 平台付款 | `SUPPORTED` | `UNSUPPORTED` |
+| 平台收款 | `SUPPORTED` | `UNSUPPORTED` |
+| 账户状态 | `SUPPORTED` | `PENDING_INTEGRATION`，待人工核对 |
+| 账户余额 | `SUPPORTED` | `PENDING_INTEGRATION`，待人工核对 |
+| 交易状态 | `SUPPORTED`，原渠道字段待持久层补齐 | `PENDING_INTEGRATION`，待人工核对 |
+| 平台交易明细 | `SUPPORTED`，中信只支持单日 | `PENDING_INTEGRATION`，待人工核对 |
+| 交易明细 | `SUPPORTED`，中信只支持单日 | `PENDING_INTEGRATION`，待人工核对 |
 
 实际银行能力和 `bizFunc` 以本目录的中信、平安能力汇总及后续逐接口文档为准。
 
@@ -1550,10 +1552,10 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 ### 19.3 公共执行框架
 
 - [x] 创建 Application Service；
-- [ ] 创建 `FrontFlowContext`；
-- [ ] 创建两个 LiteFlow chain；
-- [ ] 创建全部公共组件；
-- [ ] 创建 `FrontFlowExecutor` 和异常 Finalizer。
+- [x] 创建 `FrontFlowContext`；
+- [x] 按两种模板创建 13 条具名 LiteFlow chain；
+- [x] 创建全部公共组件；
+- [x] 创建 `FrontFlowExecutor` 和统一异常收口。
 
 ### 19.4 路由和银行骨架
 

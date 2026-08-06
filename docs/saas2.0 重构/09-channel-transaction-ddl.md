@@ -261,8 +261,9 @@ tenant/platform/capability
 
 ## 9. 退款关联与并发控制
 
-退款先按 `platformCode + originalFrontSsn` 在同银行转账、消费表定位原记录，并确认
-`original_capability`。必须校验租户、原业务关联、订单、原状态、原金额、原账户和资金类型。
+退款先按 `platformCode + originalFrontSsn` 或 `platformCode + originalBizOrderNo +
+originalBizSubOrderNo` 在同银行转账、消费表定位原记录，并确认 `original_capability`；两组同时提供时
+必须命中同一记录。随后校验租户、原业务关联、订单、原状态、原金额、原账户和资金类型。
 
 同一数据库事务中：
 
@@ -315,3 +316,52 @@ tenant/platform/capability
 
 所有渠道表均不建立跨表外键。业务表可能位于其他服务或数据库；退款与原交易的完整性由 Front
 Repository/Domain Service 在事务内显式校验。
+
+## 12. 分库与分区
+
+### 12.1 分库：ShardingSphere-JDBC（精确分片）
+
+10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用 ShardingSphere-JDBC，
+由 SQL 中的分片键自动路由，Handle 代码不需要手动切换数据源。
+
+- **分片键**：`data_source_id`（精确分片，业务传什么库就路由到什么库，不做 hash）；
+- **分片值来源**：FeignClient 请求拦截器从 HTTP 报文头 `data-source-id` 获取，
+  注入到 `FrontBaseRequestData.dataSourceId`；
+- **ShardingSphere 配置**：放本地 `resources/shardingsphere-config.yaml`，
+  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml`；
+- **不使用 dynamic-datasource**：ShardingSphere 接管 DataSource，`@DS` / `DynamicDataSourceContextHolder`
+  在 catering-front 模块不再用于数据源切换；
+- `data_source_id` 不存入任何渠道流水表列（表本身分布在多个库，同一表名存在于每个库实例）。
+
+ShardingSphere 配置结构和数据节点示例见
+[09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md) §1。
+
+### 12.2 分区：MySQL LINEAR KEY
+
+10 张渠道流水表均使用 MySQL 表分区。
+
+- **分区方式**：`PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`；
+- **分区键**：`tenant_id` + `store_id`（VARCHAR 列，LINEAR KEY 原生支持）；
+- **分区数**：30 个；
+- `tenant_id`/`store_id` 必须是纯数字字符串（如 "10001"）；
+- **ShardingSphere 与 MySQL 分区共存**：ShardingSphere 先路由到正确的库实例，
+  库内的 MySQL 再按 LINEAR KEY 定位分区，两层路由不冲突。
+
+分区 ALTER SQL 见 [09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md) §2。
+
+### 12.3 dataSourceId 注入链路
+
+4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由拦截器链自动注入：
+
+```text
+FeignClient 调用方
+  → HTTP 请求头: tenantId / clientId / platformCode / dataSourceId
+  → FeignRequestInterceptor（发送端）转发 header 到下游
+  → RequestContextInterceptor（接收端 MVC 拦截器）提取到 ThreadLocal
+  → FrontRequestBodyAdvice（RequestBodyAdvice）反序列化后注入到 baseData
+  → Application Service（零改动）
+  → Handle 使用 dataSourceId 做 ShardingSphere Hint 路由
+```
+
+详细类职责和注入规则见
+[05-front代码开发约束](05-front代码开发约束.md) §3.10.3。

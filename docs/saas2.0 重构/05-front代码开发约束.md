@@ -15,8 +15,10 @@
 3. 跨模块公共返回、Front 错误码和 Front 公共异常统一放在 `catering-common-core`。
 4. 所有对外 API 必须直接返回 `R<具体结果>`，禁止增加 `FrontResponse` 中间包装层；例如交易返回
    `R<FrontTransactionResult>`。
-5. Controller 负责包装 `R`；Application、Router、Handle 不返回 `R`。
-6. 业务可预期异常统一抛出 `FrontException`，由 `FrontExceptionHandler` 收口。
+5. API、Controller、Application Service 均使用同一个 `R<具体结果>` 签名；Controller 只透传
+   Application Service 返回值，Router 和 Handle 不返回 `R`。
+6. LiteFlow 节点遇可预期业务失败时写 Slot 后中断；非 LiteFlow 路径抛 `FrontException`；
+   系统异常继续抛出，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
 8. 对外请求固定为 `baseData + specialData` 两段；进入 Handle 后由统一父类增加
    `tenantBankConfig`，形成三段式内部上下文。
@@ -138,7 +140,8 @@ Feign/API 接口
 → 银行或钱包平台
 ```
 
-异常统一沿调用栈抛出，由 `FrontExceptionHandler` 转换为 `R<FrontBaseResult>`。
+LiteFlow 业务失败写 Slot 并主动结束；非 LiteFlow 业务异常和系统异常沿调用栈抛出，由
+`FrontExceptionHandler` 转换为 `R<FrontBaseResult>`。
 
 ### 3.1 Controller
 
@@ -147,7 +150,7 @@ Controller 必须：
 - 实现 `catering-api-front` 中的 API 接口；
 - 接收已经定义好的强类型 `FrontRequest<T>`；
 - 调用 Application Service；
-- 使用 `R.ok(applicationService.xxx(...))` 包装正常返回。
+- 直接透传 Application Service 返回的 `R<具体结果>`，不得再次 `R.ok(...)` 包装。
 
 Controller 禁止：
 
@@ -169,7 +172,8 @@ Application Service 负责：
 - 幂等、渠道流水和状态机协调；
 - 记录业务分派、结果与耗时日志。
 
-Application Service 返回确定类型的 `FrontBaseResult` 子类，禁止返回 `R`。
+Application Service 与内部 API 方法签名一致，返回 `R<具体结果>`：Front 业务成功使用 `R.ok(result)`，
+银行业务失败、能力失败或其他可预期业务失败使用 `R.fail(message, result)`。
 
 Application Service 禁止：
 
@@ -396,6 +400,108 @@ List<FrontCiticTransferVo> voList = MapstructUtils.convert(entityList, FrontCiti
 转换属于银行协议组装（字段名与 baseData 不同、需加密和常量映射），不在本约束范围，仍按现有
 Handle 显式组装方式。生成转换类由编译期注解处理器完成，禁止手工编辑 `target/generated-sources`。
 
+#### 3.9.1 关于 lsym `Converter` 的定位（重要）
+
+旧项目 lsym 的 `com.chinaums.erp.slhy.catering.consume.domain.Converter` 采用**原生 MapStruct**
+（`@Mapper(componentModel="spring")` 接口 + 80+ 个 `reqToDto` 重载方法），由
+`org.mapstruct:mapstruct-processor` 在编译期生成 `ConverterImpl`，零反射、性能等价手写 `set/get`。
+它的核心价值是“用编译期代码生成替代手写字段拷贝、集中管理转换关系”，这一思想必须继承。
+
+但新 SaaS 工程已统一选用 **mapstruct-plus**（`io.github.linpeilie:mapstruct-plus-spring-boot-starter`），
+并在 `catering-system` 的 `MpConfigDataVo/MpConfigDataBo → MpConfigData` 上落地了
+`@AutoMapper` + `MapstructUtils.convert` 范式。两种风格底层都是 MapStruct，生成的赋值代码质量一致；
+区别只在声明位置（集中接口 vs. 分散注解）和调用方式（注入 Bean vs. 静态工具）。
+
+为避免同一工程出现两套互不兼容的转换风格，catering-front 的对象转换**固定采用 mapstruct-plus 范式**：
+
+- 不在 `catering-front/pom.xml` 引入原生 `org.mapstruct:mapstruct` / `mapstruct-processor`；
+- 不新建 `@Mapper(componentModel="spring")` 风格的集中式 `Converter` 接口；
+- lsym 的 `Converter` **只作为“存在哪些 Req/Res ↔ Entity/Vo 转换关系”的参考来源**，
+  迁移时按目标 Entity 在 `domain/vo`、`domain/bo` 上标注 `@AutoMapper(target = XxxEntity.class)`，
+  并通过 `MapstructUtils.convert(source, XxxEntity.class)` 调用；
+- 当 `@AutoMapper` 无法覆盖（多源合并、复杂表达式）时，再按 §3.9 第 5 条在
+  `com.chinaums.front.domain.convert` 下新建显式 `@Mapper extends BaseMapper<Source, Target>` 接口，
+  此时仍使用 mapstruct-plus 提供的 `BaseMapper`，不引入原生 mapstruct 坐标。
+
+lsym `Converter` 的源码位置（仅供查阅转换关系，不复制其依赖与写法）：
+
+```text
+/Users/limeng/workspaces/IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-consume/
+  fund-catering-consume-service/src/main/java/com/chinaums/erp/slhy/catering/consume/domain/Converter.java
+```
+
+lsym 该模块依赖的原生 mapstruct 坐标（`org.mapstruct:mapstruct` + `mapstruct-processor`，版本跟随
+根 pom `mapstruct.version=1.6.3`）**不引入新工程**；新工程已经通过 `mapstruct-plus-spring-boot-starter`
+间接获得 mapstruct 运行时 API，并由根 pom 的 `annotationProcessorPaths` 注册
+`mapstruct-plus-processor` + `lombok-mapstruct-binding`，编译期代码生成能力已具备。
+
+### 3.10 分库与分区约束
+
+#### 3.10.1 分库：ShardingSphere（精确分片）
+
+catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用
+**ShardingSphere-JDBC**（不是 dynamic-datasource），由 SQL 中的分片键自动路由。
+
+- **分片键**：`data_source_id`（精确分片，业务传什么库就路由到什么库，不做 hash）；
+- **分片值来源**：FeignClient 请求拦截器从 HTTP 报文头 `data-source-id` 获取，注入到
+  `FrontBaseRequestData.dataSourceId`；ShardingSphere 从 SQL 上下文或 Hint 中读取分片值；
+- **配置位置**：ShardingSphere 配置文件放在 `resources/shardingsphere-config.yaml`，
+  `spring.datasource.url` 指向该文件（参照 mdl report 模块做法）；
+- **不使用 dynamic-datasource**：ShardingSphere 接管 DataSource 后，`@DS` 注解和
+  `DynamicDataSourceContextHolder` 不再生效。catering-front 模块不再依赖 dynamic-datasource
+  做数据源切换（但 catering-common-mybatis 的传递依赖保留，不影响其他模块）；
+- `data_source_id` 不存入任何渠道流水表列（表本身分布在多个库，同一表名存在于每个库实例）。
+
+#### 3.10.2 分区：MySQL LINEAR KEY
+
+10 张渠道流水表均使用 MySQL 表分区，提升大表查询性能和数据管理能力。
+
+- **分区方式**：`PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`；
+- **分区键**：`tenant_id` + `store_id`（VARCHAR 列，LINEAR KEY 分区原生支持任意类型列）；
+- **分区数**：30 个（在创建租户时按租户门店量规划，后续可按需调整）；
+- `tenant_id`/`store_id` 必须是纯数字字符串（如 "10001"），由业务系统保证；
+- 分区 DDL 见 [09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md)。
+
+#### 3.10.3 dataSourceId 注入链路
+
+4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由拦截器链自动注入，不需要
+Application Service 或 Handle 手动读取 header：
+
+```text
+FeignClient 调用方
+  → HTTP 请求头: tenantId / clientId / platformCode / dataSourceId
+  → FeignRequestInterceptor（catering-common-feign，发送端）
+     从当前 HttpServletRequest 读 header，转发到下游
+  → RequestContextInterceptor（catering-common-feign，接收端 MVC 拦截器）
+     preHandle: 从 header 提取 4 个值 → RequestContext（ThreadLocal）
+  → FrontRequestBodyAdvice（catering-front，RequestBodyAdvice）
+     afterBodyRead: @RequestBody 反序列化后，从 RequestContext 取值
+     直接 set 到 FrontBaseRequestData 的 tenantId/platformCode/dataSourceId
+  → Controller 收到 request（baseData 已填好）
+  → Application Service（零改动，不需要手动注入）
+  → Handle 通过 context.baseData().getDataSourceId() 拿到
+  → FrontDataSourceHelper.use(dataSourceId, ...) 设置 ShardingSphere Hint
+  → RequestContextInterceptor.afterCompletion: clear() 清理 ThreadLocal
+```
+
+涉及类：
+
+| 类 | 模块 | 职责 |
+|---|---|---|
+| `RequestContext` | catering-common-core | ThreadLocal 存 4 个参数 |
+| `RequestConstants` | catering-common-core | header 名常量（`tenantId`/`clientId`/`platformCode`/`dataSourceId`） |
+| `FeignRequestInterceptor` | catering-common-feign | 发送端：从当前请求 header 读 4 个值，转发到下游 Feign 调用 |
+| `RequestContextInterceptor` | catering-common-feign | 接收端：从收到的 header 提取到 ThreadLocal；`afterCompletion` 清理 |
+| `FeignConfiguration` | catering-common-feign | 注册 `RequestContextInterceptor`（`WebMvcConfigurer.addInterceptors`） |
+| `FrontRequestBodyAdvice` | catering-front | `RequestBodyAdvice.afterBodyRead`：从 RequestContext 填充到 baseData |
+
+`FrontBaseRequestData` 的 `dataSourceId` 字段**不要求调用方在请求体中传入**；它由
+`FrontRequestBodyAdvice` 从报文头自动注入。如果请求头和请求体同时传了 `dataSourceId`，
+以请求体为准（Advice 不覆盖已有值）。
+
+Application Service **不做任何 header 读取或注入**——到达 Service 时，`baseData` 的 4 个
+字段已经被拦截器+Advice 填充好。
+
 ---
 
 ## 4. 请求对象约束
@@ -454,8 +560,8 @@ failure
 
 `baseData/result` 在非泛型 Slot 中以公共父类型保存，组件必须通过
 `requireBaseData/requireResult/requireBankRequestContext` 受控读取，禁止散落强制类型转换。
-当前仅完成 Context 和执行阶段维护，尚未接入 LiteFlow 执行器、节点及规则链。后续 AI 必须复用
-`FrontFlowContext`，禁止另建第二套 Slot。
+当前已接入 LiteFlow 执行器、节点和 13 条具体规则链。后续 AI 必须复用 `FrontFlowContext`，
+禁止另建第二套 Slot。
 
 ### 4.3 `specialData`
 
@@ -483,7 +589,8 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 [08-withdraw-refund-platform-transfer字段契约](08-withdraw-refund-platform-transfer字段契约.md)
 为准。退款必须调用银行真退款产品：中信使用 `/refund + bizFunc=23`，平安当前使用
 `/refund + bizFunc=02`；禁止反向转账模拟退款。`platformPay/platformReceive` 仅中信支持，平安必须
-返回 `UNSUPPORTED`。原退款银行字段必须从原渠道流水加载，平台银行账号必须由 Front 内部解析。
+返回 `UNSUPPORTED`。原退款银行字段必须从原渠道流水加载。中信 2041/2042 的平台侧由商户自有
+资金登记簿隐式确定，不传平台银行账号，业务系统也不得伪造该账号。
 
 中信退款的最新代码参考为 `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy` 分支
 `lsym_20260625_limeng_refundTask`、提交 `3dff8255d6`。可以参考其 `ZxRefundRequest`、
@@ -502,11 +609,12 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 明细固定使用 `/query-trans-details + bizFunc=25 + chnlNo=0010`，登记簿交易明细固定使用同一路径的
 `bizFunc=24 + chnlNo=0010`。两个 Front 方法都不得继续按提现、手续费、来账等类型拆分 Handle 方法。
 
-中信明细查询的 `startDate/endDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
+中信明细查询的 `transactionDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
 `specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
-银行一次只支持一个交易日，真实 Handle 必须把日期范围按日展开，并通过 Front 生成的
-`continuationToken` 维护当前日期和银行页码。银行文档标注忽略的 `beginDate/endDate` 不得当作有效银行
-字段透传。中信 `24` 每页固定最多 50 条，`25` 每页固定最多 20 条，业务 `pageSize` 不得覆盖银行限制。
+银行 24/25 一次只支持一个交易日，不支持跨日范围查询。Handle 将 `transactionDate` 映射为单个
+`reserve.TRANS_DATE`，通过 Front 页码或 `continuationToken` 维护银行页码。银行文档标注忽略的
+`beginDate/endDate` 不得当作有效字段透传。中信 `24` 每页固定最多 50 条，`25` 每页固定最多 20 条，
+业务 `pageSize` 不得覆盖银行限制。
 
 ### 4.4 Handle 内部三段式上下文
 
@@ -591,11 +699,11 @@ R<FrontPageResult<TransactionDetailItem>>
 | `R.data` 的强类型字段 | Front 跨银行统一业务结果和 Front 错误码 |
 | `R.data.specialData` | 当前银行、当前能力的特殊返回字段；由 `FrontBaseResult` 统一定义 |
 
-银行结果已经被 Handle 正常识别时，无论银行业务成功还是明确业务失败，Controller 都使用
-`R.ok(result)`，因此顶层 `R.code` 固定为全局成功码数值 `200`。银行业务成功时
-`data.frontRespCode="200"`；银行业务失败时由 `data.frontRespCode/frontRespDesc/frontStatus`
-表达，不得为了银行拒绝而把顶层 `R.code` 改为 500。只有请求校验、配置、路由、适配器或 Front
-内部异常等未形成正常银行业务结果的场景才使用 `R.fail(...)`。
+只有 Front 业务成功时才使用 `R.ok(result)`：顶层 `R.code=200`，同时
+`data.frontRespCode="200"`。银行明确拒绝或钱包业务失败时，Application Service 必须使用
+`R.fail(message, result)`，因此顶层也是失败码（当前公共 `R.FAIL=500`），同时保留
+`data.frontRespCode/frontRespDesc/frontStatus` 供内部调用方识别具体 Front 业务原因。
+请求校验、配置、路由、适配器失败及系统异常同样返回顶层失败，禁止出现“顶层成功、data 失败”。
 
 `FrontBaseResult` 必须统一定义 `frontRespCode/frontRespDesc/specialData`。交易明细查询中，每条
 `TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`；分页结果自身
@@ -636,8 +744,8 @@ R<FrontPageResult<TransactionDetailItem>>
 
 ```text
 Handle              → FrontBaseResult 的确定子类
-Application Service → FrontBaseResult 的确定子类
-Controller          → R.ok(具体结果)
+Application Service → R<具体结果>
+Controller/API      → 原样透传 R<具体结果>
 Exception Handler   → R.fail(message, FrontBaseResult)
 ```
 
@@ -705,7 +813,7 @@ catering-common-core
 
 ### 7.1 何时抛出 `FrontException`
 
-以下可预期业务失败必须抛出 `FrontException`：
+以下可预期业务失败在非 LiteFlow 路径必须抛出 `FrontException`；LiteFlow 节点按 §7.3 写 Slot 后中断：
 
 - 银行不支持；
 - 能力不支持；
@@ -748,19 +856,19 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 
 ### 7.3 LiteFlow 链内节点的业务异常中断
 
-接入 LiteFlow 后，链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期业务失败时，**优先采用
-中断流程方式，不抛 `FrontException`**：
+LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期业务失败时，采用中断流程方式：
 
 1. 把 `FrontErrorCode` 的 `code/msg` 写入 `FrontFlowContext` Slot 的 `frontRespCode/frontRespDesc`；
 2. 调用 `this.setIsEnd(true)`（LiteFlow 视为用户主动结束，`response.isSuccess` 仍为 `true`）；
-3. `FrontFlowExecutor` 执行后检查 Slot，若已标记业务失败则返回
-   `R.fail(code, msg, FrontBaseResult)`。
+3. `FrontFlowExecutor` 执行后返回带 Front 错误码的结果，Application Service 检查 Slot 并返回
+   `R.fail(message, FrontBaseResult)`。
 
 `BankHandle.requireCapability()` 因此改为返回 `IntegrationStatus`，由调用节点判断状态后决定 `setIsEnd`，
 不再直接 `throw`。
 
-系统级异常（NPE、数据库连接、JSON 解析等非业务错误）仍直接 throw，由 `FrontExceptionHandler` 收口。
-`FrontException` 与 `FrontExceptionHandler` 兜底机制保留，覆盖非 LiteFlow 路径和系统异常。
+系统级异常（NPE、数据库连接、JSON 解析等非业务错误）不写业务失败 Slot，继续 throw，由
+`FrontExceptionHandler` 收口。`FrontException` 保留用于非 LiteFlow 路径；若具体 Handle 在 LiteFlow
+分派节点内抛出 `FrontException`，分派节点必须只捕获该类型并转写 Slot，其他异常继续抛出。
 
 ### 7.4 禁止事项
 
@@ -824,7 +932,18 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - 不在未确认字段时猜测银行协议；
 - 持久层 Entity ↔ VO/BO 转换不手写 `setXxx(getXxx())`，必须用 `@AutoMapper` + `MapstructUtils.convert`（见 §3.9）；
 - 不在 catering-front `pom.xml` 重复声明 MapStruct 依赖，统一走 `catering-common-core` 传递；
-- 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）。
+- 不引入原生 `org.mapstruct:mapstruct` / `mapstruct-processor`，不新建 lsym 风格的
+  `@Mapper(componentModel="spring")` 集中式 `Converter` 接口；对象转换固定用 mapstruct-plus 的
+  `@AutoMapper` + `MapstructUtils.convert`（见 §3.9 / §3.9.1）；
+- 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）；
+- 不在 catering-front 使用 `dynamic-datasource`（`@DS` / `DynamicDataSourceContextHolder`）做分库切换；
+  分库固定用 ShardingSphere-JDBC + Hint 模式（见 §3.10.1）；
+- 不在渠道流水表加 `data_source_id` 列——分库由 Hint 动态路由，表结构不变；
+- 不在 Application Service 手动读 HTTP header 或调用 `injectHeaderFields`——参数注入由
+  `RequestContextInterceptor` + `FrontRequestBodyAdvice` 自动完成（见 §3.10.3）；
+- 不绕过 `FrontDataSourceHelper.use(dataSourceId, ...)` 直接调 Mapper——所有渠道流水
+  Mapper 调用必须在 Hint 作用域内，否则 ShardingSphere 无法路由到正确库；
+- 10 张渠道流水表必须使用 `LINEAR KEY (tenant_id, store_id) PARTITIONS 30` 分区（见 §3.10.2）。
 
 ---
 
@@ -852,7 +971,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 依赖方向没有反转或循环；
 - [ ] API 返回类型是 `R<具体结果>`，不存在 `FrontResponse` 中间包装层；
 - [ ] `specialData` 由 `FrontBaseResult` 统一提供；
-- [ ] Controller 只做入口和 `R` 包装；
+- [ ] API、Controller、Application Service 都返回同一个 `R<具体结果>`，Controller 不重复包装；
 - [ ] Application Service 不包含银行协议细节；
 - [ ] Router 只按银行路由；
 - [ ] Handle 请求和返回类型明确；
@@ -871,7 +990,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 - [ ] 退款只关联同银行原转账或消费记录，原交易累计退款金额受并发控制；
 - [ ] 未接入/不支持没有返回 `null` 或模拟成功；
 - [ ] 新错误码只添加到 `FrontErrorCode`；
-- [ ] 已知业务失败只抛出 `FrontException`；
+- [ ] LiteFlow 已知业务失败写 Slot 后中断，非 LiteFlow 已知业务失败抛 `FrontException`；
 - [ ] 未知异常不会泄漏堆栈给调用方；
 - [ ] 日志不包含完整 `specialData`、`accountSpecialData`、账户配置和敏感字段；
 - [ ] 银行原始响应码没有直接作为 `R.code/frontRespCode`；

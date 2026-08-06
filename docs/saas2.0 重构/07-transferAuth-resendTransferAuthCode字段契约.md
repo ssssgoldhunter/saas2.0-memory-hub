@@ -262,7 +262,7 @@ errCode == D5000000
 | Handle 生成的 `transSsn` | `frontSsn` | 不使用银行 `queryId` 覆盖 |
 | 平安 `queryId` | `frontQueryId` | 渠道方查询流水 |
 | 归一化成功 | `frontRespCode=200/frontRespDesc=成功/frontStatus=SUCCESS` | 使用 `FrontErrorCode.SUCCESS` |
-| 明确银行失败 | 统一 `F4xxxxx/frontStatus=FAILED` | 顶层仍 `R.code=200` |
+| 明确银行失败 | 统一 `F4xxxxx/frontStatus=FAILED` | 顶层 `R.code` 也为失败码 |
 | 平安特有响应 | `specialData={}` | 当前文档和 mdl 未确认需返回其他字段 |
 
 ### 6.3 `resendTransferAuthCode` 返回映射
@@ -299,12 +299,12 @@ SM2 密文，因此新实现必须解密两者；解密失败属于钱包响应�
 }
 ```
 
-银行明确拒绝时，Controller 仍返回 `R.ok(result)`：
+银行明确拒绝时，Application Service 返回 `R.fail(message, result)`：
 
 ```json
 {
-  "code": 200,
-  "msg": "操作成功",
+  "code": 500,
+  "msg": "银行拒绝交易",
   "data": {
     "frontRespCode": "F400004",
     "frontRespDesc": "银行拒绝交易",

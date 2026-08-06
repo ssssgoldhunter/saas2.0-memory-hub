@@ -30,6 +30,7 @@
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | mdl 参考实现 | `/Users/limeng/workspaces/IdeaProjects_mdl_dep/mdl/fund-catering-front` | 参考真实银行调用和字段映射，不复制旧框架缺陷 |
 | 旧 Front 结构参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-front` | 只参考目录、方法语义和历史实现 |
+| lsym 对象转换参考 | `IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-consume/fund-catering-consume-service/.../consume/domain/Converter.java` | 只参考“存在哪些 Req/Res ↔ Entity/Vo 转换关系”；它用的是原生 mapstruct `@Mapper` 接口，**新工程不照搬此写法、不引入其依赖**，固定改用 mapstruct-plus 的 `@AutoMapper` + `MapstructUtils.convert`（详见 05 §3.9.1） |
 
 旧项目不是兼容基线。发生冲突时，优先级固定为：
 
@@ -40,7 +41,8 @@
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
 → 09-channel-transaction-ddl（实现任何交易落库、幂等、状态查询或退款关联时）
-→ 09A-channel-transaction-table-field-catalog（生成或审查建表 SQL 时）
+→ 09A-channel-transaction-table-field-catalog（字段字典，生成或审查建表 SQL 时）
+→ 09B-channel-transaction-ddl-utf8mb4.sql（目标库 utf8mb4/utf8mb4_general_ci 的可执行最终 SQL，手动建表用）
 → 10-transaction-query-field-contract（实现交易状态或交易明细查询时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
@@ -69,6 +71,8 @@
     必须完整阅读，渠道记录固定按“银行 + 交易业务”拆分。
 11. [09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md)：生成、迁移或
     审查数据库 SQL 时必须阅读，其中 10 张表的全部字段、默认值、更新规则和索引均已逐表展开。
+11.5. [09B-channel-transaction-ddl-utf8mb4.sql](09B-channel-transaction-ddl-utf8mb4.sql.md)：目标库字符集为
+    `utf8mb4 / utf8mb4_general_ci` 时的**可执行最终建表 SQL**，10 张表完整 CREATE TABLE，手动建表直接用这份。
 12. [10-transaction-query-field-contract](10-transaction-query-field-contract.md)：实现单笔状态、平台交易明细或
     账户/登记簿交易明细查询时必须完整阅读。
 13. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
@@ -104,15 +108,32 @@
   按目标字符集生成最终 SQL；
 - 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
   `frontRespCode/frontRespDesc/specialData`；
-- `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架。
+- `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架；
+- LiteFlow 框架已落地：7 个节点（`frontRequestValidate`/`frontRouteAndCapabilityCheck`/
+  `bankHandleContextPrepare`/`frontIdempotencyCheck`/`frontTransactionDispatch`/
+  `frontQueryDispatch`/`frontResponseNormalize`）+ 13 条链（8 交易 + 5 查询），
+  规则文件 `resources/front-flow.xml`，nacos `catering-front.yml` 配置 `liteflow.rule-source`；
+- 渠道流水持久层已落地：10 张表的 Entity/VO/Mapper/XML/Service/ServiceImpl 已搬入 main，
+  Entity 继承 `TenantEntity` 复用父类审计字段（`createBy`/`createTime`/`updateBy`/`updateTime`）；
+- Handle 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
+  调银行 → `updateResponse`（UPDATE 状态/响应码/快照），退款 `loadOriginalRefundFields`
+  从原渠道表加载银行字段；
+- ShardingSphere-JDBC 分库：分片键 `data_source_id`，Hint 模式（表不加列），
+  `shardingsphere-config.yaml` 配置 10 张表数据节点 + `HintDataSourceShardingAlgorithm`；
+- `FrontDataSourceHelper` 用 `HintManager` 在 Handle 写库前后设置/清理数据源路由；
+- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入：
+  `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
+  `FrontRequestBodyAdvice`（反序列化后填充到 `FrontBaseRequestData`），Application Service 零改动；
+- `FrontErrorCode` 含 `IDEMPOTENCY_CONFLICT`（F300001）。
 
 当前没有完成、应由后续具体任务实现的内容：
 
 - ~~真实 `TenantBankConfigProvider` 远程查询~~（已实现 `RemoteTenantBankConfigProvider`）；
-- ~~LiteFlow `FlowExecutor`、组件、EL 规则和链路配置~~（已实现 9 通用节点 + 11 链 + FrontFlowExecutor，业务异常用 setIsEnd+Slot）；
+- ~~LiteFlow `FlowExecutor`、组件、EL 规则和链路配置~~（已实现 9 个通用节点、13 条具名链和
+  FrontFlowExecutor；业务异常写 Slot 后 `setIsEnd`）；
 - ~~中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射~~（已实现，`mvn compile` 通过）；
 - ~~`transSsn` 的银行生成算法~~（已实现，落库调用待持久层）；
-- 平安查询和其他尚未逐项确认能力的 `specialData ↔ reserveMap` 最终字段契约（部分已实现，明细查询跨 bizFunc 聚合待联调）；
+- 平安全部查询接口先统一为 `PENDING_INTEGRATION`，等待人工逐接口核对字段、bizFunc 和返回数组结构；
 - 渠道 Entity、Mapper、Repository、显式表路由、幂等和状态机（下一轮，LiteFlow 持久层节点已建空放行）；
 - 数据库迁移执行组件及目标环境建表流程；
 - 未经用户明确要求的测试类（本轮已授权编译验证，未运行测试）。
@@ -156,18 +177,18 @@ AbstractBankHandle.prepareContext
 ```
 
 口头所称的“Slot”在业务代码中统一指 `FrontFlowContext`。LiteFlow 自身的内部 Slot 不作为业务对象继承；
-后续接入 LiteFlow 时应传入已经初始化的 `FrontFlowContext` 实例。
+当前执行器已经把初始化后的 `FrontFlowContext` 实例传入 13 条规则链。
 
 ## 6. 不允许变更的约束
 
 - 不新建 `catering-front-api/common/service` 子模块；
 - 不复制旧项目的 `BeanPostProcessor` 注册、复合路由键和任意 `<T> T` 返回；
 - 不增加 `FrontResponse`，API 必须直接返回 `R<具体结果>`；
-- 不让 Application、Router 或 Handle 返回公共 `R`；
+- API、Controller、Application Service 都返回同一个公共 `R<具体结果>`；Router 和 Handle 不返回 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
 - 不复制 lsym UAT 退款请求由调用方直接传 `orgPay/orgRec/orgTrans*` 的来源设计；原交易银行字段必须由
-  Front 根据 `originalFrontSsn` 加载；
+  Front 根据 `originalFrontSsn` 或原业务主/子流水组定位渠道记录后加载；
 - 中信退款 `FUND_TP` 不得取 `platformUserRole/default_role/self_role`，应取原交易资金类型，或在原交易
   固定使用默认资金类型时读取 `default_fund_type` 并完成校验；
 - 不为平安虚构 `platformPay/platformReceive` 等价接口，这两项固定为 `UNSUPPORTED`；
@@ -177,8 +198,8 @@ AbstractBankHandle.prepareContext
 - 每张渠道交易表必须保存业务主/子记录关联字段、业务基础数据加密快照和
   `reserve1/reserve2/reserve3`；
 - 不把银行差异字段放入公共 `baseData`；
-- 中信明细查询的日期范围、交易类型、登记簿/账户类型必须放入 `specialData`；业务系统不得提交
-  `TRANS_DATE/PAGE/bizFunc/chnlNo`，Handle 必须按日期范围逐日组装银行单日查询；
+- 中信明细查询的单个 `transactionDate`、交易类型、登记簿/账户类型必须放入 `specialData`；业务系统
+  不得提交 `TRANS_DATE/PAGE/bizFunc/chnlNo`。中信 24/25 不支持跨日，业务系统按日期多次调用；
 - 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
 - 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及
@@ -189,8 +210,8 @@ AbstractBankHandle.prepareContext
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
 - 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，
   `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
-- Handle 已正常识别的银行业务成功或失败，顶层 `R.code` 都必须是全局成功码数值 `200`；
-  业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`，银行失败由 data 内统一错误码和状态表达；
+- 只有 Front 业务成功时顶层 `R.code=200`；银行业务失败时顶层也必须返回失败码，并在 data 内保留
+  统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
 - 日志不得输出密钥、完整账户配置、完整 `specialData`、卡号、手机号、证件号或验证码；
 - 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
 
@@ -207,7 +228,7 @@ AbstractBankHandle.prepareContext
 7. 补全入口、路由、配置、请求、响应、耗时和异常日志；
 8. 同步更新银行能力文档、总体设计和任务交接说明；
 9. 按用户当次授权决定是否写测试或编译；
-10. 分别提交代码仓库和记忆体仓库，并报告提交号。
+10. 完成代码和文档后先报告差异；只有用户明确确认后才分别 commit/push 代码仓库和记忆体仓库。
 
 ## 8. Handle 方法入口
 
@@ -247,4 +268,4 @@ queryTransactionDetails
 - `transSsn/bizFunc/chnlNo` 的来源；
 - 哪些能力仍为 `PENDING_INTEGRATION/UNSUPPORTED`；
 - 是否编写测试、运行测试或编译；
-- 代码仓库和记忆体仓库提交号。
+- 当前是否未提交；只有用户确认提交后才报告代码仓库和记忆体仓库提交号。

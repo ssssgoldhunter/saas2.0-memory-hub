@@ -77,17 +77,17 @@ BankRequestContext<T>
 
 | 字段 | 说明 | 来源约束 |
 |---|---|---|
-| `originalFrontSsn` | 原交易 Front 渠道流水号 | 必填，用于加载原渠道交易记录 |
-| `originalBizOrderNo` | 原交易业务主流水号 | 必填，与原渠道记录交叉校验 |
-| `originalBizSubOrderNo` | 原交易业务子流水号 | 必填，与原渠道记录交叉校验 |
+| `originalFrontSsn` | 原交易 Front 渠道流水号 | 与原业务主/子流水组至少提供一组 |
+| `originalBizOrderNo` | 原交易业务主流水号 | 与子流水成组；可作为原交易定位条件 |
+| `originalBizSubOrderNo` | 原交易业务子流水号 | 与主流水成组；可作为原交易定位条件 |
 | `bizOrderNo/bizSubOrderNo` | 本次退款业务主/子流水号 | 继承公共交易对象 |
 | `amount` | 本次退款金额 | 人民币分 |
 | `fee` | 本次退款手续费 | 人民币分；无手续费传 0 |
 | `refundReason` | 退款原因 | 中信映射 `MEMO`，平安映射 `reserve.remark` |
 
 原银行流水、原账户、原交易日期、原资金类型和原资金分配不允许由请求 `specialData` 传入。
-Front 必须通过 `originalFrontSsn` 加载原渠道流水，校验租户、银行、订单、原交易成功状态、
-可退款金额和累计退款金额后再组装银行请求。
+Front 必须通过 `originalFrontSsn` 或原业务主/子流水组加载原渠道流水；同时提供时必须交叉校验为
+同一条记录。随后校验租户、银行、订单、原交易成功状态、可退款金额和累计退款金额，再组装银行请求。
 
 ### 3.2 `WithdrawBusinessData`
 
@@ -113,7 +113,6 @@ Front 必须通过 `originalFrontSsn` 加载原渠道流水，校验租户、银
 |---|---|
 | `userAccountId` | 与平台发生收付款的用户账户 |
 | `userAccountName` | 用户账户名称，进入银行请求前加密 |
-| `platformAccountType` | Front 内部平台账户类型，用于解析租户平台自有资金账户 |
 | `amount` | 平台收付款金额，人民币分 |
 | `bizOrderNo/bizSubOrderNo` | 业务主/子流水号 |
 | `businessDate/businessTime` | 业务日期和时间 |
@@ -127,8 +126,8 @@ Front 必须通过 `originalFrontSsn` 加载原渠道流水，校验租户、银
 | `fundTp` | 资金类型 | 必须是租户中信已配置的资金类型，不允许任意值 |
 | `contractId` | 合同编号 | 仅业务场景要求时选填 |
 
-业务系统不得传入平台银行账号。平台账号必须由 Front 根据 `tenantId + 中信 + platformAccountType`
-和账户配置解析。
+业务系统不得传入平台银行账号。中信 2041/2042 的平台一侧由商户自有资金登记簿隐式确定，银行
+请求无需提供平台账户号；Handle 只上送用户侧账号和方向对应的用户名称。
 
 ## 4. 提现请求映射
 
@@ -206,8 +205,9 @@ chnlNo  = 0010
 | `ORI_USER_C_AMT` | `baseData.amount` | 原收款方本次退款金额，人民币分 |
 | `P_SELF_FLAG/P_DEAL_AMT` | Handle 固定 `N/0` | 首版普通退款不含平台自有资金 |
 | `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 退款业务流水 |
-| `ORI_BUSS_ID/SUB_ID` | `originalBizOrderNo/originalBizSubOrderNo` | 与原渠道记录交叉校验 |
-| `ORI_USER_SSN/ORI_USER_TRANS_DT` | 原渠道交易记录 | 使用银行流水定位方案时写入 |
+| `ORI_BUSS_ID/SUB_ID` | `originalBizOrderNo/originalBizSubOrderNo` | 成组使用；与原中信流水二选一 |
+| `ORI_USER_SSN` | 原渠道交易记录 | 与原业务主/子流水组二选一，不能直接用 `originalFrontSsn` 冒充 |
+| `ORI_USER_TRANS_DT` | 原渠道交易记录 | 两种定位方式都必须上送 |
 | `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 退款业务时间 |
 | `FUND_TP` | 原渠道交易保存的资金类型；原交易固定使用默认类型时读取 `accountSpecialData.default_fund_type` 并校验 | 不允许请求覆盖，不得取 `platformUserRole/default_role/self_role` |
 | `MEMO` | `baseData.refundReason` | 退款原因 |
@@ -215,6 +215,10 @@ chnlNo  = 0010
 
 首版不激活 Word 中的 `ORI_USER_SHARE_*` 分润退款、平台出资退款和 `REQ_RESERVED`。这些字段必须等
 业务模型、原交易资金分配和累计退款算法确认后单独增加，不能整体复制进常量类。
+
+Front 原交易定位约束：调用方至少提供 `originalBizOrderNo + originalBizSubOrderNo` 或
+`originalFrontSsn` 一组。前者映射银行 `ORI_BUSS_ID/ORI_BUSS_SUB_ID`；后者只用于查询渠道记录，
+再由记录中的原中信流水映射 `ORI_USER_SSN`。同时提供时必须交叉校验为同一条原交易。
 
 ### 5.2 平安 refund
 
@@ -247,16 +251,16 @@ chnlNo  = 0001
 两项均调用中信 `/transfer`，但资金方向和 `bizFunc` 不同：
 
 ```text
-platformPay     2041: 平台账户 → 用户账户
-platformReceive 2042: 用户账户 → 平台账户
+platformPay     2041: 平台自有资金登记簿 → 用户账户
+platformReceive 2042: 用户账户 → 平台自有资金登记簿
 chnlNo = 0010
 ccy = CNY
 ```
 
 | 银行字段 | platformPay 2041 | platformReceive 2042 |
 |---|---|---|
-| `outAcctNo` | Front 内部解析的平台账户 | `baseData.userAccountId` |
-| `inAcctNo` | `baseData.userAccountId` | Front 内部解析的平台账户 |
+| `outAcctNo` | 不传，平台侧由商户自有资金登记簿隐式确定 | `baseData.userAccountId` |
+| `inAcctNo` | `baseData.userAccountId` | 不传，平台侧由商户自有资金登记簿隐式确定 |
 | `outAcctNm` | 不取用户名称 | `baseData.userAccountName`，加密 |
 | `inAcctNm` | `baseData.userAccountName`，加密 | 不取用户名称 |
 | `transAmt` | `baseData.amount`，人民币分 | `baseData.amount`，人民币分 |
@@ -278,8 +282,9 @@ ccy = CNY
 R<FrontTransactionResult>
 ```
 
-不得再包 `FrontResponse`。银行调用和结果判断正常完成时，即使银行业务拒绝，顶层仍使用
-`R.code=200/R.msg=操作成功`；业务结果放在 `data.frontRespCode/frontRespDesc/frontStatus`。
+不得再包 `FrontResponse`。只有 Front 业务成功时顶层使用 `R.code=200/R.msg=操作成功`；银行业务
+拒绝或钱包业务失败必须使用顶层失败码（当前 `R.code=500`），并在
+`data.frontRespCode/frontRespDesc/frontStatus` 中保留统一 Front 业务结果。
 
 | 银行返回 | Front 返回 |
 |---|---|
