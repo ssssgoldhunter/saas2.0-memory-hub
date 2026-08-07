@@ -13,16 +13,16 @@
 R<TransactionStatusResult> queryTransactionStatus(
     FrontRequest<TransactionStatusQueryData> request);
 
-R<FrontPageResult<TransactionDetailItem>> queryPlatformTransactionDetails(
+TableDataInfo<TransactionDetailItem> queryPlatformTransactionDetails(
     FrontRequest<TransactionDetailQueryData> request);
 
-R<FrontPageResult<TransactionDetailItem>> queryTransactionDetails(
+TableDataInfo<TransactionDetailItem> queryTransactionDetails(
     FrontRequest<TransactionDetailQueryData> request);
 ```
 
-三个 API 都是内部调用，API、Controller、Application Service 使用相同的 `R<具体结果>`；不得增加
-`FrontResponse`。Front 成功时顶层 `R.code=200`；银行业务失败或 Front 业务失败时顶层也使用失败码，
-并保留 `data.frontRespCode/frontRespDesc`。
+三个 API 都是内部调用，API、Controller、Application Service 使用相同的方法签名；不得增加
+`FrontResponse`。单笔状态查询返回 `R<TransactionStatusResult>`；两个分页明细查询直接返回
+`TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包裹分页结果。
 
 ## 2. 两段请求与三段 Handle 上下文
 
@@ -118,10 +118,11 @@ chnlNo  = 0010
 
 | 字段 | 说明 |
 |---|---|
-| `accountId` | 本方法不使用；平台侧账户由中信商户上下文确定 |
 | `pageNo` | Front 页码，从 1 开始 |
 | `pageSize` | 仅表达调用方期望，不能覆盖银行固定 20 条 |
-| `continuationToken` | Front 返回的续查令牌，不允许自行拼装 |
+
+Front 分页协议固定使用 `pageNo/pageSize`，请求和响应都不暴露
+`continuationToken`。Handle 仅在内部将 `pageNo` 映射为银行 `PAGE`。
 
 `specialData`：
 
@@ -165,12 +166,11 @@ chnlNo  = 0010
 银行固定页大小 = 50
 ```
 
-`baseData.accountId` 是待查询用户编号，Handle 加密后映射顶层 `acctNo`。
-
 `specialData`：
 
 ```json
 {
+  "acctNo": "待查询用户/子账户业务标识",
   "transactionDate": "20260805",
   "transactionType": "98",
   "accountType": "12"
@@ -179,6 +179,7 @@ chnlNo  = 0010
 
 | key | 必填 | 说明 |
 |---|---|---|
+| `acctNo` | 是 | 待查询用户/子账户业务标识；Handle 按银行协议加密后映射顶层 `acctNo` |
 | `transactionDate` | 是 | 单个交易日，`yyyyMMdd` |
 | `transactionType` | 是 | `01/02/03/04/05/06/98/99` |
 | `accountType` | 否 | `01/12/13/17`，映射 `registerAttr` |
@@ -191,7 +192,7 @@ chnlNo  = 0010
 
 | Front | 中信 reserve/顶层 |
 |---|---|
-| `baseData.accountId` | 顶层 `acctNo`，加密 |
+| `specialData.acctNo` | 顶层 `acctNo`，按银行协议加密 |
 | `specialData.transactionDate` | `TRANS_DATE` |
 | Front 当前页 | `PAGE` |
 | `specialData.transactionType` | `TRANS_TYPE` |
@@ -209,31 +210,28 @@ chnlNo  = 0010
 - Front specialData 使用 `transactionDate`，不再使用 `startDate/endDate`；
 - 中信 Handle 不做跨日期展开，不生成跨日游标；
 - 业务系统需要多日数据时，按日期多次调用 Front，由业务层自行聚合；
-- `continuationToken` 只维护当前单日的下一银行页，不携带下一日期；
+- 对外统一用 `pageNo/pageSize` 翻页，不返回 `continuationToken`；Handle 将 `pageNo` 映射为银行 `PAGE`；
 - `24` 每页 50 条，`25` 每页 20 条，不能被 `pageSize` 覆盖。
 
 ## 7. 返回结构
 
 ```java
 R<TransactionStatusResult>
-R<FrontPageResult<TransactionDetailItem>>
+TableDataInfo<TransactionDetailItem>
 ```
 
-`FrontPageResult.specialData` 只保存查询级特殊字段；每一笔明细自己的银行扩展字段必须放在
-`TransactionDetailItem.specialData`，不得把多笔明细的 reserve 合并到分页级 specialData。
+`TableDataInfo` 固定使用 `code/msg/total/rows`；每一笔明细自己的银行扩展字段必须放在
+`TransactionDetailItem.specialData`，不得把多笔明细的 reserve 合并到分页级。银行返回
+`TOTAL_NUM/totalNum` 时必须映射为 `total`，不得把总页数冒充总记录数。
 
 业务成功示例：
 
 ```json
 {
   "code": 200,
-  "msg": "操作成功",
-  "data": {
-    "frontRespCode": "200",
-    "frontRespDesc": "成功",
-    "records": [],
-    "specialData": {}
-  }
+  "msg": "查询成功",
+  "rows": [],
+  "total": 0
 }
 ```
 
@@ -243,11 +241,8 @@ R<FrontPageResult<TransactionDetailItem>>
 {
   "code": 500,
   "msg": "银行拒绝交易",
-  "data": {
-    "frontRespCode": "F400004",
-    "frontRespDesc": "银行拒绝交易",
-    "specialData": {}
-  }
+  "rows": [],
+  "total": 0
 }
 ```
 

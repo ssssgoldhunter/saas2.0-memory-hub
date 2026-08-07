@@ -3,14 +3,14 @@
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：首版契约已确认
 > 确认日期：2026-08-04
-> 范围：中信、平安提现与真退款；中信平台付款、平台收款
+> 范围：中信、平安提现；内部系统长短款真退款；中信平台付款、平台收款
 
 ## 1. 先给结论
 
 | Front 能力 | 中信 | 平安 | 新 Front 约束 |
 |---|---|---|---|
 | `withdraw` | 真实 `/withdrawal`，当前 `bizFunc=26` | 真实 `/withdrawal`，当前 `bizFunc=01` | 两家均保留，金额单位为分 |
-| `refund` | 银行有真实 `/refund`，应使用 `bizFunc=23` | 真实 `/refund`，当前 `bizFunc=02` | 必须是真退款，禁止反向转账 |
+| `refund` | 银行有真实 `/refund`，应使用 `bizFunc=23` | 真实 `/refund`，当前 `bizFunc=02` | 当前只服务内部长短款，必须真退款，禁止反向转账 |
 | `platformPay` | 真实 `/transfer`，`bizFunc=2041` | 无等价实现 | 仅中信，平安 `UNSUPPORTED` |
 | `platformReceive` | 真实 `/transfer`，`bizFunc=2042` | 无等价实现 | 仅中信，平安 `UNSUPPORTED` |
 
@@ -91,28 +91,28 @@ Front 必须通过 `originalFrontSsn` 或原业务主/子流水组加载原渠�
 
 ### 3.2 `WithdrawBusinessData`
 
-| 字段 | 说明 | 银行映射 |
-|---|---|---|
-| `withdrawAccountId` | 发起提现的银行用户/见证子账户 | 中信、平安 `acctNo`，加密 |
-| `withdrawMemberId` | 发起提现的银行会员编号 | 平安 `mchntMbrId` |
-| `bankCardNo` | 收款银行卡号 | 两家 `cardNoEnc`，加密且禁止写日志 |
-| `withdrawAccountName` | 提现会员/见证账户名称 | 平安 `nameEnc`，加密 |
-| `bankCardHolderName` | 银行卡持卡人姓名 | 中信 `WITH_ACCNAME`、平安 `userNameEnc`，加密 |
-| `amount` | 提现金额 | 两家 `transAmt`，人民币分 |
-| `fee` | 提现手续费 | 平安 `fee`，人民币分；中信当前由手续费承担类型控制 |
-| `remark` | 提现备注 | 两家 `remark` |
+`WithdrawBusinessData` 只保留继承自 `BaseTransactionBusinessData` 的内部业务公共字段。银行使用的提现
+账户、会员、银行卡和姓名统一放入请求 `specialData`：
 
-平安证件号码属于银行特有动态输入，只能使用 `specialData.certNo`，进入银行请求前映射并加密为
-`reserve.certNoEnc`；证件号明文、密文都不得记录日志。
+| specialData key | 说明 | 银行映射 |
+|---|---|---|
+| `acctNo` | 发起提现的银行用户/见证子账户 | 中信、平安 `acctNo`，按协议加密 |
+| `outAcctId` | 发起提现的银行会员编号 | 平安 `mchntMbrId` |
+| `cardNoEnc` | 收款银行卡号原始输入 | 两家请求 `cardNoEnc`，按协议加密且禁止写日志 |
+| `nameEnc` | 提现会员/见证账户名称原始输入 | 平安 `reserve.nameEnc`，按协议加密 |
+| `WITH_ACCNAME` | 中信银行卡持卡人姓名原始输入 | 中信 `reserve.WITH_ACCNAME`，按协议加密 |
+| `userNameEnc` | 平安银行卡持卡人姓名原始输入 | 平安 `reserve.userNameEnc`，按协议加密 |
+| `certNo` | 平安证件号码 | 平安 `reserve.certNoEnc`，按协议加密 |
+
+`amount/fee/remark` 仍属于内部业务公共数据，保留在 `baseData`。上述 specialData 值可以按明确字段
+保存到内部渠道表，本期不要求数据库字段加密；进入银行请求时仍必须按协议加密，且不得记录日志。
 
 ### 3.3 `PlatformTransferBusinessData`
 
-该对象仅用于中信：
+该对象仅用于中信，基础对象只保留内部业务公共字段：
 
 | 字段 | 说明 |
 |---|---|
-| `userAccountId` | 与平台发生收付款的用户账户 |
-| `userAccountName` | 用户账户名称，进入银行请求前加密 |
 | `amount` | 平台收付款金额，人民币分 |
 | `bizOrderNo/bizSubOrderNo` | 业务主/子流水号 |
 | `businessDate/businessTime` | 业务日期和时间 |
@@ -122,6 +122,10 @@ Front 必须通过 `originalFrontSsn` 或原业务主/子流水组加载原渠�
 
 | key | 说明 | 约束 |
 |---|---|---|
+| `outAcctNo` | 2042 用户付款账户 | 仅 platformReceive 使用，进入银行请求前加密 |
+| `inAcctNo` | 2041 用户收款账户 | 仅 platformPay 使用，进入银行请求前加密 |
+| `outAcctNm` | 2042 用户付款账户名称 | 仅 platformReceive 使用，进入银行请求前加密 |
+| `inAcctNm` | 2041 用户收款账户名称 | 仅 platformPay 使用，进入银行请求前加密 |
 | `dealType` | 交易类型 | 按 `2041/2042` 分别校验银行枚举 |
 | `fundTp` | 资金类型 | 必须是租户中信已配置的资金类型，不允许任意值 |
 | `contractId` | 合同编号 | 仅业务场景要求时选填 |
@@ -144,15 +148,15 @@ chnlNo  = 0010
 | `transSsn` | 中信 Handle 每次生成 | 保存渠道流水并可返回 `frontSsn` |
 | `transTime` | 中信 Handle 每次生成 | 运行时字段 |
 | `mchntId/mchntMbrId` | 租户银行通用账户配置 | 调用方不可覆盖 |
-| `acctNo` | `baseData.withdrawAccountId` | 加密 |
-| `cardNoEnc` | `baseData.bankCardNo` | 加密 |
+| `acctNo` | `specialData.acctNo` | 加密 |
+| `cardNoEnc` | `specialData.cardNoEnc` | 加密 |
 | `transAmt` | `baseData.amount` | 人民币分 |
 | `remark` | `baseData.remark` | 按银行长度校验 |
 | `reserve.WITH_TYPE` | Handle 固定 `00` | 当前只开放用户提现，不开放平台提现 `01` |
 | `reserve.BUSS_ID` | `baseData.bizOrderNo` | 业务主流水 |
 | `reserve.TRANS_DT/TRANS_TM` | `baseData.businessDate/businessTime` | `yyyyMMdd/HHmmss` |
 | `reserve.FEE_TYPE` | Handle 固定 `2` | 当前用户承担手续费 |
-| `reserve.WITH_ACCNAME` | `baseData.bankCardHolderName` | 加密 |
+| `reserve.WITH_ACCNAME` | `specialData.WITH_ACCNAME` | 加密 |
 | `reserve.laasSsn` | Handle 生成 | 外联平台流水 |
 
 ### 4.2 平安 withdraw
@@ -168,17 +172,17 @@ ccy     = CNY
 |---|---|---|
 | `transSsn/transTime` | 平安 Handle 每次生成 | 规则可与中信不同 |
 | `mchntId` | 租户银行通用账户配置 | 调用方不可覆盖 |
-| `mchntMbrId` | `baseData.withdrawMemberId` | 提现会员编号 |
-| `acctNo` | `baseData.withdrawAccountId` | 加密 |
-| `cardNoEnc` | `baseData.bankCardNo` | 加密 |
+| `mchntMbrId` | `specialData.outAcctId` | 提现会员编号 |
+| `acctNo` | `specialData.acctNo` | 加密 |
+| `cardNoEnc` | `specialData.cardNoEnc` | 加密 |
 | `transAmt` | `baseData.amount` | 人民币分 |
 | `fee` | `baseData.fee` | 人民币分 |
 | `remark` | `baseData.remark` | 旧 mdl 存在自赋值缺陷，新实现必须显式赋值 |
 | `reserve.tranWebName` | Handle 固定 `0001` | 调用方不可覆盖 |
 | `reserve.certType` | Handle 固定 `24` | 只表达现有协议值，不擅自解释证件类型语义 |
 | `reserve.certNoEnc` | `specialData.certNo` | 加密，禁止日志 |
-| `reserve.nameEnc` | `baseData.withdrawAccountName` | 加密 |
-| `reserve.userNameEnc` | `baseData.bankCardHolderName` | 加密 |
+| `reserve.nameEnc` | `specialData.nameEnc` | 加密 |
+| `reserve.userNameEnc` | `specialData.userNameEnc` | 加密 |
 | `reserve.stlAcctNo` | 平安 `accountSpecialData.stlAcctNo` | 加密 |
 | `reserve.mrchCode/txnClientNo` | 平安账户配置 | 调用方不可覆盖 |
 
@@ -213,8 +217,8 @@ chnlNo  = 0010
 | `MEMO` | `baseData.refundReason` | 退款原因 |
 | `laasSsn` | Handle 生成 | 外联平台流水 |
 
-首版不激活 Word 中的 `ORI_USER_SHARE_*` 分润退款、平台出资退款和 `REQ_RESERVED`。这些字段必须等
-业务模型、原交易资金分配和累计退款算法确认后单独增加，不能整体复制进常量类。
+当前退款仅供内部系统长短款修复，不激活 Word 中的 `ORI_USER_SHARE_*` 分润退款、平台出资退款、
+普通业务退款扩展和 `REQ_RESERVED`；这些内容不属于当前需求，不进入常量类或请求白名单。
 
 Front 原交易定位约束：调用方至少提供 `originalBizOrderNo + originalBizSubOrderNo` 或
 `originalFrontSsn` 一组。前者映射银行 `ORI_BUSS_ID/ORI_BUSS_SUB_ID`；后者只用于查询渠道记录，
@@ -243,8 +247,9 @@ chnlNo  = 0001
 | `reserve.mrchCode/txnClientNo` | 平安账户配置 | 调用方不可覆盖 |
 | `reserve.remark` | `baseData.refundReason` | 退款原因 |
 
-当前只确认直接支付退款 `bizFunc=02`。银行文档中的会员资金支付退款 `bizFunc=06` 暂不激活；
-`functionFlag=7` 原交易是否允许按当前接口退款也仍需银行确认。
+lsym 当前长短款代码通过 `transConsumeCancel` 调用平安真实 `/refund`，生产 Handle 固定
+`bizFunc=02`，退款请求没有 `functionFlag`。当前范围不激活 `bizFunc=06`，也不扩展普通业务退款；
+旧 `functionFlag=7` 交易的其他退款规则等待平安接口重新核对。
 
 ## 6. 中信平台付款和平台收款映射
 
@@ -259,10 +264,10 @@ ccy = CNY
 
 | 银行字段 | platformPay 2041 | platformReceive 2042 |
 |---|---|---|
-| `outAcctNo` | 不传，平台侧由商户自有资金登记簿隐式确定 | `baseData.userAccountId` |
-| `inAcctNo` | `baseData.userAccountId` | 不传，平台侧由商户自有资金登记簿隐式确定 |
-| `outAcctNm` | 不取用户名称 | `baseData.userAccountName`，加密 |
-| `inAcctNm` | `baseData.userAccountName`，加密 | 不取用户名称 |
+| `outAcctNo` | 不传，平台侧由商户自有资金登记簿隐式确定 | `specialData.outAcctNo` |
+| `inAcctNo` | `specialData.inAcctNo` | 不传，平台侧由商户自有资金登记簿隐式确定 |
+| `outAcctNm` | 不取用户名称 | `specialData.outAcctNm`，加密 |
+| `inAcctNm` | `specialData.inAcctNm`，加密 | 不取用户名称 |
 | `transAmt` | `baseData.amount`，人民币分 | `baseData.amount`，人民币分 |
 | `bussId/bussSubId` | `bizOrderNo/bizSubOrderNo` | `bizOrderNo/bizSubOrderNo` |
 | `payDate/payTime` | `businessDate/businessTime` | `businessDate/businessTime` |
@@ -323,7 +328,7 @@ com/chinaums/common/core/constant/front/
 ## 9. 实现和日志约束
 
 1. `bizFunc/chnlNo/path/transSsn/transTime` 只能由具体银行 Handle 决定；
-2. 退款必须加载并锁定原渠道交易，校验累计可退款金额和幂等；
+2. 退款必须加载并锁定原渠道交易，校验累计可退款金额和重复交易；
 3. `specialData` 和 `accountSpecialData` 分开读取，禁止整体 `putAll`；
 4. 每个字段显式映射、显式校验、显式加密；
 5. 平安平台付款、平台收款直接返回 `CAPABILITY_NOT_SUPPORTED`；
@@ -356,9 +361,9 @@ com/chinaums/common/core/constant/front/
 
 ## 10. 仍需业务或银行确认
 
-1. 中信是否首期开放部分退款，以及部分退款累计上限；
-2. 中信分润退款和平台自有资金退款是否纳入后续版本；
-3. 平安 `bizFunc=06` 会员资金支付退款是否需要首期支持；
-4. 平安 `functionFlag=7` 原交易的退款协议；
-5. 平安是否后续增加 `bizFunc=36` 短信提现；
-6. 中信平台收付款 `dealType/fundTp` 的租户级可选值和业务系统字段枚举。
+1. 平安旧 `functionFlag=7` 交易是否纳入当前长短款退款及对应协议；
+2. 平安是否后续增加 `bizFunc=36` 短信提现；
+3. 中信平台收付款 `dealType/fundTp` 的租户级可选值和业务系统字段枚举。
+
+中信部分退款、分润退款、平台自有资金退款及平安 `bizFunc=06` 均不属于当前长短款需求，不作为
+当前阶段待确认项，也不得提前实现。

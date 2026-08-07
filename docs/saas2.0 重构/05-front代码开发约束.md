@@ -13,10 +13,14 @@
 1. `catering-api-front` 只保存 API 契约、请求响应模型、常量和枚举。
 2. `catering-front` 保存全部功能实现，不再建立 `api/common/service` 子模块。
 3. 跨模块公共返回、Front 错误码和 Front 公共异常统一放在 `catering-common-core`。
-4. 所有对外 API 必须直接返回 `R<具体结果>`，禁止增加 `FrontResponse` 中间包装层；例如交易返回
-   `R<FrontTransactionResult>`。
-5. API、Controller、Application Service 均使用同一个 `R<具体结果>` 签名；Controller 只透传
-   Application Service 返回值，Router 和 Handle 不返回 `R`。
+4. 所有 Front API 的返回结构遵守以下固定规范，禁止增加 `FrontResponse` 中间包装层：
+   - **单条交易、交易状态和账户查询**：返回 `R<具体结果>`（如 `R<FrontTransactionResult>`）；
+   - **分页明细查询**：直接返回工程统一的 `TableDataInfo<具体行>`，不用 `R` 包裹；
+   - **无返回体操作类**：返回 `R<Void>`。
+5. API、Controller、Application Service 均使用同一个返回签名；Controller 只透传
+   Application Service 返回值。Router 和 Handle 不返回 `R`；分页 Handle 可返回确定类型的内部
+   `FrontPageResult` 承接银行分页结果，但 Application Service 必须
+   转换为 `TableDataInfo`，API、Controller、Application Service 三层对外签名保持一致。
 6. LiteFlow 节点遇可预期业务失败时写 Slot 后中断；非 LiteFlow 路径抛 `FrontException`；
    系统异常继续抛出，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
@@ -26,8 +30,8 @@
    Handle 各自重复查询。
 10. 银行账户配置必须按“通用强类型对象 + 银行 `accountSpecialData` 策略”组装；
     交易 `specialData` 与账户 `accountSpecialData` 必须完全分离。
-11. 渠道流水必须按“银行 + 交易业务”拆分；每张表必须保留来源业务主/子记录关联、业务数据加密快照
-    和 `reserve1/reserve2/reserve3`，禁止恢复单一统一渠道表。
+11. 渠道流水必须按“银行 + 交易业务”拆分；每张表必须保留来源业务主/子记录关联、业务及银行明确字段
+    和 `reserve1/reserve2/reserve3`，禁止恢复单一统一渠道表或保存整段报文快照。
 12. 持久层 Entity ↔ VO/BO 对象转换必须使用 MapStruct（`@AutoMapper` + `MapstructUtils.convert`），
     禁止手写 `setXxx(getXxx())`；依赖经 `catering-common-core` 传递，catering-front 不重复声明（见 §3.9）。
 
@@ -82,7 +86,7 @@
 - Router 和不可变 Handle Registry；
 - Handle SPI 与中信、平安实现；
 - 银行协议 DTO、配置解析、HTTP、签名和加密；
-- LiteFlow、渠道流水、幂等、状态机；
+- LiteFlow、渠道流水、重复交易校验、状态机；
 - `FrontExceptionHandler`；
 - 单元测试和集成测试。
 
@@ -150,7 +154,8 @@ Controller 必须：
 - 实现 `catering-api-front` 中的 API 接口；
 - 接收已经定义好的强类型 `FrontRequest<T>`；
 - 调用 Application Service；
-- 直接透传 Application Service 返回的 `R<具体结果>`，不得再次 `R.ok(...)` 包装。
+- 单笔接口直接透传 Application Service 返回的 `R<具体结果>`，分页接口直接透传
+  `TableDataInfo<具体行>`，不得再次包装。
 
 Controller 禁止：
 
@@ -169,11 +174,12 @@ Application Service 负责：
 - 调用 Router；
 - 能力校验；
 - 调用已选 Handle 的 `prepareContext()` 完成内部上下文装配；
-- 幂等、渠道流水和状态机协调；
+- 重复交易校验、渠道流水和状态机协调；
 - 记录业务分派、结果与耗时日志。
 
-Application Service 与内部 API 方法签名一致，返回 `R<具体结果>`：Front 业务成功使用 `R.ok(result)`，
-银行业务失败、能力失败或其他可预期业务失败使用 `R.fail(message, result)`。
+Application Service 与内部 API 方法签名一致：单笔接口返回 `R<具体结果>`，Front 业务成功使用
+`R.ok(result)`，银行业务失败、能力失败或其他可预期业务失败使用 `R.fail(message, result)`；分页接口
+返回 `TableDataInfo<具体行>`，成功固定 `code=200`，业务失败固定 `code=500`、空 `rows` 和安全 `msg`。
 
 Application Service 禁止：
 
@@ -358,11 +364,46 @@ channel/pingan
 - 先按 `platformCode` 完成银行路由，再按 `capability` 显式选择该银行固定 Repository；
 - 使用枚举、显式 `switch` 或不可变的类型安全映射，不得接收表名或拼接动态表名；
 - 在调用银行前成功写入目标表 `INIT` 记录，发送前更新为 `SENDING`；
-- 保存来源业务系统、逻辑交易类型、业务主/子记录 ID、主/子订单及收付款门店；
-- 保存完整 `baseData` 和白名单 `specialData` 加密快照；
-- 每张表包含 `reserve1/reserve2/reserve3`，并遵守短期扩展、稳定后建明确列的约束；
-- 使用乐观锁控制状态更新，`UNKNOWN` 资金交易不得盲目重发；
-- 日志记录银行、能力、固定表路由结果、记录 ID、`frontSsn`、业务关联和状态变化，不记录快照内容。
+
+**渠道流水表字段范围**（清晰字段化存储，禁止 text 快照）：
+
+| 分类 | 字段 | 说明 |
+|---|---|---|
+| 主键+租户 | id, tenant_id, store_id, data_source_id | |
+| 能力+流水 | capability, front_ssn, front_query_id, front_status | front_status 是流水状态（INIT/SENDING/SUCCESS/FAILED 等） |
+| 业务关联 | biz_system_code, biz_transaction_type, biz_transaction_id, biz_sub_transaction_id, biz_request_no, biz_order_no, biz_sub_order_no | |
+| 收付款门店 | pay_store_no, pay_store_id, rec_store_no, rec_store_id | |
+| 收付款账户 | pay_account_id, pay_name, rec_account_id, rec_name（平安加 pay_member_id, rec_member_id） | |
+| 金额 | amount, fee, refunded_amount（退款表）, currency | |
+| 银行请求字段 | bank_channel_no, bank_biz_func, external_platform_ssn | |
+| 银行返回字段 | bank_query_id, bank_user_ssn, bank_trans_date, bank_trans_time, wallet_resp_code, wallet_resp_desc, bank_resp_code, bank_resp_desc, bank_status | 每个字段单独成列 |
+| 3 个时间 | create_time, update_time, bank_responded_at | |
+| 3 个额外字段 | reserve1, reserve2, reserve3 | |
+| 审计 | create_by, update_by | BaseEntity 父类 |
+
+**禁止落库的字段**：
+- `front_resp_code`/`front_resp_desc`/`front_remark` — 返回接口返回就行，不存库；
+- `business_base_snapshot_cipher`/`business_special_snapshot_cipher`/`bank_request_snapshot_cipher`/`bank_response_snapshot_cipher` — 禁止 MEDIUMTEXT 快照，所有请求/返回字段单独成列；
+- `snapshot_key_version`/`version`/`request_hash` — 不要；
+- `interface_code`/`config_version`/`business_date`/`business_time`/`business_remark` — 冗余；
+- `send_started_at`/`completed_at` — 只要 3 个时间（create/update/respond）。
+
+渠道表允许保存本系统内部使用的账户号、会员编号、姓名和银行卡号原始值，本期不要求数据库字段加密。
+这只放宽数据库落库方式，不放宽日志和接口边界：日志、异常消息、普通查询响应仍不得输出这些敏感值。
+本阶段按内部系统信任边界处理，ShardingSphere 数据源连接配置的加密和安全加固暂不纳入开发与验收；
+银行协议要求的签名、传输/字段加密仍必须保留。
+
+交易发送前执行的是“重复交易校验”，不是请求幂等：在当前银行、当前业务物理表内按
+`tenant_id + biz_order_no + biz_sub_order_no` 查询；存在记录即返回“交易已存在”，不重复调用银行，
+也不根据请求内容比较 Hash、不返回或重放旧交易结果。
+统一使用 `FrontErrorCode.TRANSACTION_ALREADY_EXISTS`，错误码固定为 `F300001`、说明固定为
+“交易已存在”；不得继续使用 `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义。
+
+其他约束：
+- `applyCommonFields` 方法在填 storeId 后调用
+  `invokeSetter(entity, "setDataSourceId", data.getDataSourceId())` 落库；
+- 每张表包含 `reserve1/reserve2/reserve3`，遵守短期扩展、稳定后建明确列的约束；
+- 日志记录银行、能力、固定表路由结果、记录 ID、`frontSsn`、业务关联和状态变化。
 
 平安 `TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 与普通转账进入平安转账表，通过 `capability`
 区分；不为银行未支持的能力创建或写入空表。退款只能关联同银行原转账或消费表，不建立跨服务外键。
@@ -437,20 +478,47 @@ lsym 该模块依赖的原生 mapstruct 坐标（`org.mapstruct:mapstruct` + `ma
 
 ### 3.10 分库与分区约束
 
-#### 3.10.1 分库：ShardingSphere（精确分片）
+#### 3.10.1 分库：ShardingSphere-JDBC（STANDARD 分片）
 
 catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用
-**ShardingSphere-JDBC**（不是 dynamic-datasource），由 SQL 中的分片键自动路由。
+**ShardingSphere-JDBC STANDARD 模式**（不是 Hint，不是 dynamic-datasource），由 SQL 中的
+分片键 `tenant_id` 自动路由。
 
-- **分片键**：`data_source_id`（精确分片，业务传什么库就路由到什么库，不做 hash）；
-- **分片值来源**：FeignClient 请求拦截器从 HTTP 报文头 `data-source-id` 获取，注入到
-  `FrontBaseRequestData.dataSourceId`；ShardingSphere 从 SQL 上下文或 Hint 中读取分片值；
-- **配置位置**：ShardingSphere 配置文件放在 `resources/shardingsphere-config.yaml`，
-  `spring.datasource.url` 指向该文件（参照 mdl report 模块做法）；
-- **不使用 dynamic-datasource**：ShardingSphere 接管 DataSource 后，`@DS` 注解和
-  `DynamicDataSourceContextHolder` 不再生效。catering-front 模块不再依赖 dynamic-datasource
-  做数据源切换（但 catering-common-mybatis 的传递依赖保留，不影响其他模块）；
-- `data_source_id` 不存入任何渠道流水表列（表本身分布在多个库，同一表名存在于每个库实例）。
+- **分片键**：`tenant_id`（每条 SQL 自带，不需要额外字段或 Hint）；
+- **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
+  1. 从 SQL 的 `tenant_id` 值拿到租户标识；
+  2. 调 `RemoteConfigServiceClient.getConfigValue("tenant_base_config")` 查配置中心
+     （通过 `TenantHelper.dynamic` 切租户上下文），返回 JSON，解析取 `data_source_id` 字段
+     获取数据源编号（如 "2"）；
+  3. `formatDataSourceName("2")` → `"ds_2"`，返回给 ShardingSphere 路由；
+- **配置位置**：`resources/shardingsphere-config.yaml`，
+  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml`；
+- **新增库**：在 `shardingsphere-config.yaml` 加 `ds_3` 数据源 + 给租户配置
+  `tenant_base_config` 的 JSON 里 `data_source_id=3`，重新发布即可，不改代码；
+- **配置前提**：`tenant_base_config` 是租户上线必备配置，正常调用链不允许缺失；
+- **失败策略**：即使按部署规范不应缺失，只要运行时发生配置缺失、JSON 解析失败、`data_source_id` 缺失或计算出的
+  `ds_x` 不在可用数据源列表时必须立即抛出系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源
+  或广播到其他租户数据库；
+- **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
+  SQL 的 `tenant_id` 自动触发分片路由；
+- **不使用 dynamic-datasource**（`@DS` / `DynamicDataSourceContextHolder`）和 Hint
+  （`HintManager`）；
+- **`data_source_id` 列的作用**：`data_source_id` 会存入渠道流水表的 `data_source_id` 列
+  （VARCHAR(30) NOT NULL），仅作实例标识记录，方便跨库排查；**不参与 ShardingSphere 路由决策**
+  （路由仍按 tenant_id 由 `TenantDataSourceShardingAlgorithm` 算法决定）。Handle 在 INSERT
+  渠道流水时通过 `data.getDataSourceId()` 落库。
+
+涉及类：
+
+| 类 | 模块 | 职责 |
+|---|---|---|
+| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法（查配置中心 → 拼 ds_x） |
+| `ShardingAlgorithmInjector` | catering-front `sharding` | 启动时注入 `RemoteConfigServiceClient`（算法类不走 Spring Bean） |
+| `TenantConfigKeys` | catering-common-core `catering.base.constant` | `tenant_base_config` 配置 key 常量（JSON，含 `data_source_id` 字段） |
+
+其他业务项目可直接 copy `TenantDataSourceShardingAlgorithm` 和 `ShardingAlgorithmInjector`
+使用，只需确保依赖 `catering-api-system`（RemoteConfigServiceClient）且配置中心有
+`tenant_base_config` 配置项（JSON 格式，分片算法解析 `data_source_id` 字段）。
 
 #### 3.10.2 分区：MySQL LINEAR KEY
 
@@ -460,47 +528,53 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 - **分区键**：`tenant_id` + `store_id`（VARCHAR 列，LINEAR KEY 分区原生支持任意类型列）；
 - **分区数**：30 个（在创建租户时按租户门店量规划，后续可按需调整）；
 - `tenant_id`/`store_id` 必须是纯数字字符串（如 "10001"），由业务系统保证；
-- 分区 DDL 见 [09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md)。
+- 分区 DDL 已内置于 [09-final-rebuild-all-tables.sql](09-final-rebuild-all-tables.sql)。
 
-#### 3.10.3 dataSourceId 注入链路
+#### 3.10.3 FeignClient 拦截器（通用，4 个必要参数自动传递）
 
-4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由拦截器链自动注入，不需要
-Application Service 或 Handle 手动读取 header：
+4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由 `catering-common-feign` 的
+拦截器链自动传递和注入。引入依赖后还必须确保发送拦截器、接收拦截器和
+`BaseDataRequestBodyAdvice` 均已被 Spring 显式注册，不得仅依赖业务应用的包扫描范围：
 
 ```text
 FeignClient 调用方
   → HTTP 请求头: tenantId / clientId / platformCode / dataSourceId
-  → FeignRequestInterceptor（catering-common-feign，发送端）
-     从当前 HttpServletRequest 读 header，转发到下游
-  → RequestContextInterceptor（catering-common-feign，接收端 MVC 拦截器）
+  → FeignRequestInterceptor（common-feign，发送端）
+     从当前请求 header 读 4 个值（header 没有时从 RequestContext 兜底），转发到下游
+  → RequestContextInterceptor（common-feign，接收端 MVC 拦截器）
      preHandle: 从 header 提取 4 个值 → RequestContext（ThreadLocal）
-  → FrontRequestBodyAdvice（catering-front，RequestBodyAdvice）
+  → BaseDataRequestBodyAdvice（common-feign，RequestBodyAdvice）
      afterBodyRead: @RequestBody 反序列化后，从 RequestContext 取值
-     直接 set 到 FrontBaseRequestData 的 tenantId/platformCode/dataSourceId
+     直接请求：写入 BaseRequest 父类
+     Front 嵌套请求：识别 FrontRequest<T> 并写入 request.baseData
   → Controller 收到 request（baseData 已填好）
-  → Application Service（零改动，不需要手动注入）
-  → Handle 通过 context.baseData().getDataSourceId() 拿到
-  → FrontDataSourceHelper.use(dataSourceId, ...) 设置 ShardingSphere Hint
+  → Application Service（零改动）
   → RequestContextInterceptor.afterCompletion: clear() 清理 ThreadLocal
 ```
 
-涉及类：
+Handle 持久化渠道流水时，通过 `data.getDataSourceId()` 把 dataSourceId 写入 Entity 的
+`dataSourceId` 字段（对应表 `data_source_id` 列）。
+
+涉及类（全部在 `catering-common-feign` 或 `catering-common-core`，所有服务共用）：
 
 | 类 | 模块 | 职责 |
 |---|---|---|
-| `RequestContext` | catering-common-core | ThreadLocal 存 4 个参数 |
-| `RequestConstants` | catering-common-core | header 名常量（`tenantId`/`clientId`/`platformCode`/`dataSourceId`） |
-| `FeignRequestInterceptor` | catering-common-feign | 发送端：从当前请求 header 读 4 个值，转发到下游 Feign 调用 |
-| `RequestContextInterceptor` | catering-common-feign | 接收端：从收到的 header 提取到 ThreadLocal；`afterCompletion` 清理 |
-| `FeignConfiguration` | catering-common-feign | 注册 `RequestContextInterceptor`（`WebMvcConfigurer.addInterceptors`） |
-| `FrontRequestBodyAdvice` | catering-front | `RequestBodyAdvice.afterBodyRead`：从 RequestContext 填充到 baseData |
+| `RequestContext` | catering-common-core `context` | ThreadLocal 存 4 个参数 |
+| `RequestConstants` | catering-common-core `constant` | header 名常量 |
+| `BaseRequest` | catering-common-core `catering.base.request` | 通用请求父类（4 个字段） |
+| `FeignRequestInterceptor` | catering-common-feign `interceptor` | 发送端：转发 header |
+| `RequestContextInterceptor` | catering-common-feign `interceptor` | 接收端：header → ThreadLocal |
+| `BaseDataRequestBodyAdvice` | catering-common-feign `advice` | ThreadLocal → 直接 `BaseRequest` 或 `FrontRequest<T>.baseData` |
+| `FeignConfiguration` | catering-common-feign `config` | 显式注册发送/接收拦截器、Advice 和 WebMvcConfigurer |
 
-`FrontBaseRequestData` 的 `dataSourceId` 字段**不要求调用方在请求体中传入**；它由
-`FrontRequestBodyAdvice` 从报文头自动注入。如果请求头和请求体同时传了 `dataSourceId`，
-以请求体为准（Advice 不覆盖已有值）。
+注入约束：
 
-Application Service **不做任何 header 读取或注入**——到达 Service 时，`baseData` 的 4 个
-字段已经被拦截器+Advice 填充好。
+- `supports(...)` 必须同时识别直接 `BaseRequest` 和外层 `FrontRequest<T>`；
+- `afterBodyRead(...)` 对 `FrontRequest<T>` 必须取出其 `baseData` 后再注入，禁止只检查外层对象；
+- header 与请求体的识别字段冲突时必须明确失败，不得一部分链路使用 header、
+  另一部分使用请求体；
+- header 缺失时可从 `RequestContext` 补齐；两处都缺失则按必填参数失败，
+  禁止带空值进入路由或分库。
 
 ---
 
@@ -523,25 +597,27 @@ JSON 顶层固定为：
 
 ### 4.1 `baseData`
 
-`baseData` 保存跨银行统一、可校验、可生成 OpenAPI 的强类型字段，包括：
+`baseData` 只保存内部业务系统统一、可校验、可生成 OpenAPI 的强类型字段，包括：
 
 - `tenantId`；
 - `storeId`；
 - `platformCode`；
 - 当前业务通用字段。
 
-禁止把银行私有字段放入 `baseData`，也禁止使用 `Object`、无约束 Map 代替已经确认的公共字段。
+收付款账户、会员编号、姓名、卡号等银行侧身份数据，以及银行协议专用筛选条件，统一放入
+`specialData`，并使用对应银行协议原始 key。禁止放入 `baseData`，也禁止使用 `Object`、无约束 Map
+代替已经确认的内部业务公共字段。
 
 交易公共基础对象必须包含 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店信息。
 还必须包含 `bizSystemCode/bizTransactionType/bizTransactionId/bizSubTransactionId`，用于逻辑关联来源
 业务交易主表和子表；字段值不得是物理表名，业务记录 ID 统一按字符串传递。
 `amount/fee` 均使用 `Long` 保存人民币分，`amount` 必须大于 0，`fee` 不能小于 0；禁止使用浮点数
-或在 Handle 内擅自转换为元。transfer/consume 必须提供双方 `accountId/memberId/name` 公共字段，
-不得把这些已有公共语义的字段塞入 `specialData`。
+或在 Handle 内擅自转换为元。transfer/consume 的双方账户、会员编号和姓名必须通过
+`specialData` 提供，由具体银行 Handle 按常量白名单读取和映射。
 单笔状态查询基础对象必须包含 `frontSsn/bizOrderNo/bizSubOrderNo`；其中 `bizOrderNo` 是业务主流水，
 `bizSubOrderNo` 是业务子流水。
-交易明细查询基础对象只保存 `accountId/pageNo/pageSize/continuationToken` 等跨银行公共定位与分页字段；
-银行交易类型、日期范围和登记簿/账户类型不得在 `TransactionDetailQueryData` 重复定义。
+交易明细查询基础对象只保存 `pageNo/pageSize` 统一分页字段；待查询账户、
+银行交易类型、日期和登记簿/账户类型放入 `specialData`，不得在 `TransactionDetailQueryData` 重复定义。
 
 ### 4.2 统一业务 Slot
 
@@ -565,16 +641,27 @@ failure
 
 ### 4.3 `specialData`
 
-`specialData` 使用 `JSONObject`，只保存“银行 + 能力”特有字段。
+`specialData` 使用 `JSONObject`，只保存”银行 + 能力”特有字段。
+
+**specialData 的 key 必须使用银行协议原始名**（如 `outAcctNo`/`inAcctNo`/`USER_D_NM`/`USER_C_NM`），
+与银行 word 文档的请求报文字段名完全一致，**禁止自定义 key 名**。
 
 约束：
 
 - 无特殊字段时传空对象；
-- 后续按银行和能力定义 schema；
+- **key 用银行协议原始名**——调用方传 specialData 时 key 就是银行请求报文里的字段名，
+  Handle 通过常量类（`*ContractKeys.PAY_ACCOUNT_NO = “outAcctNo”`）引用，`context.specialData().getString(常量)` 取值；
+- **baseData 不含银行特有字段**——收付款账户号/名称/会员编号、提现卡号/账户名等银行协议特有字段
+  一律放 specialData，不放在 `TransferBusinessData`/`ConsumeBusinessData`/`WithdrawBusinessData` 等 baseData 对象里；
 - 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等账户配置字段；
 - 不得传密钥、私钥、完整银行配置；
 - 日志不得直接打印完整内容。
+
+**常量类命名规范**：
+- Java 变量名用 `PAY_`/`REC_` 前缀（付款 PAY_/收款 REC_），如 `PAY_ACCOUNT_NO`/`REC_ACCOUNT_NO`/`PAY_NAME`/`REC_NAME`；
+- 常量值用银行协议原始名，如 `PAY_ACCOUNT_NO = “outAcctNo”`/`REC_ACCOUNT_NO = “inAcctNo”`/`PAY_NAME = “USER_D_NM”`；
+- **禁止**在 Java 变量名里使用 `PAYER`/`PAYEE` 变体。
 
 transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 [06-transfer-consume字段契约](06-transfer-consume字段契约.md) 为准。没有进入该契约的银行字段，
@@ -612,7 +699,7 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 中信明细查询的 `transactionDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
 `specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
 银行 24/25 一次只支持一个交易日，不支持跨日范围查询。Handle 将 `transactionDate` 映射为单个
-`reserve.TRANS_DATE`，通过 Front 页码或 `continuationToken` 维护银行页码。银行文档标注忽略的
+`reserve.TRANS_DATE`，通过 Front `pageNo` 维护银行页码。银行文档标注忽略的
 `beginDate/endDate` 不得当作有效字段透传。中信 `24` 每页固定最多 50 条，`25` 每页固定最多 20 条，
 业务 `pageSize` 不得覆盖银行限制。
 
@@ -666,7 +753,7 @@ record 组件使用类 JavaDoc 的 `@param` 逐项说明。`FrontFlowContext` �
 
 ### 5.1 对外 API 返回
 
-所有对外接口必须直接返回：
+单条交易、交易状态和账户查询必须直接返回：
 
 ```java
 R<具体结果>
@@ -679,13 +766,20 @@ R<FrontTransactionResult>
 R<FrontTransferAuthCodeResult>
 R<TransactionStatusResult>
 R<AccountBalanceResult>
-R<FrontPageResult<TransactionDetailItem>>
+```
+
+分页明细查询必须直接返回：
+
+```java
+TableDataInfo<TransactionDetailItem>
 ```
 
 禁止：
 
 - 使用 `FrontResponse<T>` 再包装具体结果；
-- 直接返回未使用 `R` 包装的具体结果；
+- 单条接口直接返回未使用 `R` 包装的具体结果；
+- 分页接口返回 `R<TableDataInfo<...>>`、`R<FrontPageResult<...>>` 或直接对外返回
+  `FrontPageResult<...>`；
 - 直接返回银行响应 DTO；
 - 返回 `Map<String, Object>`；
 - 再创建一套 Front 专用顶层响应类替代 `R`；
@@ -699,15 +793,20 @@ R<FrontPageResult<TransactionDetailItem>>
 | `R.data` 的强类型字段 | Front 跨银行统一业务结果和 Front 错误码 |
 | `R.data.specialData` | 当前银行、当前能力的特殊返回字段；由 `FrontBaseResult` 统一定义 |
 
-只有 Front 业务成功时才使用 `R.ok(result)`：顶层 `R.code=200`，同时
+单条接口只有 Front 业务成功时才使用 `R.ok(result)`：顶层 `R.code=200`，同时
 `data.frontRespCode="200"`。银行明确拒绝或钱包业务失败时，Application Service 必须使用
 `R.fail(message, result)`，因此顶层也是失败码（当前公共 `R.FAIL=500`），同时保留
 `data.frontRespCode/frontRespDesc/frontStatus` 供内部调用方识别具体 Front 业务原因。
 请求校验、配置、路由、适配器失败及系统异常同样返回顶层失败，禁止出现“顶层成功、data 失败”。
 
+分页接口没有顶层 `R`。分页成功或业务失败均通过 `TableDataInfo.code/msg` 表达；成功时
+`code=200`、`rows/total` 正确赋值，失败时 `code=500`、`rows` 返回空集合。每条
+`TransactionDetailItem.specialData` 继续承接该笔明细的银行 `reserveMap` 白名单映射字段。
+
 `FrontBaseResult` 必须统一定义 `frontRespCode/frontRespDesc/specialData`。交易明细查询中，每条
-`TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`；分页结果自身
-继承的 `specialData` 只保存查询级银行扩展字段。
+`TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`。标准
+`TableDataInfo` 不提供查询级 `specialData` 或游标字段，因此分页协议必须使用 `pageNo/pageSize + total`；
+不得生成调用方无法从响应取回的 `continuationToken`。
 
 成功返回示意：
 
@@ -744,8 +843,8 @@ R<FrontPageResult<TransactionDetailItem>>
 
 ```text
 Handle              → FrontBaseResult 的确定子类
-Application Service → R<具体结果>
-Controller/API      → 原样透传 R<具体结果>
+Application Service → 单条 R<具体结果>；分页 TableDataInfo<具体行>
+Controller/API      → 原样透传 Application Service 返回值
 Exception Handler   → R.fail(message, FrontBaseResult)
 ```
 
@@ -781,7 +880,7 @@ catering-common-core
 | `200` | 全局统一成功码，复用 `R.SUCCESS` |
 | `F1xxxxx` | 请求、配置和契约错误 |
 | `F2xxxxx` | 银行、能力和适配状态错误 |
-| `F3xxxxx` | 幂等和处理中状态 |
+| `F3xxxxx` | 重复交易和处理中状态 |
 | `F4xxxxx` | 银行通信和结果错误 |
 | `F9xxxxx` | Front 内部错误 |
 
@@ -819,7 +918,7 @@ catering-common-core
 - 能力不支持；
 - 银行适配器未接入；
 - 请求或配置不满足业务规则；
-- 幂等冲突；
+- 重复交易；
 - 已明确映射的银行拒绝或通信错误。
 
 用法：
@@ -912,6 +1011,24 @@ LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期�
 
 ---
 
+## 8.5 字段命名规范
+
+收付款方向统一使用以下前缀，**禁止混用 payer/payee 或其他变体**：
+
+| 方向 | 前缀 | 示例 |
+|---|---|---|
+| 付款方 | `pay_` | `pay_account_id`、`pay_name`、`pay_store_no`、`pay_member_id` |
+| 收款方 | `rec_` | `rec_account_id`、`rec_name`、`rec_store_no`、`rec_member_id` |
+| 提现方 | `withdraw_` | `withdraw_account_id`、`withdraw_account_name`、`withdraw_member_id` |
+| 银行卡 | `bank_card_` | `bank_card_no`、`bank_card_holder_name` |
+
+Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`），数据库列用 snake_case（`pay_account_id`/`rec_account_id`/`withdraw_account_id`）。
+
+> 注意：请求 `specialData` 使用银行协议原始 key；本命名规则只约束渠道流水 Entity 和数据库列，
+> 不要求把银行协议 key 改名。
+
+---
+
 ## 9. 代码开发禁止事项
 
 - 不复制旧项目的 `BeanPostProcessor` 路由注册；
@@ -923,10 +1040,11 @@ LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期�
 - 不让具体银行 Handle 绕过 `AbstractBankHandle` 自行加载租户银行配置；
 - 不建立单一 `front_channel_transaction`，也不把不同银行或不同交易业务写入同一渠道表；
 - 不允许调用方传物理表名，不使用字符串拼接动态表名；
-- 不漏存业务系统、逻辑业务类型、业务主/子记录 ID 和完整业务基础数据加密快照；
+- 不漏存业务系统、逻辑业务类型、业务主/子记录 ID 和业务/银行明确字段；
 - 不允许生成 SQL 的 AI 因目标字符集不同而静默修改字段、默认值或索引；不兼容项必须先形成差异清单；
 - 不把 `tenantBankConfig` 增加到对外 `FrontRequest`；
 - 不静默覆盖重复银行 Handle；
+- 不在渠道流水表 Entity 或数据库列使用 `payer`/`payee` 命名——付款统一 `pay_`、收款统一 `rec_`、提现统一 `withdraw_`（见 §8.5）；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
 - 不返回 `null` 或模拟成功；
 - 不在未确认字段时猜测银行协议；
@@ -936,13 +1054,16 @@ LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期�
   `@Mapper(componentModel="spring")` 集中式 `Converter` 接口；对象转换固定用 mapstruct-plus 的
   `@AutoMapper` + `MapstructUtils.convert`（见 §3.9 / §3.9.1）；
 - 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）；
-- 不在 catering-front 使用 `dynamic-datasource`（`@DS` / `DynamicDataSourceContextHolder`）做分库切换；
-  分库固定用 ShardingSphere-JDBC + Hint 模式（见 §3.10.1）；
-- 不在渠道流水表加 `data_source_id` 列——分库由 Hint 动态路由，表结构不变；
-- 不在 Application Service 手动读 HTTP header 或调用 `injectHeaderFields`——参数注入由
-  `RequestContextInterceptor` + `FrontRequestBodyAdvice` 自动完成（见 §3.10.3）；
-- 不绕过 `FrontDataSourceHelper.use(dataSourceId, ...)` 直接调 Mapper——所有渠道流水
-  Mapper 调用必须在 Hint 作用域内，否则 ShardingSphere 无法路由到正确库；
+- 不在 catering-front 使用 `dynamic-datasource`（`@DS` / `DynamicDataSourceContextHolder`）
+  或 Hint（`HintManager`）做分库切换；分库固定用 ShardingSphere-JDBC STANDARD 模式，
+  分片键 `tenant_id`（见 §3.10.1）；
+- 不使用 `FrontDataSourceHelper`——已废弃，STANDARD 模式下 SQL 自带 `tenant_id` 自动路由，
+  Handle 代码不需要任何数据源切换包裹；
+- 不在 Application Service 手动读 HTTP header——参数注入由 `catering-common-feign` 的
+  `RequestContextInterceptor` + `BaseDataRequestBodyAdvice` 自动完成（见 §3.10.3）；
+- 渠道流水表的 `data_source_id` 列只做实例标识记录，不得用于分库路由决策——分库仍按
+  `tenant_id` 走 `TenantDataSourceShardingAlgorithm`；也不得在业务查询里用它做过滤条件
+  （用 tenant_id 代替）；
 - 10 张渠道流水表必须使用 `LINEAR KEY (tenant_id, store_id) PARTITIONS 30` 分区（见 §3.10.2）。
 
 ---
@@ -958,48 +1079,197 @@ LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期�
 5. 在具体银行 Handle 声明能力状态并实现；
 6. 增加 Front 错误映射；
 7. 增加全链路日志和脱敏；
-8. 只有用户明确要求时才增加 API、Router、Handle、异常和序列化测试并执行编译；
+8. 只有用户明确要求时才增加 API、Router、Handle、异常和序列化测试或执行编译；
 9. 更新能力矩阵、方法映射和本文档相关章节。
 
 字段和协议未确认时，只允许创建 `PENDING_INTEGRATION` 骨架，不允许伪造银行请求或成功响应。
 
 ---
 
+## 10.5 DDL/数据库变更规范
+
+任何渠道流水表的 DDL 变更（新增/修改/删除字段、索引、分区），必须**同步检查并更新全部持久层代码和配置**，
+不允许只改数据库不改代码，也不允许只改代码不改数据库。
+
+### 变更清单（每次 DDL 变更必须逐项检查）
+
+| # | 检查项 | 文件/位置 | 说明 |
+|---|---|---|---|
+| 1 | **Entity** | `domain/Front*Transaction.java` | 加/改/删对应字段（camelCase），确保 `@Data` 生成 getter/setter |
+| 2 | **VO** | `domain/vo/Front*TransactionVo.java` | **必须与 Entity 逐字段对齐**——用 diff 验证：`diff <(grep private Entity.java) <(grep private Vo.java)`，VO 不能缺字段也不能多字段（继承自 `BaseRequest` 的除外） |
+| 3 | **Mapper XML** | `resources/mapper/Front*Mapper.xml` | `<resultMap>` 加 `<result column="xxx" property="xxx"/>`；`Base_Column_List` 加列名；去重；字段数 = Entity 字段数 |
+| 4 | **Mapper 接口** | `mapper/Front*Mapper.java` | 确认 `BaseMapperPlus<Entity, Vo>` 泛型类型正确 |
+| 5 | **Service / ServiceImpl** | `service/Front*Service.java` / `service/impl/` | `queryList` 等自定义查询的 `LambdaQuery` 字段引用要同步；删除已删字段的 `.eq()` 行 |
+| 6 | **Handle 持久化** | `channel/*/TransactionHandle.java` | `doInsertInit` 的 `invokeSetter` 调用、`updateSending`/`updateResponse` 的 `wrapper.set` 要同步；字符串字面量改为 `FrontChannelColumnConstants` 常量 |
+| 7 | **渠道列名常量类** | `common-core/constant/front/FrontChannelColumnConstants.java` | 新字段列名定义为常量；删字段时同步删常量；Handle 不写字符串字面量 |
+| 8 | **银行协议常量类** | `common-core/constant/front/*ContractKeys.java` / `*QueryContractKeys.java` | Handle 里 `reserve.put()` / `response.getString()` 用的 key 必须有对应常量定义；新增银行字段时同步加常量 |
+| 9 | **DDL 文档** | `09B-channel-transaction-ddl-utf8mb4.sql.md` + `09-final-rebuild-all-tables.sql` | 建表 SQL 同步更新（全新库执行得到最终结构） |
+| 10 | **字段目录** | `09A-channel-transaction-table-field-catalog.md` | 字段表格加/删行、序号重排、§2 字段数量汇总更新 |
+| 11 | **编译验证** | `mvn clean compile -DskipTests -pl catering-modules/catering-front -am` | 仅在用户明确授权时执行；未授权时在交付报告中明确写“未编译” |
+
+### 禁止事项
+
+- **禁止**只提供 ALTER SQL 不改 Entity/Mapper XML/Handle——运行时字段映射不上；
+- **禁止**改了 Entity 不改 VO——Entity 和 VO 必须逐字段对齐（用 diff 验证）；
+- **禁止**在 Handle/Service 里用字符串字面量作为列名或银行协议 key——必须用 `FrontChannelColumnConstants` 或 `*ContractKeys` 常量；
+- **禁止**改了 Entity 字段名不改 Mapper XML 的 `resultMap` 和 `Base_Column_List`——查询结果会丢字段；
+- **禁止**改了 DDL 不更新 `09A` 字段目录和 `09B`/`09-final` 建表 SQL——文档与代码不一致；
+- 未收到用户授权时禁止执行编译；收到授权后，DDL/Entity/Mapper 联动变更应执行编译验证。
+
+### 变更流程
+
+```text
+1. 确认变更需求（加什么字段、什么类型、什么注释）
+2. 改 09B DDL + 09-final（建表 SQL）+ 09A 字段目录（字段表格 + 数量汇总）
+3. 改 Entity（加字段）
+4. 改 VO（与 Entity 对齐，diff 验证）
+5. 改 Mapper XML（resultMap + Base_Column_List，字段数验证）
+6. 改 FrontChannelColumnConstants（加/删常量）
+7. 改 Handle（invokeSetter / wrapper.set，用常量替换字符串）
+8. 改 Service/ServiceImpl（如有自定义查询）
+9. 银行协议常量类检查（reserve/response key 是否都有常量）
+10. 用户明确授权时执行 mvn clean compile -DskipTests -pl catering-modules/catering-front -am；
+    未授权时记录为“未编译”
+11. 09-final 重建脚本交用户执行
+```
+
+### 历史踩坑记录（必须避免的重复错误）
+
+以下错误在本项目开发过程中**实际发生过**，后续变更必须特别注意：
+
+1. **VO 漏改字段**——Entity 加了 `dataSourceId`/`payAccountId`/`payName` 等账户字段，但 10 个 VO 全部漏了。
+   **教训**：改 Entity 必须同步改 VO，改完用 `diff Entity.java Vo.java` 逐字段验证。
+
+2. **Mapper XML 字段数不一致**——Entity 有 47 个字段，Mapper XML 的 `resultMap` 和 `Base_Column_List` 只有 30 多个。
+   **教训**：改完 XML 后必须检查 `resultMap` 的 `<result>` 行数和 `Base_Column_List` 的列名数 = Entity 字段数。
+
+3. **Handle 里字符串字面量当列名**——`wrapper.set("front_status", ...)` 和 `response.getString("errCode")` 直接写字符串，
+   没用常量。改字段名时 Handle 不会报错但运行时映射不上。
+   **教训**：Handle 里所有列名和银行协议 key 必须用常量类，零字符串字面量。
+
+4. **common-core 银行协议常量类遗漏**——Handle 用了 `response.getString("balance")` 但没有对应常量定义。
+   **教训**：Handle 里每个 `reserve.put()` / `response.getString()` 的 key 都要在 `*ContractKeys` 常量类里有定义。
+
+5. **字段命名不遵守规范**——用了 `payerAccountId`/`payeeAccountId` 而不是 `payAccountId`/`recAccountId`。
+   **教训**：付款统一 `pay_`、收款统一 `rec_`、提现统一 `withdraw_`（见 §8.5），Entity 和数据库列名都要遵守。
+
+6. **LiteFlow 节点重复注册**——同一 nodeId 被注册两次（`*Cmp` 和 `*Node` 各一份），启动报错。
+   **教训**：一个 nodeId 只能有一个 `@LiteflowComponent`，改完 grep 确认唯一。
+
+7. **MyBatis-Plus 版本 API 变化**——`Wrappers` 在 3.5.16 里在 `core.toolkit` 包，不是 `core.conditions`。
+   **教训**：import 路径以项目其他模块的用法为准（`com.baomidou.mybatisplus.core.toolkit.Wrappers`）。
+
+---
+
 ## 11. 提交前检查表
 
-- [ ] 代码放在正确模块和 package；
-- [ ] 依赖方向没有反转或循环；
-- [ ] API 返回类型是 `R<具体结果>`，不存在 `FrontResponse` 中间包装层；
-- [ ] `specialData` 由 `FrontBaseResult` 统一提供；
-- [ ] API、Controller、Application Service 都返回同一个 `R<具体结果>`，Controller 不重复包装；
-- [ ] Application Service 不包含银行协议细节；
-- [ ] Router 只按银行路由；
-- [ ] Handle 请求和返回类型明确；
-- [ ] 对外请求仍只有 `baseData/specialData` 两段；
-- [ ] Handle 内部上下文包含由统一父类装配的 `tenantBankConfig`；
-- [ ] 租户银行配置只按 `tenantId + bankCode` 查询且请求与配置一致；
-- [ ] 账户通用配置已进入 `TenantBankAccountConfig` 强类型字段；
-- [ ] 银行账户特定配置只进入 `accountSpecialData`；
-- [ ] 交易 `specialData` 与账户 `accountSpecialData` 没有合并、共享引用或互相覆盖；
-- [ ] 新增对象、字段、record 组件和枚举值均有业务注释；
-- [ ] 银行账户配置组装策略按 `bankCode` 唯一注册；
-- [ ] 具体银行 Handle 没有重复实现配置查询；
-- [ ] 渠道流水按银行和交易业务选择固定 Repository，没有统一表或动态表名；
-- [ ] 目标渠道表包含业务主/子记录关联、业务基础数据加密快照和三个 reserve 字段；
-- [ ] 最终 SQL 已逐表对照 `09A` 的字段数量、字段顺序、NULL、默认值、更新规则、注释和索引；
-- [ ] 退款只关联同银行原转账或消费记录，原交易累计退款金额受并发控制；
-- [ ] 未接入/不支持没有返回 `null` 或模拟成功；
-- [ ] 新错误码只添加到 `FrontErrorCode`；
-- [ ] LiteFlow 已知业务失败写 Slot 后中断，非 LiteFlow 已知业务失败抛 `FrontException`；
-- [ ] 未知异常不会泄漏堆栈给调用方；
-- [ ] 日志不包含完整 `specialData`、`accountSpecialData`、账户配置和敏感字段；
-- [ ] 银行原始响应码没有直接作为 `R.code/frontRespCode`；
-- [ ] `frontRespCode/frontRespDesc` 同时来自同一个 `FrontErrorCode`；
-- [ ] 返回 `specialData` 只包含当前银行、当前能力的响应白名单字段；
-- [ ] 持久层 Entity ↔ VO/BO 转换使用 `@AutoMapper` + `MapstructUtils.convert`，无手写 `setXxx(getXxx())`；
-- [ ] catering-front `pom.xml` 未重复声明 MapStruct 依赖；
-- [ ] 子模块 `pom.xml` 未写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理；
-- [ ] 如用户明确要求测试，请求、成功响应和异常响应契约已覆盖测试；
-- [ ] 相关设计、能力矩阵和字段映射文档已更新。
+### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
 
-当前骨架在最近一次模块、返回主体和异常迁移后按用户要求未执行编译或测试；后续获得允许时需按本检查表补充验证。
+- [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
+- [ ] `FeignRequestInterceptor`（common-feign 发送端）逐个解析 4 个值：header 优先，
+      header 缺失时从 `RequestContext` 补齐；非 Web/Feign 异步线程不得因没有
+      `HttpServletRequest` 就提前返回；
+- [ ] `RequestContextInterceptor`（common-feign 接收端）从 header 提取 4 个值到 `RequestContext`（ThreadLocal）；
+- [ ] `BaseDataRequestBodyAdvice`（common-feign）由自动配置显式注册，反序列化后同时支持
+      直接 `BaseRequest` 和 `FrontRequest<T>.baseData`；
+- [ ] header 与请求体识别字段冲突时明确失败，不得静默保留请求体值；
+- [ ] `RequestContext.afterCompletion` 调 `clear()` 清理 ThreadLocal；
+- [ ] Handle 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列；
+- [ ] `data_source_id` 只做实例标识记录，**不参与 ShardingSphere 路由决策**（路由按 tenant_id）。
+
+### B. 模块与依赖
+
+- [ ] 代码放在正确模块和 package（front→api-front→common-core 依赖方向无反转）；
+- [ ] 银行协议 DTO 不进 `catering-api-front` 或 `catering-common-core`（放 `channel/{bank}/protocol`）；
+- [ ] 子模块 `pom.xml` 不写死 `<version>`，版本统一在根 `pom.xml` 管理；
+- [ ] catering-front `pom.xml` 未重复声明 MapStruct 依赖；
+- [ ] catering-front 不使用 `dynamic-datasource`（`@DS`/`DynamicDataSourceContextHolder`）。
+
+### C. API 返回结构
+
+- [ ] 单条交易/交易状态/账户查询返回 `R<具体结果>`，分页明细查询直接返回
+      `TableDataInfo<具体行>`，无返回体返回 `R<Void>`；
+- [ ] 分页接口不存在 `R<TableDataInfo<...>>`、`R<FrontPageResult<...>>` 或直接对外返回
+      `FrontPageResult<...>`；
+- [ ] 不存在 `FrontResponse` 中间包装层；
+- [ ] API/Controller/ApplicationService 三层签名一致，Controller 只透传不重复包装；
+- [ ] ApplicationService 不含银行协议细节（无 `instanceof` 判断银行、无 bizFunc 字面量）。
+
+### D. 请求对象与上下文
+
+- [ ] 对外请求固定 `baseData + specialData` 两段（JSON：`{"baseData":{},"specialData":{}}`）；
+- [ ] Handle 内部三段式上下文 `BankRequestContext(baseData, specialData, tenantBankConfig)`，`tenantBankConfig` 不允许调用方传入；
+- [ ] `specialData` 与 `accountSpecialData` 完全分离，不共享引用、不 `putAll`、不互相覆盖；
+- [ ] `specialData` 不含 tenantId/platformCode/frontSsn/channelNo/bizFunc/mchntId/appId/appKey/url/密钥；
+- [ ] **specialData 的 key 用银行协议原始名**（如 outAcctNo/inAcctNo/USER_D_NM），和 word 文档一致，禁止自定义；
+- [ ] **baseData 只含内部业务公共字段**——收付款账户、会员编号、姓名、卡号及银行协议专用筛选条件
+      均放 specialData，不放请求对象（TransferBusinessData 等）；
+- [ ] Handle 从 `context.specialData().getString(常量)` 取银行特有字段，不从 `data.getXxx()` 取；
+- [ ] 常量类变量名用 `PAY_`/`REC_` 前缀（禁止 PAYER/PAYEE），值用银行协议原始名。
+
+### E. 路由与能力
+
+- [ ] Router 只按 `platformCode` 路由（BankCode），不用复合 Key；
+- [ ] Registry 构造器注入 `List<Handle>`，同银行重复实现启动失败；
+- [ ] Handle 继承 `AbstractBankHandle`，配置由父类统一加载（不绕过）；
+- [ ] `capabilityStatus` 返回 SUPPORTED/UNSUPPORTED/PENDING_INTEGRATION 三态，不支持/未接入不返回 null 或模拟成功；
+- [ ] `bizFunc/chnlNo` 由 Handle 按能力用常量确定，禁止调用方通过 specialData 覆盖。
+
+### F. LiteFlow 编排
+
+- [ ] 7 个节点 `@LiteflowComponent` 注册唯一（grep 确认无重复 nodeId）；
+- [ ] 13 条链（8 交易 + 5 查询）XML 引用的节点全部有 bean（无悬空引用）；
+- [ ] 业务异常 `markBusinessFail` + `setIsEnd(true)`，不 throw；
+- [ ] 系统异常 throw 走 `FrontExceptionHandler` 收口；
+- [ ] 持久化（INIT/SENDING/响应更新）下沉到 Handle 内部完成，不需要独立链节点。
+
+### G. 持久化与渠道流水
+
+- [ ] 10 张表按"银行 + 交易业务"拆分，显式 switch/枚举选固定 Repository，不接收表名不拼接动态 SQL；
+- [ ] **渠道表禁止 MEDIUMTEXT 快照字段**（`business_base_snapshot_cipher` 等 4 个已删除），所有请求/返回字段单独成列；
+- [ ] **禁止落库** front_resp_code/front_resp_desc/front_remark（接口返回即可）、version/request_hash/interface_code/config_version/business_date/business_time/business_remark、send_started_at/completed_at；
+- [ ] 每张表含 `reserve1/reserve2/reserve3` + 3 个时间（create_time/update_time/bank_responded_at）；
+- [ ] Entity 继承 `TenantEntity`，VO 继承 `BaseRequest`，Entity ↔ VO 逐字段对齐（`diff` 验证）；
+- [ ] Mapper XML `resultMap` 行数 = `Base_Column_List` 列名数 = Entity 字段数（含父类 5 个字段）；
+- [ ] Handle `doInsertInit`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→ 调银行 → `updateResponse`（UPDATE 终态/响应码）；
+- [ ] 重复交易检查：CITIC + PingAn 交易方法在当前银行业务表按
+      `tenant_id + biz_order_no + biz_sub_order_no` 查询；命中返回“交易已存在”，不调用银行、不重放旧结果；
+- [ ] 重复交易统一返回 `TRANSACTION_ALREADY_EXISTS(F300001, "交易已存在")`，不存在旧的
+      `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义；
+- [ ] 退款只关联同银行原转账或消费记录（`loadOriginalRefundFields` / `fillRefundAccountFieldsFromOriginal`）；
+- [ ] 平台收付款表也存 acct（pay_account_id / rec_account_id）。
+
+### H. 分库与分区
+
+- [ ] ShardingSphere STANDARD 模式，分片键 `tenant_id`，算法 `TenantDataSourceShardingAlgorithm`；
+- [ ] 算法查配置中心 `tenant_base_config`（JSON），解析 `data_source_id` 字段拼 `ds_x`；
+- [ ] 配置缺失、解析失败或目标 `ds_x` 不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
+- [ ] 本阶段不验收 `shardingsphere-config-{dev,uat,prod}.yaml` 的连接配置加密和安全加固；后续部署任务单独处理；
+- [ ] `FrontDataSourceHelper` 已废弃不存在，Handle 无数据源切换代码；
+- [ ] 10 张表 `PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`（内置于 09-final）；
+- [ ] 主键组合 `(id, tenant_id, store_id)`，唯一键降级为普通索引（满足分区约束）。
+
+### I. 字段命名与常量
+
+- [ ] 付款 `pay_`/收款 `rec_`/提现 `withdraw_`/银行卡 `bank_card_` 前缀（禁止 payer/payee）；
+- [ ] Handle 零字符串字面量（列名用 `FrontChannelColumnConstants`，银行协议 key 用 `*ContractKeys`）；
+- [ ] common-core 常量类与 Handle 实际引用对齐（`reserve.put`/`response.getString` 的 key 都有常量定义）；
+- [ ] Entity ↔ VO 转换用 `@AutoMapper` + `MapstructUtils.convert`，无手写 `setXxx(getXxx())`。
+
+### J. 异常与日志
+
+- [ ] 新错误码只添加到 `FrontErrorCode`（编码分段 F1/F2/F3/F4/F9）；
+- [ ] `FrontExceptionHandler` 统一收口，未知异常对外只返回 `INTERNAL_ERROR` 不泄漏堆栈；
+- [ ] `frontRespCode/frontRespDesc` 来自同一个 `FrontErrorCode`；
+- [ ] 银行原始响应码不作 `R.code/frontRespCode`；
+- [ ] 日志不含完整 `specialData`/`accountSpecialData`/账户配置/密钥/卡号/手机号。
+
+### K. DDL 变更同步（见 §10.5）
+
+- [ ] DDL 变更已同步 11 项（Entity/VO/Mapper XML/Mapper 接口/Service/Handle/列名常量类/银行协议常量类/DDL 文档/字段目录/编译验证）；
+- [ ] 已记录本次是否获得编译授权；获得授权时编译通过，未授权时没有执行编译。
+
+### L. 文档
+
+- [ ] 相关设计、能力矩阵和字段映射文档已更新；
+- [ ] `09-final-rebuild-all-tables.sql` 与代码 Entity 字段一致。

@@ -149,7 +149,7 @@ flowchart LR
 | 分层 | 主要职责 |
 |---|---|
 | API 层 | 接收请求、基础格式校验、确定业务接口 |
-| Application/LiteFlow 层 | Router 与能力校验、调用 Handle 上下文装配、幂等、渠道流水、公共异常处理 |
+| Application/LiteFlow 层 | Router 与能力校验、调用 Handle 上下文装配、重复交易检查、渠道流水、公共异常处理 |
 | Router 层 | 根据 `platformCode` 选择银行大类 Handle |
 | Handle 层 | 统一父类装配配置上下文；具体银行完成请求组装、`bizFunc/channelNo` 确定、银行调用、响应转换 |
 | Config 层 | `TenantBankConfigProvider` 根据 `tenantId + bankCode` 获取租户银行配置 |
@@ -181,7 +181,9 @@ public class FrontBaseRequestData {
 }
 ```
 
-具体交易、交易查询和账户查询对象继承 `FrontBaseRequestData`，不得把已有公共语义的字段放入 `specialData`。
+具体交易、交易查询和账户查询对象继承 `FrontBaseRequestData`。`baseData` 只保留内部业务系统的统一
+业务字段；收付款账户、会员编号、姓名、卡号及银行协议专用筛选条件进入 `specialData`，使用银行协议
+原始 key，由具体 Handle 显式映射。
 
 交易公共基础对象增加 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店字段。
 单笔状态查询基础对象使用 `frontSsn/bizOrderNo/bizSubOrderNo`，其中后两者分别是业务主流水和
@@ -292,7 +294,7 @@ platformCode + 具体业务接口
 数据流：
 
 ```text
-业务原始数据
+银行调用所需动态数据
   → 业务系统银行参数组装工具
   → specialData
   → Front银行Handle校验和解析
@@ -302,7 +304,7 @@ platformCode + 具体业务接口
 业务系统负责：
 
 ```text
-业务数据 → specialData
+银行使用的账户、会员、姓名、卡号及能力特有动态字段 → specialData
 ```
 
 Front 负责：
@@ -315,15 +317,18 @@ specialData → 银行钱包reserve
 
 ```json
 {
-  "schemaVersion": "1.0",
-  "data": {
-  }
+  "outAcctNo": "银行协议原始字段值",
+  "inAcctNo": "银行协议原始字段值"
 }
 ```
 
+`specialData` 使用扁平 `JSONObject`，不增加 `schemaVersion/data` 包装层。不同银行、不同能力使用各自
+常量白名单解析，禁止整体透传到银行 reserve。
+
 ### 7.3 使用约束
 
-`specialData` 只保存银行和接口特有的动态业务参数。
+`baseData` 只保存内部业务系统公共数据；`specialData` 保存银行和接口使用的动态业务参数，key 使用
+对应银行协议原始字段名。金额、业务订单、业务主/子记录和收付款门店等内部公共语义仍保留在 baseData。
 
 禁止保存：
 
@@ -621,7 +626,7 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
   → TransactionRouter
   → 能力校验
   → AbstractBankHandle.prepareContext
-  → 生成frontSsn/幂等检查
+  → 生成 frontSsn/重复交易检查
   → 创建渠道交易流水
   → 银行TransactionHandle
   → 解析银行配置和校验specialData
@@ -651,7 +656,7 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 |---|---|
 | 编排公共步骤 | Router 选择银行实现并校验能力 |
 | 调用上下文装配步骤 | `AbstractBankHandle` 统一加载、校验租户银行配置 |
-| 幂等控制 | 组装钱包报文 |
+| 重复交易检查 | 组装钱包报文 |
 | 渠道流水记录 | 调用银行接口 |
 | 公共异常处理 | 转换银行响应 |
 
@@ -709,7 +714,7 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 - Front 统一响应和归一化状态；
 - 来源业务系统、业务交易类型、业务主/子记录 ID 及主/子订单；
 - 付款/收款门店、金额、手续费等公共业务数据；
-- 完整业务 `baseData` 和白名单 `specialData` 的加密快照；
+- 业务及银行所需明确字段；不保存整段 `baseData/specialData` 快照；
 - 退款与同银行原转账、消费记录的关联。
 
 物理表必须按“银行 + 交易业务”拆分：
@@ -743,18 +748,19 @@ biz_sub_transaction_id
 biz_request_no
 biz_order_no
 biz_sub_order_no
-business_base_snapshot_cipher
-business_special_snapshot_cipher
+pay/rec/withdraw/bank_card 相关明确字段
 reserve1 / reserve2 / reserve3
 ```
 
 约束：
 
 - `frontSsn` 使用全局生成算法，每张表再使用唯一索引；
-- 每张表按 `(tenant_id, biz_system_code, capability, biz_request_no)` 保证幂等；
+- 发送前在当前银行业务表按 `(tenant_id, biz_order_no, biz_sub_order_no)` 执行重复交易检查，
+  命中返回“交易已存在”，不调用银行、不重放旧结果；
 - 业务记录 ID 使用字符串兼容数字 ID 和 UUID，不建立跨服务数据库外键；
-- 钱包请求和响应必须过滤敏感数据并加密保存；
-- 不保存完整银行配置、银行密钥、验证码或明文账户敏感信息；
+- 不保存完整银行请求/响应快照；
+- 不保存完整银行配置、银行密钥、验证码或支付密码；账户、会员、姓名和卡号允许按内部明确列保存，
+  本期不要求数据库字段加密，但不得输出到日志、异常消息或普通接口响应；
 - 调用银行前创建 `INIT`，实际发送前更新为 `SENDING`；
 - 超时或结果不确定时记录 `UNKNOWN`，不能直接记录失败；
 - 资金交易不能因超时自动盲目重发。
@@ -773,9 +779,9 @@ public class FrontBaseResult {
 }
 ```
 
-所有对外 API 必须由公共 `R` 直接包装确定类型结果，例如 `R<FrontTransactionResult>` 和
-`R<FrontPageResult<TransactionDetailItem>>`。`R.code/msg` 表达统一调用结果；`R.data` 保存跨银行
-统一强类型结果，`R.data.specialData` 保存当前银行和接口的特殊响应字段。Handle 内部直接返回确定的
+单条交易、交易状态和账户查询由公共 `R` 包装确定类型结果，例如 `R<FrontTransactionResult>`；
+分页明细查询直接返回工程统一的 `TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包装。
+`FrontBaseResult.specialData` 保存当前银行和接口的特殊响应字段。Handle 内部直接返回确定的
 `FrontBaseResult` 子类，禁止 `FrontResponse` 中间层和无法约束的 `<T> T` 返回。
 
 `R` 与 `FrontErrorCode` 统一位于 `catering-common-core`，API 和功能模块不得重复定义。
@@ -881,7 +887,7 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 
 - [ ] 首版交易业务最终范围；
 - [ ] 每类交易核心 `baseData`；
-- [ ] 幂等键和主/子订单关系；
+- [ ] 重复交易键和主/子订单关系；
 - [ ] 原交易关联字段；
 - [ ] 平安、中信 `specialData` 字段；
 - [ ] 银行响应到 Front 状态的映射。

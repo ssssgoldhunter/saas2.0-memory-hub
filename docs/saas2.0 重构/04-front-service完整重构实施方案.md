@@ -39,7 +39,7 @@ API/Controller
 3. 完整 API、请求、响应、枚举清单；
 4. LiteFlow 上下文、节点、链路和异常收口方式；
 5. Router 注册方式与重复实现校验；
-6. 渠道流水 DDL、幂等规则和状态迁移；
+6. 渠道流水 DDL、重复交易规则和状态迁移；
 7. 配置系统适配端口；
 8. 中信、平安 Handle 骨架及未接入行为；
 9. 测试边界和可验证的完成标准。
@@ -52,7 +52,7 @@ API/Controller
 - LiteFlow 公共编排；
 - Router、Handle SPI 和注册表；
 - 租户配置端口和内部配置模型；
-- 渠道流水、幂等、状态机；
+- 渠道流水、重复交易检查、状态机；
 - 公共 HTTP、日志脱敏、异常处理骨架；
 - 中信、平安 Handle 空实现骨架；
 - 非银行协议相关单元测试和集成测试。
@@ -194,7 +194,7 @@ flowchart LR
     C --> D["LiteFlow公共链路"]
     D --> G["TransactionRouter或QueryRouter"]
     G --> E["能力校验与AbstractBankHandle配置装配"]
-    E --> F["幂等与渠道流水"]
+    E --> F["重复交易检查与渠道流水"]
     F --> H["Citic Handle"]
     F --> I["PingAn Handle"]
     H --> J["钱包HTTP/签名/加密"]
@@ -211,7 +211,7 @@ flowchart LR
 → Router选择银行Handle
 → 能力校验
 → AbstractBankHandle按tenantId+bankCode装配配置上下文
-→ 幂等检查
+→ 重复交易检查
 → 生成frontSsn
 → 创建渠道流水
 → 具体银行Handle解析配置和specialData并调用钱包
@@ -285,7 +285,7 @@ catering-modules/
 - 配置系统客户端；
 - HTTP、签名、加密；
 - 数据库实体、Mapper、Repository；
-- 渠道流水和幂等实现。
+- 渠道流水和重复交易检查实现。
 
 ### 6.4 相对旧 `front-service` 的保留与优化
 
@@ -301,7 +301,7 @@ catering-modules/
 | 使用旧平台结算配置对象 | 改为 `TenantBankConfigProvider`、通用账户配置对象和银行组装策略 |
 | `reserveMap` 字符串 Key 分散硬编码 | 改为版本化 `specialData` 契约和显式映射 |
 | 部分银行方法返回 `null` 或模拟成功 | 改为 `UNSUPPORTED/PENDING_INTEGRATION` 明确错误 |
-| 没有 Front 渠道交易流水 | 按银行、交易业务拆表，并新增幂等和状态机 |
+| 没有 Front 渠道交易流水 | 按银行、交易业务拆表，并新增重复交易检查和状态机 |
 
 ---
 
@@ -369,7 +369,7 @@ catering-modules/catering-front
    │     ├─ FrontRequestValidateCmp
    │     ├─ FrontRouteAndCapabilityCheckCmp
    │     ├─ BankHandleContextPrepareCmp
-   │     ├─ FrontIdempotencyCheckCmp
+   │     ├─ FrontDuplicateTransactionCheckCmp
    │     ├─ FrontTransactionRecordCreateCmp
    │     ├─ FrontTransactionDispatchCmp
    │     ├─ FrontQueryDispatchCmp
@@ -408,7 +408,7 @@ catering-modules/catering-front
    │  ├─ FrontChannelTransactionMapper
    │  ├─ FrontChannelTransactionRepository
    │  ├─ FrontTransactionRecordService
-   │  └─ FrontIdempotencyService
+   │  └─ FrontDuplicateTransactionService
    ├─ channel
    │  ├─ citic
    │  │  ├─ CiticTransactionHandle
@@ -482,13 +482,13 @@ public class FrontBaseRequestData {
     "bizRequestNo": "request-001",
     "bizOrderNo": "order-001",
     "amount": 100,
-    "currency": "CNY",
-    "payerAccountId": "payer-001",
-    "payeeAccountId": "payee-001"
+    "currency": "CNY"
   },
   "specialData": {
-    "schemaVersion": "1.0",
-    "data": {}
+    "outAcctNo": "payer-001",
+    "inAcctNo": "payee-001",
+    "USER_D_NM": "付款方名称",
+    "USER_C_NM": "收款方名称"
   }
 }
 ```
@@ -535,7 +535,7 @@ POST /front/v1/queries/transactions/details
 
 ### 8.4 通用响应约束
 
-所有 API 使用工程公共 `R` 直接包装具体结果：
+单条交易、交易状态和账户查询使用工程公共 `R` 包装具体结果：
 
 ```java
 R<具体结果>
@@ -552,8 +552,8 @@ public class FrontBaseResult {
 ```
 
 响应 `data` 的强类型字段保存跨银行统一结果及 Front 响应码，`data.specialData` 保存当前银行和接口的特殊返回。
-每个 API 方法必须固定具体结果类型，例如 `R<FrontTransactionResult>`；禁止增加 `FrontResponse` 中间层，
-也禁止复用旧 Handle 的任意 `<T> T`。
+分页明细查询直接返回工程统一的 `TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包装。
+每个 API 方法必须固定具体结果类型；禁止增加 `FrontResponse` 中间层，也禁止复用旧 Handle 的任意 `<T> T`。
 
 未接入能力的响应示例：
 
@@ -569,8 +569,8 @@ public class FrontBaseResult {
 }
 ```
 
-`R` 始终是接口顶层对象。Front 可识别的业务失败在 `R.data` 中保留基础结果字段和 `specialData`；
-没有银行特殊返回时使用空对象。
+`R` 只用于单条接口。分页明细查询的成功和业务失败直接通过
+`FrontPageResult.frontRespCode/frontRespDesc/specialData` 表达，失败时 `records` 返回空集合。
 
 交易结果保留已确认字段：
 
@@ -596,7 +596,7 @@ public class FrontTransactionResult extends FrontBaseResult {
 每个交易 DTO 至少包含：
 
 ```text
-bizRequestNo       业务调用唯一号，幂等键组成部分
+bizRequestNo       业务调用标识，不参与本期重复交易键
 bizOrderNo         业务主订单号
 bizSubOrderNo      业务子订单号，可空
 payStoreNo         付款业务门店编码
@@ -614,13 +614,13 @@ remark             业务备注
 
 | DTO | 主要补充字段 |
 |---|---|
-| `TransferBusinessData` | 付款账户、收款账户、付款方名称、收款方名称 |
-| `AuthTransferBusinessData` | 继承普通转账字段；短信指令号和验证码放请求 `specialData` |
-| `TransferAuthCodeBusinessData` | 交易公共字段、付款账户、付款会员编号、收款账户；不传手机号和原短信指令号 |
-| `ConsumeBusinessData` | 付款账户、收款账户、消费场景、订单信息 |
+| `TransferBusinessData` | 只继承内部交易公共字段；收付款账户、会员和名称放请求 `specialData` |
+| `AuthTransferBusinessData` | 继承普通转账字段；账户、会员、姓名、短信指令号和验证码放请求 `specialData` |
+| `TransferAuthCodeBusinessData` | 只保留内部交易公共字段；付款账户、付款会员编号、收款账户放请求 `specialData` |
+| `ConsumeBusinessData` | 内部交易公共字段、消费场景、订单信息；银行账户字段放请求 `specialData` |
 | `RefundBusinessData` | 原 `frontSsn`、原业务主/子订单、退款金额、手续费、退款原因 |
-| `WithdrawBusinessData` | 提现账户、会员、银行卡、账户名称、持卡人名称、提现金额、手续费、备注 |
-| `PlatformTransferBusinessData` | 用户侧账户和名称、金额；平台侧登记簿由中信商户上下文隐式确定，业务方向由 API 确定 |
+| `WithdrawBusinessData` | 内部交易公共字段；提现账户、会员、银行卡、账户名称、持卡人名称放请求 `specialData` |
+| `PlatformTransferBusinessData` | 内部交易公共字段；用户侧账户和名称放请求 `specialData`，平台侧登记簿隐式确定 |
 
 银行特有但不具备公共业务语义的字段留在 `specialData`，不得为迁就某家银行污染公共 DTO。
 
@@ -629,15 +629,15 @@ remark             业务备注
 账户状态：
 
 ```text
-accountId
+baseData：无银行账户字段
+specialData：银行协议账户 key，例如中信 acctNo
 ```
 
 账户余额：
 
 ```text
 accountScope
-accountId
-functionalAccountType（仅FUNCTIONAL_ACCOUNT条件必填）
+specialData：银行协议账户 key；银行专用功能账户类型也放 specialData
 ```
 
 交易状态：
@@ -651,10 +651,9 @@ bizSubOrderNo（业务子流水号）
 平台交易明细和交易明细：
 
 ```text
-accountId（交易明细条件必填）
 pageNo
 pageSize
-continuationToken
+specialData：交易明细账户标识（非平台明细时必填）及银行专用查询条件
 ```
 
 交易、交易查询和账户查询的请求均保留 `FrontRequest.specialData`，由业务系统组装，具体银行 Handle
@@ -698,7 +697,6 @@ public class FrontFlowContext {
 frontSsn
 capability
 interfaceCode
-requestHash
 configVersion
 receivedAt
 sendStartedAt
@@ -825,7 +823,7 @@ Handle 不负责：
 
 - 在各个中信、平安具体 Handle 中重复实现远程配置查询；
 - 创建 Front 渠道流水；
-- 业务幂等；
+- 重复交易检查；
 - Controller 参数绑定；
 - 直接修改业务系统订单。
 
@@ -1225,7 +1223,7 @@ THEN(
   frontRequestValidate,
   frontRouteAndCapabilityCheck,
   bankHandleContextPrepare,
-  frontIdempotencyCheck,
+  frontDuplicateTransactionCheck,
   frontTransactionRecordCreate,
   frontTransactionDispatch,
   frontResponseNormalize,
@@ -1282,7 +1280,7 @@ throw"的一致原则。
 
 ---
 
-## 15. 渠道交易流水与幂等
+## 15. 渠道交易流水与重复交易检查
 
 ### 15.1 分银行、分交易业务表设计
 
@@ -1333,29 +1331,29 @@ biz_order_no
 biz_sub_order_no
 ```
 
-并保存金额、手续费、币种、业务日期时间、收付款门店、完整 `baseData` 加密快照及白名单
-`specialData` 加密快照。每张表统一包含 `reserve1/reserve2/reserve3` 三个 `VARCHAR(1024)` 临时扩展
+并保存金额、手续费、币种、收付款门店及账户/会员/姓名/卡号等明确字段，不保存整段
+`baseData/specialData` 或银行报文快照。每张表统一包含 `reserve1/reserve2/reserve3` 三个 `VARCHAR(1024)` 临时扩展
 字段。退款表额外关联同银行原转账或消费记录；转账、消费表保存 `refunded_amount`。
 
-不保存来源业务物理表名，不建立跨服务数据库外键。请求、响应快照必须白名单过滤并加密，不保存密钥、
-验证码和完整租户银行配置。
+不保存来源业务物理表名，不建立跨服务数据库外键。不保存密钥、验证码、支付密码和完整租户银行配置。
+内部渠道表的账户、会员、姓名和卡号字段本期不要求数据库加密，但禁止输出到日志、异常消息和普通接口响应。
 
-### 15.3 幂等规则
+### 15.3 重复交易规则
 
-幂等唯一键：
+发送银行前在当前银行业务表按以下字段查询：
 
 ```text
-tenantId + bizSystemCode + capability + bizRequestNo
+tenantId + bizOrderNo + bizSubOrderNo
 ```
 
 处理规则：
 
-1. 不存在：创建新流水；
-2. 已存在且 `requestHash` 相同：返回原结果或当前处理中状态；
-3. 已存在但 `requestHash` 不同：返回 `IDEMPOTENCY_CONFLICT`；
-4. `UNKNOWN` 状态不能再次发起资金请求，应走交易状态查询；
-5. 幂等键在目标银行、目标业务物理表内检查；`frontSsn` 由全局生成器保证跨表不重复；
-6. 退款还必须校验同银行原交易、累计退款金额和退款防重。
+1. 不存在：创建新流水并继续调用银行；
+2. 已存在：返回“交易已存在”，禁止再次调用银行；
+3. 不比较请求 Hash，不返回或重放旧结果；
+4. 业务系统主动重做必须更换 `bizOrderNo` 或 `bizSubOrderNo`；
+5. 该规则在目标银行、目标业务物理表内检查；`frontSsn` 由生成器保证跨表不重复；
+6. 退款还必须校验同银行原交易和累计退款金额。
 
 ### 15.4 状态机
 
@@ -1388,8 +1386,7 @@ INIT
 | `F200001` | 银行不支持 |
 | `F200002` | 当前银行不支持该能力 |
 | `F200003` | 银行适配器尚未完成接入 |
-| `F300001` | 幂等请求处理中 |
-| `F300002` | 幂等请求参数冲突 |
+| `F300001` | 交易已存在；当前银行、当前业务物理表内 `tenantId + bizOrderNo + bizSubOrderNo` 已命中 |
 | `F400001` | 钱包通信失败，未开始发送 |
 | `F400002` | 钱包结果未知，需要查询 |
 | `F400003` | 钱包响应格式错误 |
@@ -1493,11 +1490,11 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - 配置 schema 版本未知时失败；
 - 请求不能覆盖密钥、URL、`bizFunc/channelNo`。
 
-### 18.3 幂等和流水测试
+### 18.3 重复交易和流水测试
 
 - 首次请求创建一条流水；
-- 同幂等键、同请求返回原结果；
-- 同幂等键、不同请求返回冲突；
+- 相同 `tenantId + bizOrderNo + bizSubOrderNo` 返回“交易已存在”且不调用银行；
+- 更换主或子业务流水后允许创建新交易；
 - 调用前状态为 `SENDING`；
 - 明确成功写 `SUCCESS`；
 - 明确拒绝写 `FAILED`；
@@ -1576,16 +1573,16 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [ ] 创建日志脱敏器；
 - [ ] 真实银行算法实现留在银行包中待接入。
 
-### 19.6 数据和幂等
+### 19.6 数据和重复交易检查
 
 - [x] 创建按“银行 + 交易业务”拆分的 10 张渠道表 DDL；
 - [x] 交易请求增加业务系统、逻辑交易类型及业务主/子记录 ID；
 - [ ] 创建 Entity、Mapper、Repository、Service；
 - [ ] 创建显式银行业务表路由和仅银行内多表定位器；
 - [ ] 创建流水号生成器；
-- [ ] 创建请求 Hash 和幂等逻辑；
+- [ ] 在当前银行业务表实现 `tenantId + bizOrderNo + bizSubOrderNo` 重复交易检查；
 - [ ] 创建受控状态机；
-- [ ] 创建快照脱敏和保存逻辑。
+- [x] 明确禁止保存完整请求、`specialData`、银行请求和银行响应快照；所需信息全部使用明确列。
 
 ### 19.7 测试和交付
 
@@ -1595,7 +1592,7 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 - [x] 早期骨架曾执行 `mvn package`、可执行 Jar 启动和中信待接入响应冒烟测试；
 - [ ] 当前代码不保留测试类；只有用户明确要求后才新增测试或执行编译验证；
 - [ ] 使用 Fake Handle 完成公共框架测试；
-- [ ] Router、配置、幂等、状态机测试通过；
+- [ ] Router、配置、重复交易检查、状态机测试通过；
 - [ ] Controller 集成测试通过；
 - [ ] `mvn test` 通过；
 - [ ] `mvn clean package` 通过；
@@ -1613,10 +1610,10 @@ Router 仍只看银行大 Handle，辅助类不能形成第二套路由体系。
 3. 中信、平安均能被 Router 选中；
 4. 未接入方法返回 `F200003`，不返回 `null`；
 5. 明确不支持方法返回 `F200002`；
-6. Fake Handle 下交易可以完整经历配置、幂等、流水、路由和响应链路；
+6. Fake Handle 下交易可以完整经历配置、重复交易检查、流水、路由和响应链路；
 7. 查询可以完整经历配置、路由和响应链路；
 8. 超时交易进入 `UNKNOWN`，没有盲目重发；
-9. 请求和响应快照完成脱敏；
+9. 渠道表不含完整请求/响应快照，所需业务和银行字段均以明确列保存；
 10. 单元测试、集成测试和构建全部通过；
 11. 中信、平安真实请求组装类中没有伪造成功代码；
 12. 文档列出的待接入点都有明确 TODO 和对应接口文档编号。

@@ -45,16 +45,17 @@ TransferBusinessData extends BaseTransactionBusinessData
 ├─ bizRequestNo / bizOrderNo / bizSubOrderNo
 ├─ amount / fee / currency
 ├─ businessDate / businessTime / remark
-├─ payStoreNo / payStoreId / recStoreNo / recStoreId
-├─ payerAccountId / payerMemberId / payerName
-└─ payeeAccountId / payeeMemberId / payeeName
+└─ payStoreNo / payStoreId / recStoreNo / recStoreId
 ```
+
+收付款账户号、会员编号和姓名不是内部业务系统公共字段，不进入 `TransferBusinessData`；它们按目标银行
+协议原始 key 放入请求 `specialData`。
 
 ### 2.3 consume 基础对象
 
 ```text
 ConsumeBusinessData extends BaseTransactionBusinessData
-├─ 与 transfer 相同的交易公共字段及收付款账户、会员、名称字段
+├─ 与 transfer 相同的内部业务公共字段
 ├─ consumeScene
 └─ orderInfo
 ```
@@ -111,16 +112,16 @@ BankRequestContext<T>
 | `chnlNo` | Handle 常量 `0010` | 禁止业务系统覆盖 |
 | `ccy` | Handle 常量 `CNY` | 当前中信普通支付固定人民币 |
 | `transAmt` | `baseData.amount` | 单位为分，必须大于 0 |
-| `outAcctNo` | `baseData.payerAccountId` | 按中信协议加密 |
-| `inAcctNo` | `baseData.payeeAccountId` | 按中信协议加密 |
+| `outAcctNo` | `specialData.outAcctNo` | 付款钱包账号，按中信协议加密 |
+| `inAcctNo` | `specialData.inAcctNo` | 收款钱包账号，按中信协议加密 |
 | `remark` | `baseData.remark` | Handle 校验银行长度 |
 
 ### 4.2 中信 reserve 映射
 
 | reserve 字段 | 来源 | 解释和注意点 |
 |---|---|---|
-| `USER_D_NM` | `baseData.payerName` | 付款用户名称 |
-| `USER_C_NM` | `baseData.payeeName` | 收款用户名称 |
+| `USER_D_NM` | `specialData.USER_D_NM` | 付款用户名称 |
+| `USER_C_NM` | `specialData.USER_C_NM` | 收款用户名称 |
 | `USER_C_AMT` | `baseData.amount` | 收款用户入账金额，单位为分，必须大于 0 |
 | `P_SELF_FLAG` | Handle 固定值 `N` | 当前普通 transfer/consume 无平台自有资金动账 |
 | `P_SELF_AMT` | Handle 固定值 `0` | 单位为分，与 `P_SELF_FLAG=N` 配套 |
@@ -133,8 +134,9 @@ BankRequestContext<T>
 | `laasSsn` | 中信 Handle | 外联平台流水号，Handle 生成并保证不重复 |
 
 当前 mdl 的 `ZxTransTransferHandle/ZxTransConsumeHandle` 没有映射 `USER_SHARE_*` 和
-`REQ_RESERVED`，因此本阶段不把这些 Word 字段声明为活动常量，也不开放对应请求 `specialData`。
-中信普通 transfer/consume 当前请求 `specialData` 应为空对象；以后确认分润或自有资金场景后，必须
+`REQ_RESERVED`，因此本阶段不把这些 Word 字段声明为活动常量，也不开放这些字段。
+中信普通 transfer/consume 请求 `specialData` 当前只允许
+`outAcctNo/inAcctNo/USER_D_NM/USER_C_NM`；以后确认分润或自有资金场景后，必须
 先明确业务来源、条件校验和真实 Handle 映射，再扩展契约。
 
 中信账户配置中的 `default_role/default_fund_type/self_role/self_fund_type/self_dealType/`
@@ -170,13 +172,13 @@ errCode == D5000000
 |---|---|---|
 | `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
 | `mchntId` | 租户银行通用配置 | 接入方编号 |
-| `mchntMbrId` | `baseData.payerMemberId` | 当前会员间交易的付款方商户会员编号 |
+| `mchntMbrId` | `specialData.outAcctId` | 当前会员间交易的付款方商户会员编号 |
 | `transTime` | 平安 Handle | 每次请求生成，格式按协议 |
 | `transSsn` | 平安 Handle | 按平安规则生成、落渠道交易表并回传 `frontSsn` |
 | `bizFunc` | Handle 常量 `01` | 禁止业务系统覆盖 |
 | `chnlNo` | Handle 常量 `0001` | 禁止业务系统覆盖 |
-| `outAcctNo` | `baseData.payerAccountId` | 付款见证子账户，按协议加密 |
-| `inAcctNo` | `baseData.payeeAccountId` | 收款见证子账户，按协议加密 |
+| `outAcctNo` | `specialData.outAcctNo` | 付款见证子账户，按协议加密 |
+| `inAcctNo` | `specialData.inAcctNo` | 收款见证子账户，按协议加密 |
 | `transAmt` | `baseData.amount` | 单位为分，包含手续费 |
 | `fee` | `baseData.fee` | 单位为分，无手续费传 0 |
 | `ccy` | `baseData.currency` | 当前默认 CNY |
@@ -189,16 +191,17 @@ errCode == D5000000
 | `mrchCode` | `accountSpecialData.mrchCode` | 平台号，禁止业务系统覆盖 |
 | `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务系统覆盖 |
 | `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，进入请求前加密，禁止记录明文 |
-| `functionFlag` | 平安 Handle 场景策略 | `6` 直接支付 T+1、`7` 免密支付、`9` 直接支付 T+0 |
-| `outAcctId` | `baseData.payerMemberId` | 转出方商户会员编号 |
-| `outAcctName` | `baseData.payerName` | 转出方户名，按协议加密 |
-| `inAcctId` | `baseData.payeeMemberId` | 转入方商户会员编号 |
-| `inAcctName` | `baseData.payeeName` | 转入方户名，按协议加密 |
+| `functionFlag` | 平安 Handle 场景策略 | lsym 生产代码：transfer=`9`；consume 默认/`0109`=`9`；特殊 `0107`=`7` |
+| `outAcctId` | `specialData.outAcctId` | 转出方商户会员编号 |
+| `outAcctName` | `specialData.outAcctName` | 转出方户名，按协议加密 |
+| `inAcctId` | `specialData.inAcctId` | 转入方商户会员编号 |
+| `inAcctName` | `specialData.inAcctName` | 转入方户名，按协议加密 |
 | `transType` | Handle 常量 `01` | 普通交易 |
 | `orderId` | `baseData.bizSubOrderNo` | 订单号；按业务规则保证唯一 |
 | `orderInfo` | consume 的 `baseData.orderInfo` 或 transfer 专用白名单 | 订单内容，可选 |
-`functionFlag` 不能由业务系统随意提交一个银行原值。Handle 应根据已确认的 Front 业务场景选择，
-无法映射时返回契约错误，不使用默认值掩盖业务差异。
+`functionFlag` 不能由业务系统随意提交一个银行原值。lsym 生产 Handle 没有使用 `6`；当前新 Front
+只实现 `9`，尚未覆盖旧 `0107 → 7` 场景。是否保留 `0107` 由平安接口重新核对后确认；确认前不得
+开放原始 `functionFlag`，也不得把所有消费静默默认为同一场景。
 
 短信鉴权交易不复用普通 transfer/consume 的 `specialData`。平安 `bizFunc=45` 的短信指令号和验证码
 统一以 [07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)
@@ -376,7 +379,7 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 平安 consume  → front_pingan_consume_transaction
 ```
 
-每条记录必须保存业务主/子记录关联字段、完整业务基础数据加密快照和三个 reserve 字段。详细规则见
+每条记录必须保存业务主/子记录关联字段、业务及银行明确字段和三个 reserve 字段，不保存整段请求快照。详细规则见
 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
 
 本阶段只建立契约和代码框架，不在未确认全部字段前实现真实银行 HTTP、签名、加密和交易落库逻辑。

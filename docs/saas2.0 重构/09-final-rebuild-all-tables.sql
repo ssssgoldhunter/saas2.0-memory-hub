@@ -1,80 +1,29 @@
-# Front 渠道交易表最终建表 SQL（utf8mb4 / utf8mb4_general_ci）
+-- ============================================================
+-- 09-FINAL：渠道交易表全量重建（DROP + CREATE）
+-- 用途：删除旧表，按最终精简结构重新创建（含分区）
+-- 生成日期：2026-08-07
+-- 字段命名规范：付款 pay_ / 收款 rec_ / 提现 withdraw_ / 银行卡 bank_card_
+-- 前置条件：无（全新执行）
+-- ============================================================
+-- 字段范围：清晰字段化存储，无 MEDIUMTEXT 快照，无 version/request_hash
+-- 每张表约 43-55 个字段（含退款表 original_* 字段）
+-- 全部带 LINEAR KEY (tenant_id, store_id) PARTITIONS 30 分区
 
-> Wiki 入口：[WIKI-START.md](./WIKI-START.md)
-> 上位规则：[09-channel-transaction-ddl.md](./09-channel-transaction-ddl.md)
-> 字段来源：[09A-channel-transaction-table-field-catalog.md](./09A-channel-transaction-table-field-catalog.md)
-> 状态：**最终建表 SQL**——全新库直接执行即可得到最终结构
-> 生成日期：2026-08-07（最终精简版）
->
-> **执行方式**：
-> - **全新库建表**：执行 [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql)（DROP+CREATE+分区，一步到位）
-> - **本文件**：建表 SQL 的可读文档版（带字段说明），与 09-final 内容一致
->
-> 目标字符集：`utf8mb4`
-> 目标排序规则：`utf8mb4_general_ci`
-> 存储引擎：`InnoDB`
-> 行格式：`DYNAMIC`（utf8mb4 下必须，否则索引长度受限）
+-- ==================== DROP（先删旧表）====================
 
----
+DROP TABLE IF EXISTS `front_citic_transfer_transaction`;
+DROP TABLE IF EXISTS `front_pingan_transfer_transaction`;
+DROP TABLE IF EXISTS `front_citic_consume_transaction`;
+DROP TABLE IF EXISTS `front_pingan_consume_transaction`;
+DROP TABLE IF EXISTS `front_citic_refund_transaction`;
+DROP TABLE IF EXISTS `front_pingan_refund_transaction`;
+DROP TABLE IF EXISTS `front_citic_withdraw_transaction`;
+DROP TABLE IF EXISTS `front_pingan_withdraw_transaction`;
+DROP TABLE IF EXISTS `front_citic_platform_pay_transaction`;
+DROP TABLE IF EXISTS `front_citic_platform_receive_transaction`;
 
-## 1. 字段类型规范（本版统一约定）
+-- ==================== CREATE（重建最终结构）====================
 
-为保持全表一致，字段类型按以下规则统一，**不出现零碎长度**：
-
-| 字段语义 | 类型 | 说明 |
-|---|---|---|
-| 主键 / 外部引用主键 | `BIGINT` | 分布式 ID |
-| 金额 | `BIGINT` | 单位为人民币分，禁用浮点和元 |
-| 乐观锁 | `INT UNSIGNED` | 版本号 |
-| 状态 / 类型 / 响应码 / 币种 / 接口编码 / 协议功能码 / 日期 / 时间字符串 | **`VARCHAR(20)`** | 所有枚举类、短编码、协议日期时间字符串统一 20 |
-| 流水号 / 业务编号 / 业务记录 ID / hash / 配置版本 | **`VARCHAR(100)`** | 所有编号类统一 100 |
-| 数据源实例标识 | **`VARCHAR(30)`** | `data_source_id`，记录数据所在库实例 |
-| 创建者 / 更新者 | **`VARCHAR(64)`** | `create_by`/`update_by`，审计字段，MyBatis-Plus 自动填充 |
-| 描述 / 备注 | `VARCHAR(512)` | 响应说明、业务备注 |
-| 临时扩展 | `VARCHAR(1024)` | `reserve1/2/3` |
-| 报文快照 | 不设置 | 禁止保存整段业务、银行请求或响应快照 |
-| 创建 / 更新时间（审计） | **`DATETIME`** | `create_time`/`update_time`，MyBatis-Plus 自动填充；对应 Entity 父类 `createTime`/`updateTime` |
-| 银行响应时间（业务） | **`DATETIME`** | `bank_responded_at`，收到银行同步响应时写入 |
-
-**禁止**：使用 `CHAR`、`DATETIME(3)`、`TIMESTAMP`、零碎长度（如 `VARCHAR(64)/32/16/8/6/3`）。
-**审计字段用父类**：`create_by`/`create_time`/`update_by`/`update_time` 对应 Entity 继承的
-`BaseEntity` 审计字段，子类不再重复声明，由 MyBatis-Plus `MetaObjectHandler` 自动填充。
-不再使用 `created_at`/`updated_at`（已改用 BaseEntity 的 `create_by`/`create_time`/`update_by`/`update_time`）。
-
-### 1.1 索引长度兼容性核查（utf8mb4 + DYNAMIC）
-
-`utf8mb4` 每字符最多 4 字节。最长联合索引核查：
-
-| 索引 | 列（均为 VARCHAR(100)） | 单列字节 | 合计字节 | 上限 3072 | 结论 |
-|---|---|---:|---:|---:|---|
-| `idx_front_data_source` | `tenant_id(100)+data_source_id(30)` | — | 520 | 3072 | ✓ |
-| `idx_front_business_main` | 4 列 | 400 | 1600 | 3072 | ✓ |
-| `idx_front_biz_order` | `tenant_id(100)+biz_order_no(100)+biz_sub_order_no(100)` | 400 | 1200 | 3072 | ✓ |
-| `idx_front_status_time` | `tenant_id(100)+front_status(20)+update_time(8)` | — | 508 | 3072 | ✓ |
-| `idx_front_store_time` | `tenant_id(100)+store_id(100)+create_time(8)` | — | 528 | 3072 | ✓ |
-| 退款表 `idx_front_original_transaction` | `original_capability(20)+original_channel_transaction_id(8)` | — | 88 | 3072 | ✓ |
-
-全部索引无需前缀截断。
-
-### 1.2 时间字段说明
-
-- `create_by` / `create_time` / `update_by` / `update_time`：审计字段，`DATETIME`/`VARCHAR(64)`，
-  由 MyBatis-Plus `InjectionMetaObjectHandler` 自动填充（对应 Entity 继承的 `BaseEntity` 字段）。
-  不再使用 `created_at`/`updated_at`（已改用 BaseEntity 审计字段）。
-- `bank_responded_at`：`DATETIME`，允许 `NULL`，收到银行同步响应时由应用层写入。
-- `business_date` / `bank_trans_date` / `business_time` / `bank_trans_time`：这些是**业务/银行协议传入的字符串**（格式 `yyyyMMdd` / `HHmmss`），不是数据库时间戳，统一用 `VARCHAR(20)` 承载，便于兼容不同银行协议格式。
-
-### 1.3 执行前确认
-
-- 目标库 MySQL 5.7+（推荐 8.0），`ROW_FORMAT=DYNAMIC`。
-- 本 SQL 不含 `DROP TABLE`；重复执行需先手动清理。
-- 10 张表之间**无外键**；退款关联原交易的完整性由 Front 应用层在事务内校验。
-
----
-
-## 2. 完整建表 SQL
-
-```sql
 -- =============================================================================
 -- Front 分银行、分交易业务渠道流水建表 SQL
 -- 字符集：utf8mb4 / 排序规则：utf8mb4_general_ci / 引擎：InnoDB / 行格式：DYNAMIC
@@ -735,44 +684,15 @@ CREATE TABLE `front_citic_platform_receive_transaction` (
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信平台收款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
-```
 
----
 
-## 3. 表与字段统计
-
-| 序号 | 表名 | 字段数 | 唯一键 | 普通索引 | 业务 |
-|---:|---|---:|---:|---:|---|
-| 1 | `front_citic_transfer_transaction` | 63 | 2 | 8 | 中信转账 |
-| 2 | `front_pingan_transfer_transaction` | 65 | 2 | 8 | 平安转账+授权 |
-| 3 | `front_citic_consume_transaction` | 63 | 2 | 8 | 中信消费 |
-| 4 | `front_pingan_consume_transaction` | 65 | 2 | 8 | 平安消费 |
-| 5 | `front_citic_refund_transaction` | 69 | 2 | 10 | 中信真退款 |
-| 6 | `front_pingan_refund_transaction` | 71 | 2 | 10 | 平安退款 |
-| 7 | `front_citic_withdraw_transaction` | 62 | 2 | 8 | 中信提现 |
-| 8 | `front_pingan_withdraw_transaction` | 63 | 2 | 8 | 平安提现 |
-| 9 | `front_citic_platform_pay_transaction` | 58 | 2 | 8 | 中信平台付款 |
-| 10 | `front_citic_platform_receive_transaction` | 58 | 2 | 8 | 中信平台收款 |
-
-退款表（5、6）比普通交易表多 7 个 `original_*` 原交易关联字段 + 2 个原交易索引；转账/消费表（1-4）比平台表多 1 个 `refunded_amount` 字段。除平台收付款表（9、10）外，其余 8 张表均含银行账户标识字段（v4 新增）：中信转账/消费/退款各 4 个（`pay_account_id`/`pay_name`/`rec_account_id`/`rec_name`），中信提现 4 个（`withdraw_account_id`/`withdraw_account_name`/`bank_card_no`/`bank_card_holder_name`）；平安对应表各多 1～2 个 `*_member_id`（转账/消费/退款 +6、提现 +5）。所有表均含 `create_by`/`create_time`/`update_by`/`update_time` 4 个审计字段（对应 Entity 父类 BaseEntity，MyBatis-Plus 自动填充）。
-
----
-
-## 4. 执行后自检 SQL（可选）
-
-```sql
 SELECT TABLE_NAME, TABLE_COLLATION, ENGINE, TABLE_COMMENT
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME LIKE 'front\_%\_transaction'
 ORDER BY TABLE_NAME;
-```
 
-预期返回 10 行，`TABLE_COLLATION` 全部为 `utf8mb4_general_ci`，`ENGINE` 全部为 `InnoDB`。
 
-字段类型分布核查（确认无 `CHAR`、无 `DATETIME(3)`、无零碎长度）：
-
-```sql
 SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, DATETIME_PRECISION
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
@@ -780,14 +700,3 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND (DATA_TYPE IN ('char') OR DATETIME_PRECISION = 3
        OR CHARACTER_MAXIMUM_LENGTH NOT IN (20, 100, 512, 1024) AND CHARACTER_MAXIMUM_LENGTH IS NOT NULL)
 ORDER BY TABLE_NAME, COLUMN_NAME;
-```
-
-预期返回 0 行（无违规字段）。
-
----
-
-## 5. 与代码的关系
-
-本 SQL 仅用于**手动在目标数据库创建物理表**。代码侧的 Entity、Mapper、Repository、表路由和真实写入流程仍待后续实现（见 `09` §1 末尾）。
-
-代码仓库 `catering-front/src/main/resources/db/migration/V001__...sql` 是结构基线；本 SQL 是按目标字符集 `utf8mb4 / utf8mb4_general_ci` 和统一字段类型规范生成的最终可执行版本，字段语义与 `09A` 字段字典一致，仅类型做了规范化收敛（详见 §1）。

@@ -35,20 +35,23 @@
 旧项目不是兼容基线。发生冲突时，优先级固定为：
 
 ```text
-当前 catering-front 代码
+用户已确认并写入本 Wiki/05/字段契约的决策
 → 05-front代码开发约束
 → 06-transfer-consume字段契约（实现 transfer/consume 时）
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
-→ 09-channel-transaction-ddl（实现任何交易落库、幂等、状态查询或退款关联时）
+→ 09-channel-transaction-ddl（实现任何交易落库、重复交易检查、状态查询或退款关联时）
 → 09A-channel-transaction-table-field-catalog（字段字典，生成或审查建表 SQL 时）
 → 09B-channel-transaction-ddl-utf8mb4.sql（目标库 utf8mb4/utf8mb4_general_ci 的可执行最终 SQL，手动建表用）
+→ 09-final-rebuild-all-tables.sql（全量重建：DROP + CREATE + 分区，目标环境一次性建表用）
 → 10-transaction-query-field-contract（实现交易状态或交易明细查询时）
+→ 11-catering-common-framework-catalog（需要确认公共框架已有能力时）
 → 00-任务交接说明
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
 → 02/03 银行能力汇总
 → 中信退款最新 lsym UAT 参考代码（仅实现中信 refund 时）
+→ 当前 catering-front 代码（与上述契约不一致时按缺陷处理）
 → mdl / 旧 Front 参考代码
 ```
 
@@ -67,15 +70,21 @@
    实现平安 `transferAuth/resendTransferAuthCode` 时必须完整阅读。
 9. [08-withdraw-refund-platform-transfer字段契约](08-withdraw-refund-platform-transfer字段契约.md)：
    实现 `withdraw/refund/platformPay/platformReceive` 时必须完整阅读。
-10. [09-channel-transaction-ddl](09-channel-transaction-ddl.md)：实现任何交易落库、幂等、状态查询或退款时
+10. [09-channel-transaction-ddl](09-channel-transaction-ddl.md)：实现任何交易落库、重复交易检查、状态查询或退款时
     必须完整阅读，渠道记录固定按“银行 + 交易业务”拆分。
 11. [09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md)：生成、迁移或
     审查数据库 SQL 时必须阅读，其中 10 张表的全部字段、默认值、更新规则和索引均已逐表展开。
 11.5. [09B-channel-transaction-ddl-utf8mb4.sql](09B-channel-transaction-ddl-utf8mb4.sql.md)：目标库字符集为
     `utf8mb4 / utf8mb4_general_ci` 时的**可执行最终建表 SQL**，10 张表完整 CREATE TABLE，手动建表直接用这份。
+11.6. [09-final-rebuild-all-tables.sql](09-final-rebuild-all-tables.sql)：目标环境**全量重建脚本**，
+    DROP + CREATE + 分区，10 张表一次性重建直接用这份。
 12. [10-transaction-query-field-contract](10-transaction-query-field-contract.md)：实现单笔状态、平台交易明细或
     账户/登记簿交易明细查询时必须完整阅读。
-13. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+13. [11-catering-common-framework-catalog](11-catering-common-framework-catalog.md)：需要新增公共返回、异常、
+    请求上下文、MyBatis 或 Feign 能力前先确认公共框架是否已有实现。
+14. `cateringsass/catering-modules/catering-front/README.md`：最后对照当前代码实际边界。
+15. [12-front-implementation-issues](12-front-implementation-issues/README.md)：查看当前静态审查登记的
+    实现问题；其他 AI 每次只领取一个问题文件，按其中范围和验收标准修改。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -103,40 +112,79 @@
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含
-  `reserve1/reserve2/reserve3`，并保留业务明确列和完整业务加密快照；
+  `reserve1/reserve2/reserve3`，业务数据按明确字段保存，不保存业务或银行报文快照；
 - 10 张渠道表的完整字段字典已逐表列出字段顺序、类型、NULL、默认值、更新规则、注释和索引，可交给其他 AI
   按目标字符集生成最终 SQL；
-- 所有接口直接返回 `R<具体结果>`，所有结果通过 `FrontBaseResult` 统一提供
-  `frontRespCode/frontRespDesc/specialData`；
+- 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
+  `TableDataInfo<TransactionDetailItem>`，禁止再用 `R` 包裹；
+  所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和不输出敏感数据的全链路日志骨架；
 - LiteFlow 框架已落地：7 个节点（`frontRequestValidate`/`frontRouteAndCapabilityCheck`/
-  `bankHandleContextPrepare`/`frontIdempotencyCheck`/`frontTransactionDispatch`/
+  `bankHandleContextPrepare`/当前代码旧名 `frontIdempotencyCheck`/`frontTransactionDispatch`/
   `frontQueryDispatch`/`frontResponseNormalize`）+ 13 条链（8 交易 + 5 查询），
   规则文件 `resources/front-flow.xml`，nacos `catering-front.yml` 配置 `liteflow.rule-source`；
 - 渠道流水持久层已落地：10 张表的 Entity/VO/Mapper/XML/Service/ServiceImpl 已搬入 main，
   Entity 继承 `TenantEntity` 复用父类审计字段（`createBy`/`createTime`/`updateBy`/`updateTime`）；
 - Handle 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
-  调银行 → `updateResponse`（UPDATE 状态/响应码/快照），退款 `loadOriginalRefundFields`
+  调银行 → `updateResponse`（UPDATE 状态/响应码），退款 `loadOriginalRefundFields`
   从原渠道表加载银行字段；
-- ShardingSphere-JDBC 分库：分片键 `data_source_id`，Hint 模式（表不加列），
-  `shardingsphere-config.yaml` 配置 10 张表数据节点 + `HintDataSourceShardingAlgorithm`；
-- `FrontDataSourceHelper` 用 `HintManager` 在 Handle 写库前后设置/清理数据源路由；
+- ShardingSphere-JDBC 分库：使用 STANDARD 模式，SQL 分片键固定为 `tenant_id`，
+  `TenantDataSourceShardingAlgorithm` 根据租户配置中的 `data_source_id` 选择 `ds_x`；
+  租户数据源配置属于上线必备配置，正常情况下必须存在；若配置缺失、解析失败或目标数据源不存在，
+  必须立即失败，禁止默认进入 `ds_0` 或第一个数据源；
+- 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
 - 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
-  `FrontRequestBodyAdvice`（反序列化后填充到 `FrontBaseRequestData`），Application Service 零改动；
-- `FrontErrorCode` 含 `IDEMPOTENCY_CONFLICT`（F300001）。
+  `BaseDataRequestBodyAdvice`（反序列化后填充到 `FrontRequest<T>.baseData`），Application Service 零改动；
+- 交易发送前执行重复交易校验：在当前银行业务表内按
+  `tenantId + bizOrderNo + bizSubOrderNo` 查询；命中即返回“交易已存在”，不重复调用银行，
+  该规则不称为请求幂等，也不返回或重放旧交易结果。
 
 当前没有完成、应由后续具体任务实现的内容：
 
 - ~~真实 `TenantBankConfigProvider` 远程查询~~（已实现 `RemoteTenantBankConfigProvider`）；
-- ~~LiteFlow `FlowExecutor`、组件、EL 规则和链路配置~~（已实现 9 个通用节点、13 条具名链和
+- ~~LiteFlow `FlowExecutor`、组件、EL 规则和链路配置~~（已实现 7 个通用节点、13 条具名链和
   FrontFlowExecutor；业务异常写 Slot 后 `setIsEnd`）；
 - ~~中信、平安具体钱包请求对象、签名、加密、HTTP 调用及响应映射~~（已实现，`mvn compile` 通过）；
 - ~~`transSsn` 的银行生成算法~~（已实现，落库调用待持久层）；
 - 平安全部查询接口先统一为 `PENDING_INTEGRATION`，等待人工逐接口核对字段、bizFunc 和返回数组结构；
-- 渠道 Entity、Mapper、Repository、显式表路由、幂等和状态机（下一轮，LiteFlow 持久层节点已建空放行）；
+- 分页查询 API/Controller/Application Service 已统一为 `TableDataInfo<TransactionDetailItem>`；当前成功
+  分支仍需改为使用 `new TableDataInfo<>(records, total)` 或显式设置
+  `code=200/msg=查询成功`，并从银行
+  `totalNum` 正确填充 `total`；当前 `TransactionDetailQueryData/FrontPageResult/CiticQueryHandle`
+  仍保留对外无法承载的 `continuationToken`，必须删除并改为 `pageNo` 直接映射银行页码；
+- 当前 `BaseDataRequestBodyAdvice` 未在 `FeignConfiguration` 显式注册，Front 应用又只扫描
+  `com.chinaums.front`；即使手工注册，它的 `supports/afterBodyRead` 也只识别外层
+  `BaseRequest`，无法注入 `FrontRequest<T>.baseData`。这就是 Front 拦截/注入链未生效的直接原因；
+- 当前 `FeignRequestInterceptor` 在没有 Servlet 请求时直接返回，且 tenantId/clientId
+  没有 `RequestContext` 兜底；必须对 4 个字段逐一执行“header 优先、RequestContext 补齐”；
+- 当前 `FrontFlowExecutor` 在 Slot 业务失败时返回普通 `FrontBaseResult`，但授权码和
+  分页 Application Service 立即强转为具体类，会引发 `ClassCastException`。执行器应只返回
+  Slot/执行状态，由 Application Service 按声明类型构造失败返回；
+- 当前两个 Dispatch Node 没有捕获 `FrontException` 并执行“写 Slot + `setIsEnd(true)`”，
+  导致预期业务异常变成 LiteFlow 系统异常；分页路径还会被全局处理成
+  `R<FrontBaseResult>`，违反 `TableDataInfo<T>` 协议；
+- 当前租户银行配置调用的是 `getConfigMap`，不是已约定的 `getMpConfigValue`；
+  必填校验也只检查 appId/appKey/url，必须补齐 mchntId/mchntMbrId 及对应银行账户配置，
+  任一配置缺失都必须明确失败；
+- 当前 `TenantDataSourceShardingAlgorithm` 的默认数据源兜底仍需删除，改为明确失败；
+- 当前重复交易检查仍使用 `Idempotency` 名称和 `IDEMPOTENCY_CONFLICT` 旧文案，
+  必须改为 `DuplicateTransaction`/`TRANSACTION_ALREADY_EXISTS`（保留统一码 `F300001`）；
+  子流水为空时也必须做 `biz_sub_order_no IS NULL/空值` 的精确等值约束，严格按
+  `tenantId + bizOrderNo + bizSubOrderNo` 三字段判定“交易已存在”；
+- 当前仍把收付款账户、会员编号或名称放在 `baseData` 的 DTO/Handle，需要改为从 `specialData`
+  读取银行协议原始 key；`baseData` 只保留内部业务系统字段。已确认的遗留包括
+  `PlatformTransferBusinessData.userAccountId/userAccountName`、查询 DTO 中的银行 accountId/功能账户类型；
+- 当前银行 HTTP/解析异常会在渠道记录已更新为 `SENDING` 后直接抛出，没有将记录
+  收口为 `UNKNOWN/FAILED`；平安 `resendTransferAuthCode` 还没有任何渠道流水落库；
+- 平安 `resendTransferAuthCode` 当前复用了转账 DTO，将协议顶层 `acctNo` 写到
+  `outAcctNo`；必须使用 bizFunc=26 的专用请求对象。`receiveMobile` 是否解密仍等待人工核对；
+- 两家银行 HTTP Client 的异常日志当前输出完整银行 URL，必须删除，仅记录
+  bankCode/apiName/httpStatus/elapsedMs/安全异常分类；
+- 当前同时存在 `resources/front-flow.xml` 与 `resources/liteflow/front-flow.xml`，Nacos 注释与
+  `rule-source` 实际路径也不一致；必须仅保留一份权威规则文件；
 - 数据库迁移执行组件及目标环境建表流程；
-- 未经用户明确要求的测试类（本轮已授权编译验证，未运行测试）。
+- 未经用户明确要求，禁止新增测试类、运行测试或执行编译；本次审查未编译、未运行测试。
 
 ## 5. 固定的数据流
 
@@ -183,8 +231,9 @@ AbstractBankHandle.prepareContext
 
 - 不新建 `catering-front-api/common/service` 子模块；
 - 不复制旧项目的 `BeanPostProcessor` 注册、复合路由键和任意 `<T> T` 返回；
-- 不增加 `FrontResponse`，API 必须直接返回 `R<具体结果>`；
-- API、Controller、Application Service 都返回同一个公共 `R<具体结果>`；Router 和 Handle 不返回 `R`；
+- 不增加 `FrontResponse`；单条接口返回 `R<具体结果>`，分页明细查询直接返回
+  `TableDataInfo<TransactionDetailItem>`，不再使用 `R` 包裹；
+- API、Controller、Application Service 使用同一方法签名并原样透传；Router 和 Handle 不返回 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
 - 不复制 lsym UAT 退款请求由调用方直接传 `orgPay/orgRec/orgTrans*` 的来源设计；原交易银行字段必须由
@@ -195,8 +244,16 @@ AbstractBankHandle.prepareContext
 - 渠道流水必须按银行和交易业务拆表，禁止恢复单一 `front_channel_transaction`；
 - 表路由只能由 Front 根据 `platformCode + capability` 显式选择固定 Repository，禁止调用方传表名或
   通过字符串拼接动态 SQL；
-- 每张渠道交易表必须保存业务主/子记录关联字段、业务基础数据加密快照和
-  `reserve1/reserve2/reserve3`；
+- 每张渠道交易表必须保存业务主/子记录关联字段、业务及银行所需明确字段和
+  `reserve1/reserve2/reserve3`；不保存报文快照；
+- 渠道表允许保存本系统内部使用的账户、会员、姓名、卡号等原始值，本期不要求数据库字段加密；
+  但仍禁止在日志、异常消息和普通接口响应中输出这些敏感值；
+- 本阶段信任边界是内部系统，ShardingSphere 数据源连接配置的加密和安全加固不作为本期开发、验收项；
+  该豁免不影响银行协议要求的签名/加密，也不放宽日志安全要求；
+- `baseData` 只保存内部业务系统公共数据；银行侧账户、会员、姓名、卡号等身份类动态数据均放入
+  请求 `specialData`，由具体银行 Handle 按常量白名单逐字段映射；
+- 重复交易校验固定使用当前银行业务表内的
+  `tenantId + bizOrderNo + bizSubOrderNo`；命中返回“交易已存在”，不重放旧结果；
 - 不把银行差异字段放入公共 `baseData`；
 - 中信明细查询的单个 `transactionDate`、交易类型、登记簿/账户类型必须放入 `specialData`；业务系统
   不得提交 `TRANS_DATE/PAGE/bizFunc/chnlNo`。中信 24/25 不支持跨日，业务系统按日期多次调用；
@@ -208,6 +265,9 @@ AbstractBankHandle.prepareContext
 - 银行常量只保留当前真实 Handle 已映射或本次需求明确确认的字段，禁止把 Word 全字段提前搬入代码；
 - `bizFunc/chnlNo` 在具体银行 Handle 中按能力使用常量；
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
+- 租户数据源配置是必备前置条件；STANDARD 分片找不到配置、配置解析失败或目标 `ds_x` 不存在时
+  必须立即失败，
+  禁止默认路由到任意数据库；
 - 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，
   `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
 - 只有 Front 业务成功时顶层 `R.code=200`；银行业务失败时顶层也必须返回失败码，并在 data 内保留

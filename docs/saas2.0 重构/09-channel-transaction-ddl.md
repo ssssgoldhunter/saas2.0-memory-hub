@@ -48,11 +48,11 @@ V001__create_front_bank_business_transaction_tables.sql
 ```
 
 `09A` 已将 10 张表分别展开，逐字段列出字段名、顺序、数据类型、NULL 约束、默认值、更新规则、业务说明以及
-每张表的主键、唯一键和普通索引。最终 SQL 提供方只根据目标环境补充或调整 `ENGINE/CHARSET/COLLATE/
+每张表的主键和普通索引。最终 SQL 提供方只根据目标环境补充或调整 `ENGINE/CHARSET/COLLATE/
 ROW_FORMAT`；如果字符集导致索引长度或数据库方言不兼容，必须先给出差异，不得静默改变字段设计。
 
-当前只落地 DDL 和 API 业务关联字段。Entity、Mapper、Repository、显式表路由、状态机服务及真实写入
-流程仍待后续实现；当前项目也尚未接入数据库迁移执行组件，不能把 SQL 文件存在等同于已自动建表。
+当前 Entity、VO、Mapper、Service 和 Handle 写入骨架已经落地；数据库迁移执行组件及目标环境建表仍需
+单独执行，不能把 SQL 文件存在等同于已经建表。
 
 ## 2. 表路由规则
 
@@ -87,7 +87,7 @@ FrontRequest.baseData.platformCode
 | `bizTransactionType` | `biz_transaction_type` | 来源业务交易逻辑类型，不是物理表名 |
 | `bizTransactionId` | `biz_transaction_id` | 来源业务交易主表记录 ID |
 | `bizSubTransactionId` | `biz_sub_transaction_id` | 来源业务交易子表或明细表记录 ID，可空 |
-| `bizRequestNo` | `biz_request_no` | 当前能力的一次调用幂等号 |
+| `bizRequestNo` | `biz_request_no` | 当前能力的一次业务调用标识；不参与本期重复交易键 |
 | `bizOrderNo` | `biz_order_no` | 业务主流水或主订单号 |
 | `bizSubOrderNo` | `biz_sub_order_no` | 业务子流水或子订单号，可空 |
 
@@ -101,24 +101,21 @@ tenantId
 + bizSubTransactionId（存在子记录时）
 ```
 
-每张表还必须保存公共金额、手续费、币种、业务日期时间、付款/收款门店及业务备注。为避免具体交易
-对象新增字段后丢失信息，每条记录同时保存：
-
-```text
-business_base_snapshot_cipher
-business_special_snapshot_cipher
-```
-
-前者是完整 `baseData` 的加密快照，后者是按当前“银行 + 能力”白名单过滤后的 `specialData` 加密快照。
-因此“保留业务基础数据”同时包含可索引的明确列和用于审计、重放分析的完整加密快照。
+每张表还必须按明确列保存公共金额、手续费、币种、付款/收款门店，以及当前银行业务需要的账户、
+会员、姓名、卡号和银行响应字段。不保存完整 `baseData/specialData`、银行请求或银行响应快照。
 
 禁止：
 
 - 接收、保存或执行来源业务物理表名；
 - 对其他微服务的业务表建立数据库外键；
 - 用 `bizRequestNo` 代替业务主表 ID；
-- 只保存快照而漏掉上述明确业务关联列；
-- 明文保存卡号、姓名、手机号、证件号等敏感业务数据。
+- 使用整段 JSON/text 快照代替明确业务字段；
+- 将 appKey、私钥、验证码、支付密码或完整租户银行配置落库。
+
+本期渠道表允许保存本系统内部使用的账户、会员、姓名和卡号原始值，不要求数据库字段加密；这些值仍是
+敏感数据，日志、异常消息和普通接口响应不得输出。
+ShardingSphere 数据源连接配置的加密和安全加固本阶段暂不处理，后续由部署任务单独收口；银行协议要求的
+签名、传输或字段加密仍必须保留。
 
 Java 统一使用 `String` 承载业务记录 ID，以兼容数字 ID 和 UUID。
 
@@ -129,21 +126,31 @@ Java 统一使用 `String` 承载业务记录 ID，以兼容数字 ID 和 UUID�
 
 | 字段组 | 主要字段 | 用途 |
 |---|---|---|
-| 主键与租户 | `id/tenant_id/store_id` | 数据隔离和门店审计 |
-| 能力与配置 | `capability/interface_code/config_version` | 确认实际调用能力、接口和配置版本 |
+| 主键与租户 | `id/tenant_id/store_id/data_source_id` | 数据隔离、门店审计和库实例标识 |
+| 能力 | `capability` | 确认实际调用能力 |
 | Front 标识 | `front_ssn/front_query_id` | 渠道查询及对外关联 |
 | 业务关联 | `biz_system_code/biz_transaction_type/biz_transaction_id/biz_sub_transaction_id` | 关联来源业务交易表 |
-| 业务流水 | `biz_request_no/biz_order_no/biz_sub_order_no` | 幂等和业务订单查询 |
+| 业务流水 | `biz_request_no/biz_order_no/biz_sub_order_no` | 调用标识、重复交易检查和业务订单查询 |
 | 门店 | `pay_store_no/pay_store_id/rec_store_no/rec_store_id` | 保存业务收付款门店 |
-| 金额与时间 | `amount/fee/currency/business_date/business_time/business_remark` | 保存公共业务基础数据，金额单位均为分 |
-| 幂等摘要 | `request_hash` | HMAC-SHA256 业务请求指纹 |
+| 银行动态业务字段 | `pay/rec/withdraw/bank_card` 相关字段 | 从请求 `specialData` 白名单解析后保存 |
+| 金额 | `amount/fee/currency` | 保存公共业务基础数据，金额单位均为分 |
 | 银行协议 | `bank_channel_no/bank_biz_func/external_platform_ssn` | 保存 Handle 实际使用的协议标识 |
 | 银行流水 | `bank_query_id/bank_user_ssn/bank_trans_date/bank_trans_time` | 查询和排障 |
 | 两层银行响应 | `wallet_resp_code/desc`、`bank_resp_code/desc`、`bank_status` | 保存钱包系统层与银行业务层原始结果 |
-| 加密快照 | 4 个 `*_snapshot_cipher` 和 `snapshot_key_version` | 保存过滤、脱敏后的业务及银行数据 |
-| Front 结果 | `front_resp_code/front_resp_desc/front_status/front_remark` | 保存统一响应和归一化状态 |
-| 审计与并发 | `send_started_at/bank_responded_at/completed_at/created_at/updated_at/version` | 耗时、补偿和乐观锁 |
+| Front 状态 | `front_status` | 保存归一化交易状态 |
+| 审计时间 | `create_time/update_time/bank_responded_at` | 创建、更新和银行响应时间 |
 | 临时扩展 | `reserve1/reserve2/reserve3` | 联调期短期扩展 |
+
+`data_source_id` 在每张表中的列定义为：
+
+```text
+`data_source_id` VARCHAR(30) NOT NULL DEFAULT '' COMMENT '数据源实例标识（如 ds_0/ds_2），记录数据所在库实例'
+```
+
+位置紧跟 `store_id` 列之后。该列由 Handle 在 INSERT 渠道流水时通过 `data.getDataSourceId()` 写入，
+仅作实例标识记录，不参与 ShardingSphere 分片路由决策（路由仍按 `tenant_id`）。10 张表（中信 6 张 +
+平安 4 张）均按此统一定义，已内置于 [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql)
+（DROP+CREATE 一步到位，不需要 ALTER）。
 
 转账、消费原交易表额外保存：
 
@@ -182,7 +189,7 @@ reserve3 VARCHAR(1024)
 - 必须在使用位置记录字段含义、来源、启用时间和清理计划；
 - 同一表、同一版本内，一个 reserve 字段只能表达一种含义；
 - 字段稳定后必须通过 DDL 增加明确业务列并迁移数据；
-- 禁止保存密钥、验证码、银行卡号、证件号、完整账户配置或无限制 JSON；
+- 禁止保存密钥、验证码、支付密码、完整账户配置或无限制 JSON；
 - 不得使用数据库 reserve 字段绕开 API `baseData/specialData` 字段契约。
 
 ## 6. 方法到物理表映射
@@ -199,7 +206,7 @@ reserve3 VARCHAR(1024)
 | `platformReceive` | `front_citic_platform_receive_transaction` | 不支持，不落库 |
 
 授权码申请或重发发生真实银行调用时，每次都生成新的 `frontSsn` 和独立记录；验证码、支付密码不得进入
-任何表字段或快照。
+任何表字段。
 
 ## 7. 标准写入时机
 
@@ -208,13 +215,13 @@ reserve3 VARCHAR(1024)
 → Router 选择银行 Handle 并校验能力
 → 租户银行配置加载成功
 → 按银行 + capability 选择固定业务 Repository
-→ 计算 requestHash 并执行当前物理表幂等检查
+→ 在当前银行业务表执行重复交易检查
 → Handle 按银行规则生成 frontSsn
-→ INSERT INIT，保存业务关联字段和业务加密快照
+→ INSERT INIT，保存业务关联字段和明确业务字段
 → 组装银行请求
-→ UPDATE SENDING、银行协议字段和请求快照
+→ UPDATE SENDING 和银行协议字段
 → 调用银行
-→ UPDATE 钱包层/银行层原始响应和响应快照
+→ UPDATE 钱包层/银行层原始响应
 → 响应归一化
 → UPDATE Front 响应及最终或非最终状态
 ```
@@ -227,37 +234,27 @@ reserve3 VARCHAR(1024)
 - 银行超时写 `UNKNOWN`，禁止直接写 `FAILED` 或自动重发；
 - 银行同步受理但非终态时写 `ACCEPTED/PROCESSING`；
 - 查询确认后再更新为 `SUCCESS/FAILED/RETURNED/REFUNDED`；
-- 所有状态更新必须携带 `version` 乐观锁条件；
-- 表路由结果、记录 ID、`frontSsn`、业务关联键、状态变化和耗时必须记录日志，但禁止记录快照内容。
+- 状态更新必须限制目标记录并校验实际更新行数，禁止静默覆盖不存在的记录；
+- 表路由结果、记录 ID、`frontSsn`、业务关联键、状态变化和耗时必须记录日志，但禁止记录账户、姓名、
+  卡号及银行完整报文。
 
-## 8. 幂等规则
+## 8. 重复交易校验
 
-每张物理表的唯一键为：
-
-```text
-tenant_id + biz_system_code + capability + biz_request_no
-```
-
-`request_hash` 使用服务端密钥对规范化请求计算 HMAC-SHA256。规范化内容至少包括：
+本期不实现请求 Hash、旧结果重放或“相同请求返回原结果”语义，因此该规则不称为请求幂等。
+发送银行请求前，在当前银行、当前交易业务物理表内按以下三项查询：
 
 ```text
-tenant/platform/capability
-业务主/子记录关联字段
-主/子订单字段
-金额/手续费/币种
-收付款门店
-当前能力允许参与幂等判断的业务字段
+tenant_id + biz_order_no + biz_sub_order_no
 ```
 
 处理规则：
 
-1. 当前目标表不存在唯一键：创建新记录；
-2. 已存在且 `request_hash` 相同：返回原结果或当前处理中状态；
-3. 已存在但 `request_hash` 不同：返回 `IDEMPOTENCY_CONFLICT`；
-4. `SENDING/ACCEPTED/PROCESSING/UNKNOWN` 不允许再次发送资金请求；
-5. 业务系统主动重做必须使用新的 `bizRequestNo`，业务主表 ID 可以保持不变。
-
-不得把 appKey、银行 URL、运行时 `transSsn/transTime`、短信验证码放入摘要明文或快照。
+1. 三项均相同且已存在记录：返回统一错误“交易已存在”，禁止再次调用银行；
+2. 不比较金额、`specialData` 或请求 Hash，也不返回、重放原交易结果；
+3. `bizSubOrderNo` 为空时，以数据库空值语义匹配同一 `tenantId + bizOrderNo + 空子流水`；
+4. 业务系统确需重新发起交易时，必须使用新的 `bizOrderNo` 或 `bizSubOrderNo`；
+5. 平安 `TRANSFER/TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 共用同一物理表，因此三者之间也执行同一
+   重复交易检查。
 
 ## 9. 退款关联与并发控制
 
@@ -277,25 +274,27 @@ originalBizSubOrderNo` 在同银行转账、消费表定位原记录，并确认
 
 禁止跨银行关联原交易，也禁止在调用银行期间长时间持有数据库事务或行锁。
 
-## 10. 快照与敏感数据
+## 10. 明确字段与敏感数据
 
-| 字段 | 内容 |
-|---|---|
-| `business_base_snapshot_cipher` | 完整业务 `baseData` 的可逆加密快照 |
-| `business_special_snapshot_cipher` | 当前银行、当前能力白名单过滤后的 `specialData` 加密快照 |
-| `bank_request_snapshot_cipher` | 移除密钥、验证码等敏感内容后的银行请求加密快照 |
-| `bank_response_snapshot_cipher` | 过滤后的银行原始响应加密快照 |
-| `snapshot_key_version` | 快照密钥版本，只保存版本号 |
+渠道表只保存 DDL 中定义的明确字段，不保存以下快照字段：
+
+```text
+business_base_snapshot_cipher
+business_special_snapshot_cipher
+bank_request_snapshot_cipher
+bank_response_snapshot_cipher
+snapshot_key_version
+```
 
 以下内容禁止入库：
 
 - appKey、私钥、完整租户银行配置；
 - 短信验证码、支付密码；
-- 未经白名单过滤的 `specialData/accountSpecialData`；
-- 明文银行卡号、证件号、手机号和账户姓名；
+- 未经白名单映射的整段 `specialData/accountSpecialData`；
 - 来源业务物理表名和可执行 SQL。
 
-快照只能通过专用加解密组件访问，不允许 Mapper、日志或普通查询 API 直接返回。
+账户、会员、姓名、卡号等内部业务字段允许按明确列保存原始值，本期不要求数据库字段加密；但这些字段
+不得进入日志、异常消息或普通查询 API，银行请求是否加密仍严格按对应银行协议执行。
 
 ## 11. 索引和外键
 
@@ -303,14 +302,14 @@ originalBizSubOrderNo` 在同银行转账、消费表定位原记录，并确认
 
 | 索引 | 用途 |
 |---|---|
-| `uk_front_ssn` | 当前表按 Front 流水唯一定位交易 |
-| `uk_front_idempotency` | 当前银行、当前业务表内的交易幂等 |
+| `idx_front_ssn` | 当前表按 Front 流水定位交易；跨表唯一性由 Front 流水生成规则保证 |
+| `idx_front_biz_order` | 当前银行、当前业务表内按主/子订单执行重复交易检查 |
 | `idx_front_business_main/sub` | 由来源业务主表或子表反查渠道记录 |
-| `idx_front_biz_order` | 由业务主/子订单查询 |
 | `idx_front_bank_query` | 通过银行 queryId 查询 |
 | `idx_front_bank_user_ssn` | 通过银行 USER_SSN 排障或查询 |
 | `idx_front_status_time` | 当前表状态轮询和未知交易补偿 |
 | `idx_front_store_time` | 租户门店时间范围审计查询 |
+| `idx_front_data_source` (`tenant_id`, `data_source_id`) | 支持按租户+数据源实例查询 |
 
 退款表额外提供 `idx_front_original_transaction` 和 `idx_front_original_ssn`。
 
@@ -319,49 +318,46 @@ Repository/Domain Service 在事务内显式校验。
 
 ## 12. 分库与分区
 
-### 12.1 分库：ShardingSphere-JDBC（精确分片）
+> 全新库直接执行 [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql) 即可，已含
+> `data_source_id` + 账户字段 + 分区 + 组合主键（DROP+CREATE 一步到位，不需要 ALTER）。下面仅描述
+> 分库与分区的设计规则。
 
-10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用 ShardingSphere-JDBC，
-由 SQL 中的分片键自动路由，Handle 代码不需要手动切换数据源。
+### 12.1 分库：ShardingSphere-JDBC（STANDARD 分片）
 
-- **分片键**：`data_source_id`（精确分片，业务传什么库就路由到什么库，不做 hash）；
-- **分片值来源**：FeignClient 请求拦截器从 HTTP 报文头 `data-source-id` 获取，
-  注入到 `FrontBaseRequestData.dataSourceId`；
-- **ShardingSphere 配置**：放本地 `resources/shardingsphere-config.yaml`，
-  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml`；
-- **不使用 dynamic-datasource**：ShardingSphere 接管 DataSource，`@DS` / `DynamicDataSourceContextHolder`
-  在 catering-front 模块不再用于数据源切换；
-- `data_source_id` 不存入任何渠道流水表列（表本身分布在多个库，同一表名存在于每个库实例）。
+10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用 ShardingSphere-JDBC
+STANDARD 模式，分片键 `tenant_id`，SQL 自带分片值自动路由，Handle 代码零侵入。
 
-ShardingSphere 配置结构和数据节点示例见
-[09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md) §1。
+- **分片键**：`tenant_id`（每条 SQL 自带）；
+- **分片算法**：`TenantDataSourceShardingAlgorithm`（查配置中心 `tenant_base_config`（JSON），
+  解析 `data_source_id` 字段 → 拼 `ds_x`）；
+- **配置**：`resources/shardingsphere-config.yaml`，`mode: Standalone`；
+- **配置值示例**：`tenant_base_config` = `{"data_source_id":"2"}`；
+- **新增库**：加 `ds_x` 数据源 + 配置租户 `tenant_base_config` JSON 的 `data_source_id=x`，不改代码；
+- **配置前提**：租户数据源配置属于上线必备配置，正常情况下必须存在；
+- **失败策略**：若运行时仍发生配置缺失、JSON 解析失败、`data_source_id` 缺失或目标 `ds_x` 不存在，立即失败；
+  禁止默认路由到 `ds_0`、第一个数据源或其他租户数据库；
+- **不使用 Hint / dynamic-datasource**。
+
+详细分片算法和配置约束见 [05-front代码开发约束](05-front代码开发约束.md) §3.10.1。
+
+> 说明：`data_source_id` 会存入渠道流水表的 `data_source_id` 列，仅作实例标识记录，不参与
+> ShardingSphere 路由决策（路由仍按 `tenant_id`）。该列已内置于
+> [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql)（DROP+CREATE 一步到位，不需要 ALTER）。
 
 ### 12.2 分区：MySQL LINEAR KEY
 
-10 张渠道流水表均使用 MySQL 表分区。
-
 - **分区方式**：`PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`；
-- **分区键**：`tenant_id` + `store_id`（VARCHAR 列，LINEAR KEY 原生支持）；
-- **分区数**：30 个；
-- `tenant_id`/`store_id` 必须是纯数字字符串（如 "10001"）；
-- **ShardingSphere 与 MySQL 分区共存**：ShardingSphere 先路由到正确的库实例，
-  库内的 MySQL 再按 LINEAR KEY 定位分区，两层路由不冲突。
+- **ShardingSphere + MySQL 分区共存**：两层路由不冲突。
 
-分区 ALTER SQL 见 [09D-channel-transaction-partition.sql](09D-channel-transaction-partition.sql.md) §2。
+分区定义已内置于 [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql) §2（DROP+CREATE
+一步到位，不需要 ALTER）。
 
-### 12.3 dataSourceId 注入链路
+### 12.3 FeignClient 拦截器（通用）
 
-4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由拦截器链自动注入：
+4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由 `catering-common-feign` 的
+拦截器链自动传递和注入。所有服务引入 `catering-common-feign` 即生效。
 
-```text
-FeignClient 调用方
-  → HTTP 请求头: tenantId / clientId / platformCode / dataSourceId
-  → FeignRequestInterceptor（发送端）转发 header 到下游
-  → RequestContextInterceptor（接收端 MVC 拦截器）提取到 ThreadLocal
-  → FrontRequestBodyAdvice（RequestBodyAdvice）反序列化后注入到 baseData
-  → Application Service（零改动）
-  → Handle 使用 dataSourceId 做 ShardingSphere Hint 路由
-```
+详细链路和类职责见 [05-front代码开发约束](05-front代码开发约束.md) §3.10.3。
 
-详细类职责和注入规则见
-[05-front代码开发约束](05-front代码开发约束.md) §3.10.3。
+> 落库衔接：Handle 在 INSERT 渠道流水时，通过 `data.getDataSourceId()` 把 dataSourceId 写入
+> `data_source_id` 列，使拦截器链注入的实例标识落到每条流水记录上。

@@ -15,7 +15,7 @@
 - 字段名、字段顺序、数据类型、可空性、默认值、更新规则和业务说明；
 - 主键、唯一键和普通索引的字段组合；
 - 每张表的 `reserve1/reserve2/reserve3`；
-- 业务主/子记录关联字段及业务数据加密快照；
+- 业务主/子记录关联字段及业务、银行明确字段；不保存整段数据快照；
 - 退款表的原交易关联字段；
 - 转账、消费表的 `refunded_amount`。
 
@@ -44,15 +44,17 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 流水号 / 业务编号 / 业务记录 ID / hash / 配置版本 | `VARCHAR(100)` | 所有编号类统一 100 |
 | 创建者 / 更新者 | `VARCHAR(64)` | `create_by`/`update_by`，审计字段，MyBatis-Plus 自动填充 |
 | 描述 / 备注 | `VARCHAR(512)` | 响应说明、业务备注 |
+| 数据源实例标识 | `VARCHAR(30)` | `data_source_id`，记录数据所在库实例（如 ds_0/ds_2） |
 | 临时扩展 | `VARCHAR(1024)` | `reserve1/2/3` |
-| 加密快照 | `MEDIUMTEXT` | 业务/银行数据加密快照 |
+| 报文快照 | 不设置 | 禁止保存整段业务、银行请求或响应快照 |
 | 创建 / 更新时间（审计） | `DATETIME` | `create_time`/`update_time`，MyBatis-Plus 自动填充；对应 Entity 父类 `createTime`/`updateTime` |
-| 发送 / 响应 / 完成时间（业务） | `DATETIME` | `send_started_at`/`bank_responded_at`/`completed_at`，业务时间字段 |
+| 银行响应时间（业务） | `DATETIME` | `bank_responded_at`，收到银行同步响应时写入 |
 
 **禁止**：使用 `CHAR`、`DATETIME(3)`、`TIMESTAMP`、零碎长度（如 `VARCHAR(64)/32/16/8/6/3`）。
+**例外**：`data_source_id` 采用 `VARCHAR(30)`，是数据源实例标识的约定长度，单独豁免上述零碎长度禁令。
 **审计字段用父类**：`create_by`/`create_time`/`update_by`/`update_time` 对应 Entity 继承的
 `BaseEntity` 审计字段，子类不再重复声明，由 MyBatis-Plus `MetaObjectHandler` 自动填充。
-不再使用 `created_at`/`updated_at`（旧字段已由 [09C](09C-alter-add-audit-columns.sql.md) 的 ALTER 移除）。
+不再使用 `created_at`/`updated_at`（已改用 BaseEntity 的 `create_by`/`create_time`/`update_by`/`update_time`）。
 
 ### 1.2 最终可执行 SQL
 
@@ -65,16 +67,16 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 
 | 序号 | 表名 | 字段数 | 表用途 |
 |---:|---|---:|---|
-| 1 | `front_citic_transfer_transaction` | 59 | Front 中信转账渠道交易流水 |
-| 2 | `front_pingan_transfer_transaction` | 59 | Front 平安转账及转账授权渠道交易流水 |
-| 3 | `front_citic_consume_transaction` | 59 | Front 中信消费渠道交易流水 |
-| 4 | `front_pingan_consume_transaction` | 59 | Front 平安消费渠道交易流水 |
-| 5 | `front_citic_refund_transaction` | 65 | Front 中信真退款渠道交易流水 |
-| 6 | `front_pingan_refund_transaction` | 65 | Front 平安退款渠道交易流水 |
-| 7 | `front_citic_withdraw_transaction` | 58 | Front 中信提现渠道交易流水 |
-| 8 | `front_pingan_withdraw_transaction` | 58 | Front 平安提现渠道交易流水 |
-| 9 | `front_citic_platform_pay_transaction` | 58 | Front 中信平台付款渠道交易流水 |
-| 10 | `front_citic_platform_receive_transaction` | 58 | Front 中信平台收款渠道交易流水 |
+| 1 | `front_citic_transfer_transaction` | 47 | Front 中信转账渠道交易流水 |
+| 2 | `front_pingan_transfer_transaction` | 49 | Front 平安转账及转账授权渠道交易流水 |
+| 3 | `front_citic_consume_transaction` | 47 | Front 中信消费渠道交易流水 |
+| 4 | `front_pingan_consume_transaction` | 47 | Front 平安消费渠道交易流水 |
+| 5 | `front_citic_refund_transaction` | 53 | Front 中信真退款渠道交易流水 |
+| 6 | `front_pingan_refund_transaction` | 55 | Front 平安退款渠道交易流水 |
+| 7 | `front_citic_withdraw_transaction` | 46 | Front 中信提现渠道交易流水 |
+| 8 | `front_pingan_withdraw_transaction` | 47 | Front 平安提现渠道交易流水 |
+| 9 | `front_citic_platform_pay_transaction` | 43 | Front 中信平台付款渠道交易流水 |
+| 10 | `front_citic_platform_receive_transaction` | 43 | Front 中信平台收款渠道交易流水 |
 
 ## 3. 逐表完整字段
 
@@ -87,77 +89,65 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信转账渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 TRANSFER |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际中信接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 转账手续费，单位为人民币分 |
-| 22 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
-| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 24 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务日期，格式 yyyyMMdd |
-| 25 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务时间，格式 HHmmss |
-| 26 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 业务备注 |
-| 27 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化业务请求的 HMAC-SHA256 指纹 |
-| 28 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 29 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议业务编号 bizFunc |
-| 30 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 31 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 32 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 33 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 34 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 35 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 36 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 37 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 38 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 39 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始交易状态，仅供查询与审计 |
-| 40 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整业务 baseData 加密快照，用于保留业务交易数据 |
-| 41 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的业务 specialData 加密快照 |
-| 42 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信请求加密快照 |
-| 43 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信原始响应加密快照 |
-| 44 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 45 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 46 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 47 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 48 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 49 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 50 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
-| 51 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化交易备注 |
-| 52 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 53 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 54 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 55 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 56 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 57 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 58 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 59 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 TRANSFER |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
+| 20 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
+| 21 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
+| 22 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
+| 23 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账金额，单位为人民币分 |
+| 24 | `fee` | `BIGINT` | 否 | `0` | `—` | 转账手续费，单位为人民币分 |
+| 25 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
+| 26 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议业务编号 bizFunc |
+| 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 30 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 31 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
+| 32 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 33 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 34 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 35 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始交易状态，仅供查询与审计 |
+| 39 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 40 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 41 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 42 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
+| 43 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 44 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 45 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 46 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 47 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.2 `front_pingan_transfer_transaction`
 
@@ -168,77 +158,67 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 平安转账渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | 能力编码：TRANSFER、TRANSFER_AUTH 或 TRANSFER_AUTH_CODE_RESEND |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际平安接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账或授权交易金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安转账手续费，单位为人民币分 |
-| 22 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
-| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 24 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务日期，格式 yyyyMMdd |
-| 25 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务时间，格式 HHmmss |
-| 26 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 业务备注 |
-| 27 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化业务请求的 HMAC-SHA256 指纹 |
-| 28 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
-| 29 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
-| 30 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 31 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 32 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 33 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 34 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 35 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 36 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 37 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
-| 38 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
-| 39 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
-| 40 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整业务 baseData 加密快照，用于保留业务交易数据 |
-| 41 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的业务 specialData 加密快照 |
-| 42 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥和验证码后的平安请求加密快照 |
-| 43 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 平安原始响应加密快照 |
-| 44 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 45 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 46 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 47 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 48 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 49 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 50 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
-| 51 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化交易备注 |
-| 52 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 53 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 54 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 55 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 56 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 57 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 58 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 59 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | 能力编码：TRANSFER、TRANSFER_AUTH 或 TRANSFER_AUTH_CODE_RESEND |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `pay_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方商户会员编号 |
+| 20 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
+| 21 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
+| 22 | `rec_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方商户会员编号 |
+| 23 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
+| 24 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
+| 25 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账或授权交易金额，单位为人民币分 |
+| 26 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安转账手续费，单位为人民币分 |
+| 27 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
+| 28 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 29 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
+| 30 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
+| 31 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 32 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 33 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
+| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 36 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 37 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 38 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
+| 39 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
+| 40 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
+| 41 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 42 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 43 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 44 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
+| 45 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 46 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 47 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 48 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 49 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.3 `front_citic_consume_transaction`
 
@@ -249,77 +229,65 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信消费渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 CONSUME |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际中信接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 消费金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 消费手续费，单位为人民币分 |
-| 22 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该消费累计确认退款金额，单位为人民币分 |
-| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 24 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务日期，格式 yyyyMMdd |
-| 25 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务时间，格式 HHmmss |
-| 26 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 业务备注 |
-| 27 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化业务请求的 HMAC-SHA256 指纹 |
-| 28 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 29 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议业务编号 bizFunc |
-| 30 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 31 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 32 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 33 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 34 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 35 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 36 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 37 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 38 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 39 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始交易状态，仅供查询与审计 |
-| 40 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整业务 baseData 加密快照，用于保留业务交易数据 |
-| 41 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的业务 specialData 加密快照 |
-| 42 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信请求加密快照 |
-| 43 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信原始响应加密快照 |
-| 44 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 45 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 46 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 47 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 48 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 49 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 50 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
-| 51 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化交易备注 |
-| 52 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 53 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 54 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 55 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 56 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 57 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 58 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 59 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 CONSUME |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
+| 20 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
+| 21 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
+| 22 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
+| 23 | `amount` | `BIGINT` | 否 | `—` | `—` | 消费金额，单位为人民币分 |
+| 24 | `fee` | `BIGINT` | 否 | `0` | `—` | 消费手续费，单位为人民币分 |
+| 25 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该消费累计确认退款金额，单位为人民币分 |
+| 26 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议业务编号 bizFunc |
+| 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 30 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 31 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
+| 32 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 33 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 34 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 35 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始交易状态，仅供查询与审计 |
+| 39 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 40 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 41 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 42 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
+| 43 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 44 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 45 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 46 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 47 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.4 `front_pingan_consume_transaction`
 
@@ -330,75 +298,67 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 平安消费渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 CONSUME |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际平安接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 消费金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安消费手续费，单位为人民币分 |
-| 22 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该消费累计确认退款金额，单位为人民币分 |
-| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 24 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务日期，格式 yyyyMMdd |
-| 25 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 业务时间，格式 HHmmss |
-| 26 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 业务备注 |
-| 27 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化业务请求的 HMAC-SHA256 指纹 |
-| 28 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
-| 29 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
-| 30 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 31 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 32 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 33 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 34 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 35 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 36 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 37 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
-| 38 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
-| 39 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
-| 40 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整业务 baseData 加密快照，用于保留业务交易数据 |
-| 41 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的业务 specialData 加密快照 |
-| 42 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的平安请求加密快照 |
-| 43 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 平安原始响应加密快照 |
-| 44 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 45 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 46 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 47 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 48 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 49 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 50 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
-| 51 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化交易备注 |
-| 52 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 53 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 54 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 55 | `created_at` | `DATETIME` | 否 | `CURRENT_TIMESTAMP` | `—` | 创建时间 |
-| 56 | `updated_at` | `DATETIME` | 否 | `CURRENT_TIMESTAMP` | `ON UPDATE CURRENT_TIMESTAMP` | 更新时间 |
-| 57 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 CONSUME |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `pay_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方商户会员编号 |
+| 20 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
+| 21 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
+| 22 | `rec_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方商户会员编号 |
+| 23 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
+| 24 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
+| 25 | `amount` | `BIGINT` | 否 | `—` | `—` | 消费金额，单位为人民币分 |
+| 26 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安消费手续费，单位为人民币分 |
+| 27 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该消费累计确认退款金额，单位为人民币分 |
+| 28 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 29 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
+| 30 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
+| 31 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 32 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 33 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
+| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 36 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 37 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 38 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
+| 39 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
+| 40 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
+| 41 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 42 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 43 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 44 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
+| 45 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 46 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 47 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 48 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 49 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.5 `front_citic_refund_transaction`
 
@@ -409,85 +369,73 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信退款渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 REFUND |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 中信真退款接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局退款渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源退款业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源退款业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源退款业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款业务子流水号或子订单号 |
-| 16 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
-| 17 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
-| 18 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
-| 19 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
-| 20 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
-| 21 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
-| 22 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |
-| 23 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店编码 |
-| 24 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店 ID |
-| 25 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店编码 |
-| 26 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店 ID |
-| 27 | `amount` | `BIGINT` | 否 | `—` | `—` | 本次真退款金额，单位为人民币分 |
-| 28 | `fee` | `BIGINT` | 否 | `0` | `—` | 本次退款手续费，单位为人民币分 |
-| 29 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 30 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 退款业务日期，格式 yyyyMMdd |
-| 31 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 退款业务时间，格式 HHmmss |
-| 32 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 退款业务备注 |
-| 33 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化退款业务请求的 HMAC-SHA256 指纹 |
-| 34 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 35 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信真退款业务编号 bizFunc，当前为 23 |
-| 36 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 37 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 38 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等退款流水 |
-| 39 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款日期，格式 yyyyMMdd |
-| 40 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款时间，格式 HHmmss |
-| 41 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 42 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 43 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 44 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 45 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始退款状态，仅供查询与审计 |
-| 46 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整退款业务 baseData 加密快照，用于保留业务交易数据 |
-| 47 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的退款 specialData 加密快照 |
-| 48 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信真退款请求加密快照 |
-| 49 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信真退款原始响应加密快照 |
-| 50 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 51 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 52 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 53 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 54 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 55 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 56 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化退款状态 |
-| 57 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化退款备注 |
-| 58 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 59 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 60 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 61 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 62 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 63 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 64 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 65 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 REFUND |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局退款渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源退款业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源退款业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源退款业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款业务子流水号或子订单号 |
+| 15 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
+| 16 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
+| 17 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
+| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
+| 19 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
+| 20 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
+| 21 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |
+| 22 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店编码 |
+| 23 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店 ID |
+| 24 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店编码 |
+| 25 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店 ID |
+| 26 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款付款方电子账户号 |
+| 27 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 退款付款方名称 |
+| 28 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款收款方电子账户号 |
+| 29 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 退款收款方名称 |
+| 30 | `amount` | `BIGINT` | 否 | `—` | `—` | 本次真退款金额，单位为人民币分 |
+| 31 | `fee` | `BIGINT` | 否 | `0` | `—` | 本次退款手续费，单位为人民币分 |
+| 32 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 33 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 34 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信真退款业务编号 bizFunc，当前为 23 |
+| 35 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 36 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 37 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等退款流水 |
+| 38 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款日期，格式 yyyyMMdd |
+| 39 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款时间，格式 HHmmss |
+| 40 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 41 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 42 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 43 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 44 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始退款状态，仅供查询与审计 |
+| 45 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 46 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 47 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 48 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化退款状态 |
+| 49 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 50 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 51 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 52 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 53 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_original_transaction` | `original_capability` → `original_channel_transaction_id` |
 | INDEX | `idx_front_original_ssn` | `original_front_ssn` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.6 `front_pingan_refund_transaction`
 
@@ -498,85 +446,75 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 平安退款渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 REFUND |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 平安退款接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局退款渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源退款业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源退款业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源退款业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款业务子流水号或子订单号 |
-| 16 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
-| 17 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
-| 18 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
-| 19 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
-| 20 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
-| 21 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
-| 22 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |
-| 23 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店编码 |
-| 24 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店 ID |
-| 25 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店编码 |
-| 26 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店 ID |
-| 27 | `amount` | `BIGINT` | 否 | `—` | `—` | 本次退款金额，单位为人民币分 |
-| 28 | `fee` | `BIGINT` | 否 | `0` | `—` | 本次退款手续费，单位为人民币分 |
-| 29 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 30 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 退款业务日期，格式 yyyyMMdd |
-| 31 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 退款业务时间，格式 HHmmss |
-| 32 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 退款业务备注 |
-| 33 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化退款业务请求的 HMAC-SHA256 指纹 |
-| 34 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
-| 35 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安退款协议业务编号 bizFunc |
-| 36 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 37 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 38 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等退款流水 |
-| 39 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款日期，格式 yyyyMMdd |
-| 40 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款时间，格式 HHmmss |
-| 41 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 42 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 43 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
-| 44 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
-| 45 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始退款状态，仅供查询与审计 |
-| 46 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整退款业务 baseData 加密快照，用于保留业务交易数据 |
-| 47 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的退款 specialData 加密快照 |
-| 48 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的平安退款请求加密快照 |
-| 49 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 平安退款原始响应加密快照 |
-| 50 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 51 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 52 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 53 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 54 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 55 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 56 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化退款状态 |
-| 57 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化退款备注 |
-| 58 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 59 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 60 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 61 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 62 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 63 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 64 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 65 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 REFUND |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局退款渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源退款业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源退款业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源退款业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款业务子流水号或子订单号 |
+| 15 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
+| 16 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
+| 17 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
+| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
+| 19 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
+| 20 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
+| 21 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |
+| 22 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店编码 |
+| 23 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店 ID |
+| 24 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店编码 |
+| 25 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店 ID |
+| 26 | `pay_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款付款方商户会员编号 |
+| 27 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款付款方电子账户号 |
+| 28 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 退款付款方名称 |
+| 29 | `rec_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款收款方商户会员编号 |
+| 30 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 退款收款方电子账户号 |
+| 31 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 退款收款方名称 |
+| 32 | `amount` | `BIGINT` | 否 | `—` | `—` | 本次退款金额，单位为人民币分 |
+| 33 | `fee` | `BIGINT` | 否 | `0` | `—` | 本次退款手续费，单位为人民币分 |
+| 34 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 35 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
+| 36 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安退款协议业务编号 bizFunc |
+| 37 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 38 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 39 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等退款流水 |
+| 40 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款日期，格式 yyyyMMdd |
+| 41 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行退款时间，格式 HHmmss |
+| 42 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 43 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 44 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
+| 45 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
+| 46 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始退款状态，仅供查询与审计 |
+| 47 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 48 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 49 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 50 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化退款状态 |
+| 51 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 52 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 53 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 54 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 55 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_original_transaction` | `original_capability` → `original_channel_transaction_id` |
 | INDEX | `idx_front_original_ssn` | `original_front_ssn` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.7 `front_citic_withdraw_transaction`
 
@@ -587,76 +525,64 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信提现渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 WITHDRAW |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际中信提现接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局提现渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源提现业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源提现业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源提现业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 提现金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 提现手续费，单位为人民币分 |
-| 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 提现业务日期，格式 yyyyMMdd |
-| 24 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 提现业务时间，格式 HHmmss |
-| 25 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 提现业务备注 |
-| 26 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化提现业务请求的 HMAC-SHA256 指纹 |
-| 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信提现协议业务编号 bizFunc |
-| 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 30 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 31 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等提现流水 |
-| 32 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行提现日期，格式 yyyyMMdd |
-| 33 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行提现时间，格式 HHmmss |
-| 34 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 35 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始提现状态，仅供查询与审计 |
-| 39 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整提现业务 baseData 加密快照，用于保留业务交易数据 |
-| 40 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的提现 specialData 加密快照 |
-| 41 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信提现请求加密快照 |
-| 42 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信提现原始响应加密快照 |
-| 43 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 44 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 45 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 46 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 47 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 48 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 49 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化提现状态 |
-| 50 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化提现备注 |
-| 51 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 52 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 53 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 54 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 55 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 56 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 57 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 58 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 WITHDRAW |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局提现渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源提现业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源提现业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源提现业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店 ID |
+| 19 | `withdraw_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 提现电子账户号（原始值，未加密） |
+| 20 | `withdraw_account_name` | `VARCHAR(100)` | 是 | `NULL` | — | 提现账户名称 |
+| 21 | `bank_card_no` | `VARCHAR(100)` | 是 | `NULL` | — | 提现银行卡号（原始值，未加密） |
+| 22 | `bank_card_holder_name` | `VARCHAR(100)` | 是 | `NULL` | — | 银行卡持卡人姓名 |
+| 23 | `amount` | `BIGINT` | 否 | `—` | `—` | 提现金额，单位为人民币分 |
+| 24 | `fee` | `BIGINT` | 否 | `0` | `—` | 提现手续费，单位为人民币分 |
+| 25 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 26 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 27 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信提现协议业务编号 bizFunc |
+| 28 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 29 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 30 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等提现流水 |
+| 31 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行提现日期，格式 yyyyMMdd |
+| 32 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行提现时间，格式 HHmmss |
+| 33 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 34 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 35 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 36 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 37 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始提现状态，仅供查询与审计 |
+| 38 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 39 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 40 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 41 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化提现状态 |
+| 42 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 43 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 44 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 45 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 46 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.8 `front_pingan_withdraw_transaction`
 
@@ -667,29 +593,29 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 平安提现渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 WITHDRAW |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际平安提现接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局提现渠道流水号，同时作为本次银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源提现业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源提现业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源提现业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店 ID |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 提现金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安提现手续费，单位为人民币分 |
-| 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 提现业务日期，格式 yyyyMMdd |
-| 24 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 提现业务时间，格式 HHmmss |
-| 25 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 提现业务备注 |
-| 26 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化提现业务请求的 HMAC-SHA256 指纹 |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 WITHDRAW |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局提现渠道流水号，同时作为本次银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源提现业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源提现业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源提现业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 提现业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 提现收款方业务门店 ID |
+| 19 | `withdraw_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 提现商户会员编号 |
+| 20 | `withdraw_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 提现电子账户号（原始值，未加密） |
+| 21 | `withdraw_account_name` | `VARCHAR(100)` | 是 | `NULL` | — | 提现账户名称 |
+| 22 | `bank_card_no` | `VARCHAR(100)` | 是 | `NULL` | — | 提现银行卡号（原始值，未加密） |
+| 23 | `bank_card_holder_name` | `VARCHAR(100)` | 是 | `NULL` | — | 银行卡持卡人姓名 |
+| 24 | `amount` | `BIGINT` | 否 | `—` | `—` | 提现金额，单位为人民币分 |
+| 25 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安提现手续费，单位为人民币分 |
+| 26 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
 | 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
 | 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安提现协议业务编号 bizFunc |
 | 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
@@ -702,41 +628,30 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
 | 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
 | 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始提现状态，仅供查询与审计 |
-| 39 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整提现业务 baseData 加密快照，用于保留业务交易数据 |
-| 40 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的提现 specialData 加密快照 |
-| 41 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的平安提现请求加密快照 |
-| 42 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 平安提现原始响应加密快照 |
-| 43 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 44 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 45 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 46 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 47 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 48 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 49 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化提现状态 |
-| 50 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化提现备注 |
-| 51 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 52 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 53 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 54 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 55 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 56 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 57 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 58 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 39 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 40 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 41 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 42 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化提现状态 |
+| 43 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 44 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 45 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 46 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 47 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.9 `front_citic_platform_pay_transaction`
 
@@ -747,76 +662,61 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信平台付款渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 PLATFORM_PAY |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际中信平台付款接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局平台付款渠道流水号，同时作为银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源平台付款业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源平台付款业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源平台付款业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台付款业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台付款业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 平台付款业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 PLATFORM_PAY |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局平台付款渠道流水号，同时作为银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源平台付款业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源平台付款业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源平台付款业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台付款业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台付款业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 平台付款业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方电子账户号（原始值，未加密） |
 | 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台付款金额，单位为人民币分 |
 | 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台付款手续费，单位为人民币分 |
 | 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平台付款业务日期，格式 yyyyMMdd |
-| 24 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平台付款业务时间，格式 HHmmss |
-| 25 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平台付款业务备注 |
-| 26 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化平台付款请求的 HMAC-SHA256 指纹 |
-| 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台付款协议业务编号 bizFunc |
-| 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 30 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 31 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台付款流水 |
-| 32 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 33 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 34 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 35 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台付款状态，仅供查询与审计 |
-| 39 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整平台付款 baseData 加密快照，用于保留业务交易数据 |
-| 40 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的平台付款 specialData 加密快照 |
-| 41 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信平台付款请求加密快照 |
-| 42 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信平台付款原始响应加密快照 |
-| 43 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 44 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 45 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 46 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 47 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 48 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 49 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台付款状态 |
-| 50 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化平台付款备注 |
-| 51 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 52 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 53 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 54 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 55 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 56 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 57 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 58 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 23 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 24 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台付款协议业务编号 bizFunc |
+| 25 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 26 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 27 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台付款流水 |
+| 28 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 29 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 30 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 31 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 32 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 33 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 34 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台付款状态，仅供查询与审计 |
+| 35 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 36 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 37 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 38 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台付款状态 |
+| 39 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 40 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 41 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 42 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 43 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ### 3.10 `front_citic_platform_receive_transaction`
 
@@ -827,76 +727,61 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 1 | `id` | `BIGINT` | 否 | `—` | `—` | 中信平台收款渠道记录主键，由 Front 生成分布式 ID |
 | 2 | `tenant_id` | `VARCHAR(100)` | 否 | `—` | `—` | SaaS 租户标识 |
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
-| 4 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 PLATFORM_RECEIVE |
-| 5 | `interface_code` | `VARCHAR(20)` | 否 | `—` | `—` | 实际中信平台收款接口逻辑编码，不保存完整 URL |
-| 6 | `config_version` | `VARCHAR(100)` | 是 | `NULL` | `—` | 本次调用使用的租户银行配置版本 |
-| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局平台收款渠道流水号，同时作为银行请求 transSsn |
-| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源平台收款业务逻辑类型，不保存物理表名 |
-| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源平台收款业务主表记录 ID |
-| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源平台收款业务子表或明细表记录 ID |
-| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台收款业务本次调用唯一号 |
-| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台收款业务主流水号或主订单号 |
-| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 平台收款业务子流水号或子订单号 |
-| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
+| 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | Front 能力编码；本表固定为 PLATFORM_RECEIVE |
+| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局平台收款渠道流水号，同时作为银行请求 transSsn |
+| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源平台收款业务逻辑类型，不保存物理表名 |
+| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源平台收款业务主表记录 ID |
+| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源平台收款业务子表或明细表记录 ID |
+| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台收款业务本次调用唯一号 |
+| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 平台收款业务主流水号或主订单号 |
+| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 平台收款业务子流水号或子订单号 |
+| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 19 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方电子账户号（原始值，未加密） |
 | 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台收款金额，单位为人民币分 |
 | 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台收款手续费，单位为人民币分 |
 | 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `business_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平台收款业务日期，格式 yyyyMMdd |
-| 24 | `business_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平台收款业务时间，格式 HHmmss |
-| 25 | `business_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平台收款业务备注 |
-| 26 | `request_hash` | `VARCHAR(100)` | 否 | `—` | `—` | 规范化平台收款请求的 HMAC-SHA256 指纹 |
-| 27 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 28 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台收款协议业务编号 bizFunc |
-| 29 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 30 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 31 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台收款流水 |
-| 32 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 33 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 34 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 35 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 36 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 37 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 38 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台收款状态，仅供查询与审计 |
-| 39 | `business_base_snapshot_cipher` | `MEDIUMTEXT` | 否 | `—` | `—` | 完整平台收款 baseData 加密快照，用于保留业务交易数据 |
-| 40 | `business_special_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 白名单过滤后的平台收款 specialData 加密快照 |
-| 41 | `bank_request_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 移除密钥后的中信平台收款请求加密快照 |
-| 42 | `bank_response_snapshot_cipher` | `MEDIUMTEXT` | 是 | `NULL` | `—` | 中信平台收款原始响应加密快照 |
-| 43 | `snapshot_key_version` | `VARCHAR(20)` | 是 | `NULL` | `—` | 快照加密密钥版本，不保存密钥本身 |
-| 44 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 45 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 46 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 47 | `front_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | Front 统一业务响应码 |
-| 48 | `front_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 统一业务响应说明 |
-| 49 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台收款状态 |
-| 50 | `front_remark` | `VARCHAR(512)` | 是 | `NULL` | `—` | Front 归一化平台收款备注 |
-| 51 | `send_started_at` | `DATETIME` | 是 | `NULL` | `—` | 开始向银行发送时间 |
-| 52 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 53 | `completed_at` | `DATETIME` | 是 | `NULL` | `—` | 确认当前终态时间 |
-| 54 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 55 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 56 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 57 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
-| 58 | `version` | `INT UNSIGNED` | 否 | `0` | `—` | 乐观锁版本号 |
+| 23 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 24 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台收款协议业务编号 bizFunc |
+| 25 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 26 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 27 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台收款流水 |
+| 28 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 29 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 30 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 31 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 32 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 33 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 34 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台收款状态，仅供查询与审计 |
+| 35 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 36 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 37 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 38 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台收款状态 |
+| 39 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 40 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 41 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 42 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 43 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
 | 类型 | 索引名 | 字段顺序 |
 |---|---|---|
-| PRIMARY | `PRIMARY` | `id` |
-| UNIQUE | `uk_front_ssn` | `front_ssn` |
-| UNIQUE | `uk_front_idempotency` | `tenant_id` → `biz_system_code` → `capability` → `biz_request_no` |
+| PRIMARY | `PRIMARY` | `id` → `tenant_id` → `store_id` |
+| INDEX | `idx_front_ssn` | `front_ssn` |
 | INDEX | `idx_front_business_main` | `tenant_id` → `biz_system_code` → `biz_transaction_type` → `biz_transaction_id` |
 | INDEX | `idx_front_business_sub` | `tenant_id` → `biz_system_code` → `biz_sub_transaction_id` |
-| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_system_code` → `biz_order_no` → `biz_sub_order_no` |
+| INDEX | `idx_front_biz_order` | `tenant_id` → `biz_order_no` → `biz_sub_order_no` |
 | INDEX | `idx_front_bank_query` | `bank_query_id` |
 | INDEX | `idx_front_bank_user_ssn` | `bank_user_ssn` |
 | INDEX | `idx_front_status_time` | `tenant_id` → `front_status` → `update_time` |
 | INDEX | `idx_front_store_time` | `tenant_id` → `store_id` → `create_time` |
+| INDEX | `idx_front_data_source` | `tenant_id` → `data_source_id` |
 
 ## 4. 最终 SQL 已生成
 
@@ -910,7 +795,7 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 ```text
 1. 必须保持“银行 + 交易业务”10 张物理表，禁止合并成统一渠道表。
 2. 必须逐表保留全部字段、字段顺序、类型、NULL 约束、默认值、更新规则、注释和索引字段顺序。
-3. 字段类型遵守 §1.1 规范（VARCHAR(20/100/512/1024)、BIGINT、DATETIME、MEDIUMTEXT、INT UNSIGNED）。
+3. 字段类型遵守 §1.1 规范（VARCHAR(20/30/100/512/1024)、BIGINT、DATETIME、MEDIUMTEXT、INT UNSIGNED）。
 4. 每张表必须保留 reserve1、reserve2、reserve3。
 5. 不得新增 platform_code；银行已经由物理表名确定。
 6. 不得接收或保存来源业务物理表名。
@@ -929,5 +814,5 @@ cateringsass/catering-modules/catering-front/src/main/resources/db/migration/
 V001__create_front_bank_business_transaction_tables.sql
 ```
 
-字段设计、表路由、幂等、状态迁移、退款并发和敏感数据规则仍以
+字段设计、表路由、重复交易检查、状态迁移、退款并发和敏感数据规则仍以
 [09-channel-transaction-ddl.md](./09-channel-transaction-ddl.md) 为准。
