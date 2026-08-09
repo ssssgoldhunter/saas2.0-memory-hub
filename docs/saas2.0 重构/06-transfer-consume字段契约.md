@@ -34,7 +34,7 @@ FrontRequest<T>
 └─ specialData: JSONObject
 ```
 
-`specialData` 是当前“银行 + 能力”的动态业务扩展字段，不是钱包 `reserve` 本身。Handle 必须按
+`specialData` 是当前“银行 + 具体业务方法”的动态业务扩展字段，不是钱包 `reserve` 本身。Handle 必须按
 白名单逐字段解析并映射，禁止 `walletReserve.putAll(specialData)`。
 
 ### 2.2 transfer 基础对象
@@ -80,11 +80,9 @@ ConsumeBusinessData extends BaseTransactionBusinessData
 BankRequestContext<T>
 ├─ baseData
 ├─ specialData
-└─ tenantBankConfig
-   ├─ accountConfig
-   │  ├─ appId / appKey / url / mchntId / mchntMbrId
-   │  └─ accountSpecialData
-   └─ configVersion / enabled / tenantId / bankCode
+└─ accountConfig
+   ├─ appId / appKey / url / mchntId / mchntMbrId
+   └─ accountSpecialData
 ```
 
 字段来源固定：
@@ -114,7 +112,7 @@ BankRequestContext<T>
 | `transAmt` | `baseData.amount` | 单位为分，必须大于 0 |
 | `outAcctNo` | `specialData.outAcctNo` | 付款钱包账号，按中信协议加密 |
 | `inAcctNo` | `specialData.inAcctNo` | 收款钱包账号，按中信协议加密 |
-| `remark` | `baseData.remark` | Handle 校验银行长度 |
+| `remark` | `baseData.remark` | Handle 校验银行长度；长度待从 Word 协议确认 |
 
 ### 4.2 中信 reserve 映射
 
@@ -182,7 +180,7 @@ errCode == D5000000
 | `transAmt` | `baseData.amount` | 单位为分，包含手续费 |
 | `fee` | `baseData.fee` | 单位为分，无手续费传 0 |
 | `ccy` | `baseData.currency` | 当前默认 CNY |
-| `remark` | `baseData.remark` | Handle 校验银行长度 |
+| `remark` | `baseData.remark` | Handle 校验银行长度；平安最大 256（C 256 O） |
 
 ### 5.2 平安 reserve 映射
 
@@ -347,13 +345,15 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 |---|---|
 | `FrontBankResponseConstants` | 公共原始响应字段、钱包平台成功标志、两家银行不同成功码 |
 | `FrontBankRequestConstants` | 钱包公共请求字段名及运行时字段来源约束 |
-| `CiticTransferContractKeys` | 中信 transfer/consume 固定值、请求字段、reserve 和响应特殊字段 |
-| `PingAnTransferContractKeys` | 平安 transfer/consume 固定值、请求字段和 reserve 字段 |
+| `CiticTransferContractKeys` | 中信 transfer/consume 请求字段、reserve 和响应特殊字段 key |
+| `PingAnTransferContractKeys` | 平安 transfer/consume 请求字段和 reserve 字段 key |
 | `FrontBankAccountConfigKeys` | 跨银行通用租户账户配置字段 |
 | `CiticBankAccountConfigKeys` | 中信账户静态特殊配置 |
 | `PingAnBankAccountConfigKeys` | 平安账户静态特殊配置 |
 
-业务系统如需实现自己的银行组装策略，应引用这些常量和注释，不得在业务模块重新定义同名字符串。
+业务系统组装 `specialData/accountSpecialData` 或读取响应 `specialData` 时，应引用这些对外字段 key，
+不得在业务模块重新定义同名字符串。`bizFunc/chnlNo/API path` 及 Front 固定上送的类型码、标志位、
+默认备注属于具体 Handle 内部实现，不作为业务系统可传参数，也不放入公共 ContractKeys。
 协议文档中存在但当前实际 Handle 未使用的字段，不得仅为“以后可能使用”而提前加入常量类。
 
 ## 8. 后续 Handle 实现要求

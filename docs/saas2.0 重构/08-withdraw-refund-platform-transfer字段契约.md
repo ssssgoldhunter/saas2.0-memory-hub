@@ -1,8 +1,8 @@
 # withdraw、refund、platformPay、platformReceive 字段契约
 
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
-> 状态：首版契约已确认
-> 确认日期：2026-08-04
+> 状态：中信退款字段来源已修订
+> 最近确认日期：2026-08-09
 > 范围：中信、平安提现；内部系统长短款真退款；中信平台付款、平台收款
 
 ## 1. 先给结论
@@ -22,7 +22,8 @@
   `lsym_20260625_limeng_refundTask`、提交 `3dff8255d6` 已改为构造 `ZxRefundRequest`，固定
   `bizFunc=23/chnlNo=0010`，调用 `SaasZxInterService.zxRefund()` 和真实 `/refund`。
 
-最新 lsym UAT 是当前中信退款字段的代码参考；新 Front 仍按自己的配置、原渠道流水和日志边界实现。
+最新 lsym UAT 是当前中信退款字段的代码参考；新 Front 按自己的 `baseData + specialData`、账户配置和
+脱敏日志边界实现，不查询本地原渠道流水补齐中信退款银行字段。
 
 ## 2. 新 Front 方法与参考实现映射
 
@@ -65,29 +66,28 @@ Handle 内部继续使用：
 BankRequestContext<T>
 ├─ baseData
 ├─ specialData
-└─ tenantBankConfig
-   └─ accountConfig
-      ├─ appId/appKey/url/mchntId/mchntMbrId
-      └─ accountSpecialData
-         ├─ 平安 txnClientNo/mrchCode/stlAcctNo
-         └─ 中信 default/self 角色、资金类型和自有资金映射配置
+└─ accountConfig
+   ├─ appId/appKey/url/mchntId/mchntMbrId
+   └─ accountSpecialData
+      ├─ 平安 txnClientNo/mrchCode/stlAcctNo
+      └─ 中信 default/self 角色、资金类型和自有资金映射配置
 ```
 
 ### 3.1 `RefundBusinessData`
 
 | 字段 | 说明 | 来源约束 |
 |---|---|---|
-| `originalFrontSsn` | 原交易 Front 渠道流水号 | 与原业务主/子流水组至少提供一组 |
-| `originalBizOrderNo` | 原交易业务主流水号 | 与子流水成组；可作为原交易定位条件 |
-| `originalBizSubOrderNo` | 原交易业务子流水号 | 与主流水成组；可作为原交易定位条件 |
+| `orgBizOrderNo` | 原交易业务主流水号 | 中信退款必填；与子流水成组 |
+| `orgBizSubOrderNo` | 原交易业务子流水号 | 中信退款必填；与主流水成组 |
 | `bizOrderNo/bizSubOrderNo` | 本次退款业务主/子流水号 | 继承公共交易对象 |
 | `amount` | 本次退款金额 | 人民币分 |
 | `fee` | 本次退款手续费 | 人民币分；无手续费传 0 |
 | `refundReason` | 退款原因 | 中信映射 `MEMO`，平安映射 `reserve.remark` |
 
-原银行流水、原账户、原交易日期、原资金类型和原资金分配不允许由请求 `specialData` 传入。
-Front 必须通过 `originalFrontSsn` 或原业务主/子流水组加载原渠道流水；同时提供时必须交叉校验为
-同一条记录。随后校验租户、银行、订单、原交易成功状态、可退款金额和累计退款金额，再组装银行请求。
+中信退款不使用 `orgFrontSsn/originalFrontSsn` 定位，也不把 Front `transSsn` 映射为银行
+`ORI_USER_SSN`。原付款方、原收款方和原交易日期属于中信动态协议数据，由调用方使用请求
+`specialData` 的银行原始 key 提供；Front 只做协议必填、格式、加密及报文组装校验，不查询本地原交易，
+不校验原交易状态、原金额、累计退款金额或退款资格。平安退款边界尚未确认，不得从本节中信结论推导。
 
 ### 3.2 `WithdrawBusinessData`
 
@@ -151,7 +151,7 @@ chnlNo  = 0010
 | `acctNo` | `specialData.acctNo` | 加密 |
 | `cardNoEnc` | `specialData.cardNoEnc` | 加密 |
 | `transAmt` | `baseData.amount` | 人民币分 |
-| `remark` | `baseData.remark` | 按银行长度校验 |
+| `remark` | `baseData.remark` | 按银行长度校验；长度待从 Word 协议确认 |
 | `reserve.WITH_TYPE` | Handle 固定 `00` | 当前只开放用户提现，不开放平台提现 `01` |
 | `reserve.BUSS_ID` | `baseData.bizOrderNo` | 业务主流水 |
 | `reserve.TRANS_DT/TRANS_TM` | `baseData.businessDate/businessTime` | `yyyyMMdd/HHmmss` |
@@ -177,7 +177,7 @@ ccy     = CNY
 | `cardNoEnc` | `specialData.cardNoEnc` | 加密 |
 | `transAmt` | `baseData.amount` | 人民币分 |
 | `fee` | `baseData.fee` | 人民币分 |
-| `remark` | `baseData.remark` | 旧 mdl 存在自赋值缺陷，新实现必须显式赋值 |
+| `remark` | `baseData.remark` | 旧 mdl 存在自赋值缺陷，新实现必须显式赋值；平安最大 512（C 512 O） |
 | `reserve.tranWebName` | Handle 固定 `0001` | 调用方不可覆盖 |
 | `reserve.certType` | Handle 固定 `24` | 只表达现有协议值，不擅自解释证件类型语义 |
 | `reserve.certNoEnc` | `specialData.certNo` | 加密，禁止日志 |
@@ -203,26 +203,32 @@ chnlNo  = 0010
 |---|---|---|
 | `transSsn/transTime` | 中信 Handle 每次生成 | 保存本次退款渠道流水 |
 | `mchntId/mchntMbrId` | 租户银行通用账户配置 | 调用方不可覆盖 |
-| `transAmt` | `baseData.amount` | 人民币分 |
-| `ORI_USER_D_ID/NM` | 原渠道交易记录 | 原付款用户及名称 |
-| `ORI_USER_C_ID/NM` | 原渠道交易记录 | 原收款用户及名称 |
+| `transAmt` | `baseData.amount` | 独立必填，人民币分且大于 0 |
+| `ORI_USER_D_ID` | `specialData.ORI_USER_D_ID` | 独立必填；原付款用户编号 |
+| `ORI_USER_D_NM` | `specialData.ORI_USER_D_NM` | 独立必填；原付款用户名称 |
+| `ORI_USER_C_ID` | `specialData.ORI_USER_C_ID` | 独立必填；原收款用户编号 |
+| `ORI_USER_C_NM` | `specialData.ORI_USER_C_NM` | 银行协议选填，有值时上送 |
 | `ORI_USER_C_AMT` | `baseData.amount` | 原收款方本次退款金额，人民币分 |
 | `P_SELF_FLAG/P_DEAL_AMT` | Handle 固定 `N/0` | 首版普通退款不含平台自有资金 |
-| `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 退款业务流水 |
-| `ORI_BUSS_ID/SUB_ID` | `originalBizOrderNo/originalBizSubOrderNo` | 成组使用；与原中信流水二选一 |
-| `ORI_USER_SSN` | 原渠道交易记录 | 与原业务主/子流水组二选一，不能直接用 `originalFrontSsn` 冒充 |
-| `ORI_USER_TRANS_DT` | 原渠道交易记录 | 两种定位方式都必须上送 |
-| `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 退款业务时间 |
-| `FUND_TP` | 原渠道交易保存的资金类型；原交易固定使用默认类型时读取 `accountSpecialData.default_fund_type` 并校验 | 不允许请求覆盖，不得取 `platformUserRole/default_role/self_role` |
+| `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 两者独立必填，退款业务流水 |
+| `ORI_BUSS_ID/SUB_ID` | `orgBizOrderNo/orgBizSubOrderNo` | 当前 Front 固定采用，成组必填 |
+| `ORI_USER_SSN` | 当前 Front 不使用 | 银行协议支持的替代定位项；不得用 `orgFrontSsn/transSsn` 冒充 |
+| `ORI_USER_TRANS_DT` | `specialData.ORI_USER_TRANS_DT` | 独立必填，格式 `yyyyMMdd` |
+| `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 两者独立必填，格式 `yyyyMMdd/HHmmss` |
+| `FUND_TP` | `accountSpecialData.default_fund_type` | 独立必填配置；不得取 `platformUserRole/default_role/self_role`，不查询原交易比对 |
 | `MEMO` | `baseData.refundReason` | 退款原因 |
 | `laasSsn` | Handle 生成 | 外联平台流水 |
 
 当前退款仅供内部系统长短款修复，不激活 Word 中的 `ORI_USER_SHARE_*` 分润退款、平台出资退款、
 普通业务退款扩展和 `REQ_RESERVED`；这些内容不属于当前需求，不进入常量类或请求白名单。
 
-Front 原交易定位约束：调用方至少提供 `originalBizOrderNo + originalBizSubOrderNo` 或
-`originalFrontSsn` 一组。前者映射银行 `ORI_BUSS_ID/ORI_BUSS_SUB_ID`；后者只用于查询渠道记录，
-再由记录中的原中信流水映射 `ORI_USER_SSN`。同时提供时必须交叉校验为同一条原交易。
+银行原协议允许 `ORI_BUSS_ID + ORI_BUSS_SUB_ID` 或 `ORI_USER_SSN` 二选一定位，但当前 Front 对外只
+开放前者：调用方必须提供 `orgBizOrderNo + orgBizSubOrderNo`。这一定位选择不影响其他字段的必填性；
+`ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_TRANS_DT` 仍必须完整提供。
+
+渠道表中 `original_capability/original_channel_transaction_id/original_front_ssn/
+original_biz_transaction_id/original_biz_sub_transaction_id` 是可空兼容保留列，不属于当前中信退款请求契约，
+Handle 不读取、不回填。它们的存在不得改变上述“只使用原业务主子流水”的定位边界。
 
 ### 5.2 平安 refund
 
@@ -328,13 +334,15 @@ com/chinaums/common/core/constant/front/
 ## 9. 实现和日志约束
 
 1. `bizFunc/chnlNo/path/transSsn/transTime` 只能由具体银行 Handle 决定；
-2. 退款必须加载并锁定原渠道交易，校验累计可退款金额和重复交易；
+2. 中信退款只检查本次退款流水是否重复，并校验能否组装有效银行报文；不加载或锁定原渠道交易，
+   不计算累计退款金额；平安退款边界仍按 `FRONT-TODO-002` 等待确认；
 3. `specialData` 和 `accountSpecialData` 分开读取，禁止整体 `putAll`；
 4. 每个字段显式映射、显式校验、显式加密；
 5. 平安平台付款、平台收款直接返回 `CAPABILITY_NOT_SUPPORTED`；
-6. 记录入口、路由、能力、原 Front 流水的脱敏定位值、渠道流水创建、银行调用开始/结束、耗时、
+6. 记录入口、路由、能力、原业务主子流水的脱敏定位值、渠道流水创建、银行调用开始/结束、耗时、
    响应归一化和异常；
-7. 日志禁止输出完整请求、完整银行响应、银行卡号、账户姓名、证件号、密钥和完整 specialData；
+7. 请求和银行响应按全链路日志约束输出字段、层级完整且已脱敏的 JSON；银行卡号、账户姓名、证件号、
+   密钥等敏感值不得输出明文；
 8. 未经用户明确要求，不写测试类、不执行编译或测试。
 
 落库表固定为：
@@ -351,13 +359,14 @@ com/chinaums/common/core/constant/front/
 → front_pingan_withdraw_transaction
 ```
 
-退款表额外保存同银行原交易能力、原渠道记录及原业务主/子记录；转账、消费原表保存累计确认退款金额。
-平安平台收付款不支持，不得落入其他表。详细 DDL 和并发规则见
+中信退款表只保存本次退款、原业务主子流水和银行请求/响应所需明确字段，不保存原渠道记录主键、
+原能力或累计退款金额，也不更新中信转账、消费原表。平安退款持久化边界按 `FRONT-TODO-002` 等待确认。
+平安平台收付款不支持，不得落入其他表。详细 DDL 见
 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
 
-最新 lsym UAT 实现只作为字段参考，以下代码不能迁移：调用方直接传 `orgPay/orgRec/orgTrans*`、
-`FUND_TP` 取 `platformUserRole`、未检查 `orgTransTime` 长度就截取日期、记录完整银行请求/响应和
-`appKey/url`。新 Front 日志应完整覆盖执行阶段，但只能记录脱敏定位信息。
+最新 lsym UAT 实现只作为字段参考。其“调用方提供原交易银行字段”的边界可以保留，但旧
+`orgPay/orgRec/orgTrans*` 字段不能直接搬进公共 `baseData`，必须改为上表规定的银行原始
+`specialData` key；`FUND_TP` 取 `platformUserRole`、未校验日期格式和输出敏感明文等实现不得迁移。
 
 ## 10. 仍需业务或银行确认
 
@@ -365,5 +374,5 @@ com/chinaums/common/core/constant/front/
 2. 平安是否后续增加 `bizFunc=36` 短信提现；
 3. 中信平台收付款 `dealType/fundTp` 的租户级可选值和业务系统字段枚举。
 
-中信部分退款、分润退款、平台自有资金退款及平安 `bizFunc=06` 均不属于当前长短款需求，不作为
-当前阶段待确认项，也不得提前实现。
+中信部分退款已确认支持；分润退款、平台自有资金退款及平安 `bizFunc=06` 不属于当前长短款需求，
+不得提前实现。

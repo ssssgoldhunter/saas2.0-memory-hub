@@ -82,7 +82,7 @@ FrontRequest<T>
 银行账户配置不由业务系统传入。平安 Handle 通过统一父类获得：
 
 ```text
-tenantBankConfig.accountConfig
+accountConfig
 ├─ appId / appKey / url / mchntId / mchntMbrId
 └─ accountSpecialData
    ├─ mrchCode
@@ -337,8 +337,9 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 └─ PingAnTransferAuthCodeContractKeys.java
 ```
 
-- `PingAnTransferAuthContractKeys`：只保存 `bizFunc=45` 当前真实映射字段和固定值；
-- `PingAnTransferAuthCodeContractKeys`：只保存 `bizFunc=26` 当前支付分支字段、银行原始拼写和响应白名单；
+- `bizFunc=45/26` 由 `PingAnTransactionHandle` 的带注释本地常量确定；
+- `PingAnTransferAuthContractKeys`、`PingAnTransferAuthCodeContractKeys` 只保存当前支付分支实际使用的
+  银行原始字段 key、协议枚举固定值和响应白名单；
 - Word 有定义但当前 Handle 不使用的字段只留在本文说明，不提前搬进 Java 常量；
 - 银行协议 DTO、加密实现和 HTTP 客户端仍放在 `catering-front/channel/pingan`，不能放入
   `catering-common-core`。
@@ -348,12 +349,14 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 后续 AI 实现这两个方法时必须：
 
 1. 只覆盖 `PingAnTransactionHandle` 的目标方法，中信保持 `UNSUPPORTED`；
-2. 从现有 `BankRequestContext` 读取 `baseData/specialData/tenantBankConfig`，不得重新查询账户配置；
+2. 从现有 `BankRequestContext` 读取 `baseData/specialData/accountConfig`，不得重新查询账户配置；
 3. 逐字段组装钱包基础字段和 `reserve`，禁止 `putAll`；
 4. `transSsn/transTime` 每次由平安 Handle 生成，`bizFunc/chnlNo/functionFlag/tranType` 使用常量；
 5. 渠道流水保存能力、业务请求号、业务订单、明确账户字段、`frontSsn/queryId`、原始响应码和归一化状态；
 6. 验证码、短信指令号、手机号、账户号、户名、密钥及完整 JSON 不得写日志；
-7. 只记录 `tenantId/storeId/bankCode/capability/bizRequestNo/bizOrderNo/frontSsn/frontRespCode/elapsedMs`；
+7. API、Handler、报文组装和钱包调用前后均记录结构完整且完成脱敏的 JSON，并携带 `tenantId`、
+   `storeId`、`bankCode`、`capability`、`bizRequestNo`、`bizOrderNo`、`bizSubOrderNo`、`platformCode`、
+   `dataSourceId`、`frontSsn`、`frontRespCode`、`elapsedMs` 等定位字段；
 8. 超时或无法确认银行是否受理时返回 `UNKNOWN/F400002`，资金交易不得盲目重试；
 9. 未经用户明确要求，不新增测试类、不运行测试、不执行编译。
 
@@ -361,6 +364,12 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 `front_pingan_transfer_transaction`，通过 `capability` 与普通 `TRANSFER` 区分；中信不支持这两个能力，
 不得创建中信授权空记录。每条记录必须保留业务主/子记录关联和明确业务字段，不保存整段请求快照；
 验证码不得进入任何数据库字段。详细 DDL 见 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
+
+这里的 `capability` 由当前 API 方法内部固定，不接受请求输入；它既是平安共享转账表的记录字段，也是
+Transaction Registry 中 `(BankCode, FrontCapability)` 精确路由的一部分。`transferAuth` 必须定位到
+`(PING_AN, TRANSFER_AUTH)` 的单能力 Handler；中信未注册该复合键时返回
+`CAPABILITY_NOT_SUPPORTED`。不得建立统一能力预校验，也不得在公共 Dispatch 中再按 capability
+选择方法。
 
 ## 9. 仍需联调确认
 

@@ -294,7 +294,8 @@ CREATE TABLE `front_pingan_consume_transaction` (
 
 -- -----------------------------------------------------------------------------
 -- 5. front_citic_refund_transaction  中信真退款渠道交易流水（capability=REFUND，bizFunc=23）
---    退款表含 7 个原交易关联字段 + 2 个原交易索引；不含 refunded_amount（在原交易表）
+--    当前仅 original_biz_order_no/original_biz_sub_order_no 用于中信退款原交易定位；
+--    其他 5 个 original_* 为可空兼容保留列，Handle 不读写。
 -- -----------------------------------------------------------------------------
 CREATE TABLE `front_citic_refund_transaction` (
   `id`                                BIGINT        NOT NULL                COMMENT '中信退款渠道记录主键，由 Front 生成分布式 ID',
@@ -311,13 +312,13 @@ CREATE TABLE `front_citic_refund_transaction` (
   `biz_request_no`                    VARCHAR(100)  NOT NULL                COMMENT '退款业务本次调用唯一号',
   `biz_order_no`                      VARCHAR(100)  NOT NULL                COMMENT '退款业务主流水号或主订单号',
   `biz_sub_order_no`                  VARCHAR(100)  DEFAULT NULL            COMMENT '退款业务子流水号或子订单号',
-  `original_capability`               VARCHAR(20)   NOT NULL                COMMENT '原渠道交易能力，当前允许 TRANSFER 或 CONSUME',
-  `original_channel_transaction_id`   BIGINT        NOT NULL                COMMENT '同银行原转账或消费渠道表记录主键',
-  `original_front_ssn`                VARCHAR(100)  NOT NULL                COMMENT '原 Front 渠道交易流水号',
-  `original_biz_transaction_id`       VARCHAR(100)  NOT NULL                COMMENT '原业务交易主表记录 ID',
-  `original_biz_sub_transaction_id`   VARCHAR(100)  DEFAULT NULL            COMMENT '原业务交易子表或明细表记录 ID',
-  `original_biz_order_no`             VARCHAR(100)  NOT NULL                COMMENT '原业务主流水号或主订单号',
-  `original_biz_sub_order_no`         VARCHAR(100)  DEFAULT NULL            COMMENT '原业务子流水号或子订单号',
+  `original_capability`               VARCHAR(20)   DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_channel_transaction_id`   BIGINT        DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_front_ssn`                VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_transaction_id`       VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_sub_transaction_id`   VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_order_no`             VARCHAR(100)  NOT NULL                COMMENT '当前中信退款实际使用的原业务主流水号',
+  `original_biz_sub_order_no`         VARCHAR(100)  DEFAULT NULL            COMMENT '当前中信退款实际使用的原业务子流水号；应用层必填',
   `pay_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款付款方业务门店编码',
   `pay_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款付款方业务门店 ID',
   `rec_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款收款方业务门店编码',

@@ -27,7 +27,7 @@
 | 金额 | `BIGINT` | 单位为人民币分，禁用浮点和元 |
 | 乐观锁 | `INT UNSIGNED` | 版本号 |
 | 状态 / 类型 / 响应码 / 币种 / 接口编码 / 协议功能码 / 日期 / 时间字符串 | **`VARCHAR(20)`** | 所有枚举类、短编码、协议日期时间字符串统一 20 |
-| 流水号 / 业务编号 / 业务记录 ID / hash / 配置版本 | **`VARCHAR(100)`** | 所有编号类统一 100 |
+| 流水号 / 业务编号 / 业务记录 ID / hash | **`VARCHAR(100)`** | 所有编号类统一 100 |
 | 数据源实例标识 | **`VARCHAR(30)`** | `data_source_id`，记录数据所在库实例 |
 | 创建者 / 更新者 | **`VARCHAR(64)`** | `create_by`/`update_by`，审计字段，MyBatis-Plus 自动填充 |
 | 描述 / 备注 | `VARCHAR(512)` | 响应说明、业务备注 |
@@ -345,7 +345,8 @@ CREATE TABLE `front_pingan_consume_transaction` (
 
 -- -----------------------------------------------------------------------------
 -- 5. front_citic_refund_transaction  中信真退款渠道交易流水（capability=REFUND，bizFunc=23）
---    退款表含 7 个原交易关联字段 + 2 个原交易索引；不含 refunded_amount（在原交易表）
+--    当前仅 original_biz_order_no/original_biz_sub_order_no 用于中信退款原交易定位；
+--    其他 5 个 original_* 为可空兼容保留列，Handle 不读写。
 -- -----------------------------------------------------------------------------
 CREATE TABLE `front_citic_refund_transaction` (
   `id`                                BIGINT        NOT NULL                COMMENT '中信退款渠道记录主键，由 Front 生成分布式 ID',
@@ -362,13 +363,13 @@ CREATE TABLE `front_citic_refund_transaction` (
   `biz_request_no`                    VARCHAR(100)  NOT NULL                COMMENT '退款业务本次调用唯一号',
   `biz_order_no`                      VARCHAR(100)  NOT NULL                COMMENT '退款业务主流水号或主订单号',
   `biz_sub_order_no`                  VARCHAR(100)  DEFAULT NULL            COMMENT '退款业务子流水号或子订单号',
-  `original_capability`               VARCHAR(20)   NOT NULL                COMMENT '原渠道交易能力，当前允许 TRANSFER 或 CONSUME',
-  `original_channel_transaction_id`   BIGINT        NOT NULL                COMMENT '同银行原转账或消费渠道表记录主键',
-  `original_front_ssn`                VARCHAR(100)  NOT NULL                COMMENT '原 Front 渠道交易流水号',
-  `original_biz_transaction_id`       VARCHAR(100)  NOT NULL                COMMENT '原业务交易主表记录 ID',
-  `original_biz_sub_transaction_id`   VARCHAR(100)  DEFAULT NULL            COMMENT '原业务交易子表或明细表记录 ID',
-  `original_biz_order_no`             VARCHAR(100)  NOT NULL                COMMENT '原业务主流水号或主订单号',
-  `original_biz_sub_order_no`         VARCHAR(100)  DEFAULT NULL            COMMENT '原业务子流水号或子订单号',
+  `original_capability`               VARCHAR(20)   DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_channel_transaction_id`   BIGINT        DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_front_ssn`                VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_transaction_id`       VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_sub_transaction_id`   VARCHAR(100)  DEFAULT NULL            COMMENT '兼容保留列；中信当前退款路径不使用且不回填',
+  `original_biz_order_no`             VARCHAR(100)  NOT NULL                COMMENT '当前中信退款实际使用的原业务主流水号',
+  `original_biz_sub_order_no`         VARCHAR(100)  DEFAULT NULL            COMMENT '当前中信退款实际使用的原业务子流水号；应用层必填',
   `pay_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款付款方业务门店编码',
   `pay_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款付款方业务门店 ID',
   `rec_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '退款收款方业务门店编码',
@@ -754,7 +755,7 @@ CREATE TABLE `front_citic_platform_receive_transaction` (
 | 9 | `front_citic_platform_pay_transaction` | 58 | 2 | 8 | 中信平台付款 |
 | 10 | `front_citic_platform_receive_transaction` | 58 | 2 | 8 | 中信平台收款 |
 
-退款表（5、6）比普通交易表多 7 个 `original_*` 原交易关联字段 + 2 个原交易索引；转账/消费表（1-4）比平台表多 1 个 `refunded_amount` 字段。除平台收付款表（9、10）外，其余 8 张表均含银行账户标识字段（v4 新增）：中信转账/消费/退款各 4 个（`pay_account_id`/`pay_name`/`rec_account_id`/`rec_name`），中信提现 4 个（`withdraw_account_id`/`withdraw_account_name`/`bank_card_no`/`bank_card_holder_name`）；平安对应表各多 1～2 个 `*_member_id`（转账/消费/退款 +6、提现 +5）。所有表均含 `create_by`/`create_time`/`update_by`/`update_time` 4 个审计字段（对应 Entity 父类 BaseEntity，MyBatis-Plus 自动填充）。
+退款表（5、6）物理上比普通交易表多 7 个 `original_*` 字段 + 2 个原交易索引；其中中信退款当前仅使用 `original_biz_order_no/original_biz_sub_order_no`，其他 5 列为可空兼容列，Handle 不读写。转账/消费表（1-4）比平台表多 1 个 `refunded_amount` 字段。除平台收付款表（9、10）外，其余 8 张表均含银行账户标识字段（v4 新增）：中信转账/消费/退款各 4 个（`pay_account_id`/`pay_name`/`rec_account_id`/`rec_name`），中信提现 4 个（`withdraw_account_id`/`withdraw_account_name`/`bank_card_no`/`bank_card_holder_name`）；平安对应表各多 1～2 个 `*_member_id`（转账/消费/退款 +6、提现 +5）。所有表均含 `create_by`/`create_time`/`update_by`/`update_time` 4 个审计字段（对应 Entity 父类 BaseEntity，MyBatis-Plus 自动填充）。
 
 ---
 

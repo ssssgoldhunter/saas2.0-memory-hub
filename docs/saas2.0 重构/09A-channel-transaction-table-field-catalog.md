@@ -16,7 +16,7 @@
 - 主键、唯一键和普通索引的字段组合；
 - 每张表的 `reserve1/reserve2/reserve3`；
 - 业务主/子记录关联字段及业务、银行明确字段；不保存整段数据快照；
-- 退款表的原交易关联字段；
+- 退款表的原交易关联字段；中信表中五个旧字段为可空兼容列，当前 Handle 不读写；
 - 转账、消费表的 `refunded_amount`。
 
 以下内容由最终 SQL 提供方按目标环境要求补充，不在本字段字典中固定：
@@ -41,7 +41,7 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 金额 | `BIGINT` | 单位为人民币分，禁用浮点和元 |
 | 乐观锁 | `INT UNSIGNED` | 版本号 |
 | 状态 / 类型 / 响应码 / 币种 / 接口编码 / 协议功能码 / 业务日期时间字符串 | `VARCHAR(20)` | 所有枚举类、短编码、协议日期时间字符串统一 20 |
-| 流水号 / 业务编号 / 业务记录 ID / hash / 配置版本 | `VARCHAR(100)` | 所有编号类统一 100 |
+| 流水号 / 业务编号 / 业务记录 ID / hash | `VARCHAR(100)` | 所有编号类统一 100 |
 | 创建者 / 更新者 | `VARCHAR(64)` | `create_by`/`update_by`，审计字段，MyBatis-Plus 自动填充 |
 | 描述 / 备注 | `VARCHAR(512)` | 响应说明、业务备注 |
 | 数据源实例标识 | `VARCHAR(30)` | `data_source_id`，记录数据所在库实例（如 ds_0/ds_2） |
@@ -380,13 +380,13 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务本次调用唯一号 |
 | 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 退款业务主流水号或主订单号 |
 | 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款业务子流水号或子订单号 |
-| 15 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
-| 16 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
-| 17 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
-| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
-| 19 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
-| 20 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
-| 21 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |
+| 15 | `original_capability` | `VARCHAR(20)` | 是 | `NULL` | `—` | 兼容保留列；中信当前退款路径不使用且不回填 |
+| 16 | `original_channel_transaction_id` | `BIGINT` | 是 | `NULL` | `—` | 兼容保留列；中信当前退款路径不使用且不回填 |
+| 17 | `original_front_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 兼容保留列；中信当前退款路径不使用且不回填 |
+| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 兼容保留列；中信当前退款路径不使用且不回填 |
+| 19 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 兼容保留列；中信当前退款路径不使用且不回填 |
+| 20 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 当前中信退款实际使用的原业务主流水号 |
+| 21 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 当前中信退款实际使用的原业务子流水号；应用层必填 |
 | 22 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店编码 |
 | 23 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款付款方业务门店 ID |
 | 24 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 退款收款方业务门店编码 |

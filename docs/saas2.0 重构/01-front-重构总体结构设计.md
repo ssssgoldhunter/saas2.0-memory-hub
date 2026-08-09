@@ -22,7 +22,7 @@
 - 租户和银行配置定位方式；
 - 对外请求和内部执行上下文；
 - 交易、账户、查询三类业务路由；
-- 银行 Handle 与 QueryCapability 的职责；
+- 银行 Handle 与具体交易/查询方法的职责；
 - LiteFlow 公共流程编排；
 - 渠道交易流水及统一响应的基本结构；
 - 平安、中信查询能力的初步差异。
@@ -48,8 +48,8 @@
 ```text
 Facade/Controller
   → Service
-  → Router
-  → 平安/中信 Handle
+  → Router/Registry
+  → 平安/中信能力 Handle
   → 钱包接口客户端
 ```
 
@@ -133,9 +133,9 @@ flowchart LR
     A["内部业务系统"] --> B["Front API"]
     B --> C["LiteFlow公共编排"]
     C --> D["租户银行配置系统"]
-    C --> E["业务分类Router"]
-    E --> F["平安Handle"]
-    E --> G["中信Handle"]
+    C --> E["交易/查询/账户Registry"]
+    E --> F["平安能力Handler"]
+    E --> G["中信能力Handler"]
     F --> H["平安钱包接口"]
     G --> I["中信钱包接口"]
     C --> J["Front渠道交易流水"]
@@ -149,9 +149,9 @@ flowchart LR
 | 分层 | 主要职责 |
 |---|---|
 | API 层 | 接收请求、基础格式校验、确定业务接口 |
-| Application/LiteFlow 层 | Router 与能力校验、调用 Handle 上下文装配、重复交易检查、渠道流水、公共异常处理 |
-| Router 层 | 根据 `platformCode` 选择银行大类 Handle |
-| Handle 层 | 统一父类装配配置上下文；具体银行完成请求组装、`bizFunc/channelNo` 确定、银行调用、响应转换 |
+| Application/LiteFlow 层 | 根据具体 API 编排具名链、调用 Handle 上下文装配、公共异常处理 |
+| Router/Registry 层 | API 先确定领域；领域 Registry 根据 `platformCode → BankCode` 与 API 内部 capability 精确选择能力 Handler |
+| Handle 层 | 一个 Handler 对应一个“银行 + capability”；统一父类装配配置上下文，Handler 使用固定业务表完成重复交易检查、渠道流水、请求组装、`bizFunc/channelNo`、银行调用和响应转换 |
 | Config 层 | `TenantBankConfigProvider` 根据 `tenantId + bankCode` 获取租户银行配置 |
 | Infrastructure 层 | HTTP、签名、加密、配置客户端、数据库持久化 |
 
@@ -192,18 +192,21 @@ public class FrontBaseRequestData {
 
 ### 5.2 内部执行上下文
 
-Front 完成 Router 与能力校验后，由 `AbstractBankHandle` 形成只传给银行 Handle 的三段式上下文：
+Front 完成“银行 + capability”能力 Handler 路由后，由 `AbstractBankHandle` 形成只传给银行 Handler 的
+三段式上下文：
 
 ```java
 public record BankRequestContext<T extends FrontBaseRequestData>(
     T baseData,
     JSONObject specialData,
-    TenantBankConfigSnapshot tenantBankConfig) {
+    TenantBankAccountConfig accountConfig) {
 }
 ```
 
 Application Service 入口使用 `FrontFlowContext.from(request, capability)` 创建统一非泛型业务 Slot。
-`FrontExecutionInfo` 属于该外层执行上下文，用于记录能力、配置版本、执行阶段和关键时间，不混入对外请求，
+`capability` 由当前 API 方法固定写入，调用方不得传入；它参与正确领域 Registry 的
+`(BankCode, FrontCapability)` 精确路由，同时用于日志和渠道流水记录。它不得用于猜测领域、统一能力
+预校验或公共 Dispatch `switch`。`FrontExecutionInfo` 属于该外层执行上下文，用于记录执行阶段和关键时间，不混入对外请求，
 也不改变上述三段式 Handle 上下文。当前 Context 创建和阶段维护已落地；LiteFlow 执行器、节点和规则链
 仍待后续接入。
 
@@ -212,7 +215,7 @@ Application Service 入口使用 `FrontFlowContext.from(request, capability)` �
 | 数据部分 | 来源 | Front 职责 |
 |---|---|---|
 | `baseData` | 业务系统 | 校验租户、门店、银行并使用具体接口强类型字段 |
-| `tenantBankConfig` | 配置系统 | 统一父类按 `tenantId + bankCode` 加载、校验并生成 Handle 上下文 |
+| `accountConfig` | 配置系统 | 统一父类先查 `support_bank_config` 解析模板 key，再按 `tenantId + key` 查询并组装 |
 | `specialData` | 业务系统 | 校验、解析、显式映射 |
 | `executionInfo` | Front | 生成 `frontSsn`、接口编码、执行时间等 |
 
@@ -270,7 +273,8 @@ CiticBankAccountConfigAssembler     → 组装中信 accountSpecialData
 
 配置查询原始 key 和账户配置 `JSONObject` 字段 key 统一放在
 `catering-common-core/com.chinaums.common.core.constant.front`：查询 key 使用
-`FrontBankConfigQueryKeys` 保存 `zx_bank_config/pa_bank_config`；通用、平安、中信字段分别使用
+`FrontBankConfigQueryKeys` 保存 `support_bank_config`；具体银行配置模板 key 由该配置动态返回；
+通用、平安、中信字段分别使用
 `FrontBankAccountConfigKeys/PingAnBankAccountConfigKeys/CiticBankAccountConfigKeys`。
 钱包公共请求字段、transfer/consume 协议字段和响应判定分别使用
 `FrontBankRequestConstants/CiticTransferContractKeys/PingAnTransferContractKeys/FrontBankResponseConstants`，禁止在 Handle
@@ -400,58 +404,49 @@ AccountRouter
 QueryRouter
 ```
 
-### 8.2 Router Key
+### 8.2 Registry Key
 
-每个 Router 已经表达业务大类，因此 Router Map 的 key 只使用：
+每个 Registry 已经表达业务大类，API 方法内部又固定具体能力，因此领域内使用类型安全复合 key：
 
 ```text
-platformCode
+(BankCode, FrontCapability)
 ```
 
 示例：
 
 ```java
-Map<BankCode, BankTransactionHandle> transactionHandleMap;
-Map<BankCode, BankAccountHandle> accountHandleMap;
-Map<BankCode, BankQueryHandle> queryHandleMap;
+Map<BankCapabilityKey, TransactionCapabilityHandler> transactionHandlerMap;
+Map<BankCapabilityKey, AccountCapabilityHandler> accountHandlerMap;
+Map<BankCapabilityKey, QueryCapabilityHandler> queryHandlerMap;
 ```
 
 路由结果：
 
 ```text
-TransactionRouter + PINGAN → PingAnTransactionHandle
-TransactionRouter + CITIC  → CiticTransactionHandle
-
-QueryRouter + PINGAN → PingAnQueryHandle
-QueryRouter + CITIC  → CiticQueryHandle
+TransactionRegistry + (PING_AN, TRANSFER) → PingAnTransferHandler
+TransactionRegistry + (CITIC, REFUND)     → CiticRefundHandler
+QueryRegistry + (CITIC, TRANSACTION_STATUS_QUERY) → CiticTransactionStatusQueryHandler
 ```
 
-不使用：
-
-```text
-QUERY + QueryCapability + platformCode
-```
-
-作为 Router Key。
+领域由 API/应用服务直接确定，不放进同一个统一复合键，也不根据 capability 名称反推。`bizFunc`、
+`accountType`、交易类型和表名均不得进入 Registry key。
 
 ---
 
 ## 9. Query 大类设计
 
-### 9.1 银行大 Query Handle
+### 9.1 银行查询能力 Handler
 
-查询先由 `QueryRouter` 根据 `platformCode` 选中银行大 Query Handle，再由 Handle 根据 `QueryCapability` 选择具体查询实现。
+每个查询 API 已经在服务内部确定 `FrontCapability`。`QueryHandlerRegistry` 根据
+`(BankCode, FrontCapability)` 直接选中具体查询能力 Handler；请求不传 `QueryCapability`，通用执行节点
+不再通过 `switch` 选择大 Query Handle 的方法。
 
 ```java
-public interface BankQueryHandle {
+public interface QueryCapabilityHandler {
 
     BankCode bankCode();
-
-    boolean supports(QueryCapability capability);
-
-    FrontQueryResponse<?> query(
-            QueryCapability capability,
-            FrontExecuteContext<?> context);
+    FrontCapability capability();
+    FrontBaseResult execute(FrontFlowContext context);
 }
 ```
 
@@ -459,20 +454,17 @@ public interface BankQueryHandle {
 
 ```mermaid
 flowchart LR
-    A["查询接口"] --> B["确定QueryCapability"]
-    B --> C["QueryRouter"]
-    C --> D{"platformCode"}
-    D --> E["PingAnQueryHandle"]
-    D --> F["CiticQueryHandle"]
-    E --> G["QueryCapability内部方法分派"]
-    F --> H["QueryCapability内部方法分派"]
-    G --> I["平安钱包接口"]
-    H --> J["中信钱包接口"]
+    A["具体查询接口"] --> B["进入同名具名链"]
+    B --> C["platformCode 解析 BankCode"]
+    C --> D["QueryRegistry(bankCode, capability)"]
+    D --> E["唯一查询能力 Handler"]
+    E --> F["通用 execute"]
+    F --> G["银行钱包接口"]
 ```
 
-### 9.2 QueryCapability 来源
+### 9.2 查询业务类型来源
 
-优先由具体 API 方法确定：
+查询业务类型只由具体 API 方法确定：
 
 ```text
 /query/transaction-status
@@ -481,64 +473,32 @@ flowchart LR
 /query/platform-account-detail
 ```
 
-如果未来只保留一个通用查询入口，则 `QueryCapability` 应作为请求显式字段，不能放进 `specialData`。
+请求不传 `QueryCapability/FrontCapability`。如果未来增加新的查询场景，应增加明确 API、枚举值和支持
+银行的单能力 Handler；Registry 自动按声明注册，不修改统一查询 `switch`。
 
-### 9.3 首版 QueryCapability 草案
+### 9.3 Query Handler 内部结构
 
-```java
-public enum QueryCapability {
-
-    // 账户查询
-    MEMBER_ACCOUNT_QUERY,
-    PLATFORM_ACCOUNT_BALANCE,
-    SUB_ACCOUNT_BALANCE,
-    FUNCTION_ACCOUNT_BALANCE,
-    BIND_CARD_RELATION_QUERY,
-    USER_STATUS_QUERY,
-
-    // 交易查询
-    TRANSACTION_STATUS_QUERY,
-    SUB_ACCOUNT_TRANSACTION_DETAIL,
-    PLATFORM_ACCOUNT_TRANSACTION_DETAIL,
-
-    // 后续文件查询
-    FILE_GENERATE,
-    FILE_PROCESS_STATUS,
-    FILE_INFO_QUERY
-}
-```
-
-该枚举为初稿，后续根据统一响应对象和具体业务语义调整。
-
-### 9.4 Query Handle 内部结构
-
-一个银行保留一个大 Query Handle，但每种能力使用独立方法：
+一个银行按查询能力拆为独立 Handler；同银行能力之间允许复用银行内部 Service，但不得恢复大 Handle
+内部的 capability switch：
 
 ```text
-PingAnQueryHandle
-  ├─ queryTransactionStatus
-  ├─ queryPlatformAccountBalance
-  ├─ querySubAccountBalance
-  ├─ querySubAccountTransactionDetail
-  ├─ queryPlatformAccountTransactionDetail
-  └─ queryBindCardRelation
+channel/pingan/query
+  ├─ PingAnTransactionStatusQueryHandler
+  ├─ PingAnAccountBalanceQueryHandler
+  └─ ...
 
-CiticQueryHandle
-  ├─ queryTransactionStatus
-  ├─ queryPlatformAccountBalance
-  ├─ querySubAccountBalance
-  ├─ querySubAccountTransactionDetail
-  ├─ queryPlatformAccountTransactionDetail
-  ├─ queryBindCardRelation
-  └─ queryUserStatus
+channel/citic/query
+  ├─ CiticTransactionStatusQueryHandler
+  ├─ CiticPlatformTransactionDetailsQueryHandler
+  └─ ...
 ```
 
 约束：
 
 - 不把所有查询逻辑写进一个超长方法；
-- `QueryCapability` 负责功能分派；
+- 具体 API 固定 capability，Query Registry 直接返回对应 Handler；
 - `specialData` 只负责银行特有过滤参数；
-- 不支持的能力统一返回 `FRONT_CAPABILITY_NOT_SUPPORTED`；
+- 银行未注册该 capability 时由 Registry 返回 `CAPABILITY_NOT_SUPPORTED`；
 - 某个能力实现过大时再抽取银行内部 Service。
 
 ---
@@ -591,7 +551,8 @@ CiticQueryHandle
 - 平台账户交易明细在两个银行之间不是一一对应；
 - 后续需要根据业务系统实际需要的查询结果拆分业务场景；
 - 同一个银行接口下仅作为过滤条件的交易类型可以放入 `specialData`；
-- 会改变查询语义或返回对象结构的场景，应体现在 `QueryCapability` 或核心 `queryScene` 中。
+- 会改变查询语义或返回对象结构的场景，应使用独立 API/Handle 方法表达，不能塞进 `specialData`
+  或恢复统一 `QueryCapability` 分派。
 
 ### 10.4 文件查询
 
@@ -623,12 +584,12 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 ```text
 请求校验
-  → TransactionRouter
-  → 能力校验
+  → 当前交易 API 固定 capability
+  → TransactionRegistry(bankCode, capability)
   → AbstractBankHandle.prepareContext
-  → 生成 frontSsn/重复交易检查
-  → 创建渠道交易流水
-  → 银行TransactionHandle
+  → 银行交易能力 Handler
+  → 使用当前业务固定 Mapper 执行重复交易检查
+  → 生成 frontSsn/创建渠道交易流水
   → 解析银行配置和校验specialData
   → 统一响应转换
   → 更新渠道交易流水
@@ -639,13 +600,12 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 ```text
 请求校验
-  → 确定QueryCapability
-  → QueryRouter
-  → 能力校验
+  → 当前查询 API 固定 capability
+  → QueryRegistry(bankCode, capability)
   → AbstractBankHandle.prepareContext
-  → 银行QueryHandle
+  → 银行查询能力 Handler
   → 解析银行配置和校验specialData
-  → QueryCapability方法分派
+  → 通用 execute 调用已选 Handler
   → 统一查询响应转换
   → 返回
 ```
@@ -654,11 +614,10 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 
 | LiteFlow | Router/Handle |
 |---|---|
-| 编排公共步骤 | Router 选择银行实现并校验能力 |
+| API 固定 capability，具名链确定领域并编排公共步骤 | 领域 Registry 按 `(BankCode, FrontCapability)` 选择唯一能力 Handler |
 | 调用上下文装配步骤 | `AbstractBankHandle` 统一加载、校验租户银行配置 |
-| 重复交易检查 | 组装钱包报文 |
-| 渠道流水记录 | 调用银行接口 |
-| 公共异常处理 | 转换银行响应 |
+| 编排具名业务执行节点 | 使用当前业务固定 Mapper 执行重复交易检查和渠道流水维护 |
+| 公共异常处理 | 组装钱包报文、调用银行接口并转换响应 |
 
 ---
 
@@ -667,8 +626,8 @@ LiteFlow 负责 Router 前后的公共流程，不替代银行 Router。
 每个银行 Handle 负责：
 
 1. 继承 `AbstractBankHandle`，统一按 `tenantId + bankCode` 加载并校验租户银行配置；
-2. 从三段式 `BankRequestContext` 获取基础数据、特殊数据和配置快照；
-3. 从配置快照读取通用账户配置及当前银行 `accountSpecialData`；
+2. 从三段式 `BankRequestContext` 获取基础数据、特殊数据和账户配置；
+3. 从账户配置读取通用字段及当前银行 `accountSpecialData`；
 4. 按接口契约解析和校验 `specialData`；
 5. 读取强类型 `baseData`；
 6. 确定 `channelNo`；
@@ -715,7 +674,8 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 - 来源业务系统、业务交易类型、业务主/子记录 ID 及主/子订单；
 - 付款/收款门店、金额、手续费等公共业务数据；
 - 业务及银行所需明确字段；不保存整段 `baseData/specialData` 快照；
-- 退款与同银行原转账、消费记录的关联。
+- 中信退款的原业务主子流水及银行协议必填字段；不关联 Front 本地原转账、消费记录。
+  平安退款是否需要本地原交易关联按 `FRONT-TODO-002` 等待确认。
 
 物理表必须按“银行 + 交易业务”拆分：
 
@@ -731,12 +691,16 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 ### 14.2 路由与业务关联
 
 ```text
-platformCode → 银行 TransactionHandle
-capability   → 当前银行固定业务 Repository
+具体 API            → 固定 capability 和领域
+platformCode         → BankCode
+领域 Registry        → (BankCode, capability) 对应的能力 Handler
+能力 Handler         → 固定业务 Repository
 ```
 
-Router 仍只按银行路由。持久化层使用枚举或显式 `switch` 选择固定 Repository，不接收来源业务表名，
-也不使用字符串拼接动态 SQL。
+capability 由 API 方法内部固定，既参与领域 Registry 的“银行 + 能力”精确路由，也写入渠道流水；平安
+共享转账表用它区分记录。不得用它猜测领域、执行统一能力预校验、在公共 Dispatch 中选择方法或动态选择
+Repository。具体能力 Handler 使用自己的固定 Repository，不接收来源业务表名，也不使用字符串拼接
+动态 SQL。
 
 每张表必须明确保存：
 
@@ -879,7 +843,7 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 - [ ] 新 Front 最终项目名和 Maven 坐标；
 - [ ] 首版 LiteFlow 版本；
 - [ ] 是否一个统一查询入口，还是每种查询能力独立 API；
-- [ ] 配置系统接口协议、缓存和配置版本字段；
+- [ ] 配置系统接口缓存策略；
 - [ ] `frontQueryId` 是否直接使用 `frontSsn`；
 - [ ] 是否首版增加独立调用明细日志表。
 
@@ -888,13 +852,13 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 - [ ] 首版交易业务最终范围；
 - [ ] 每类交易核心 `baseData`；
 - [ ] 重复交易键和主/子订单关系；
-- [ ] 原交易关联字段；
+- [ ] 退款原交易定位及协议字段；中信按 `FRONT-P1-005`，平安按 `FRONT-TODO-002`；
 - [ ] 平安、中信 `specialData` 字段；
 - [ ] 银行响应到 Front 状态的映射。
 
 ### 18.3 查询业务
 
-- [ ] 最终 `QueryCapability`；
+- [x] 查询业务由具体 API/Handle 方法表达，不再设计 `QueryCapability` 请求字段或统一分派；
 - [ ] 平台账户明细的统一业务语义；
 - [ ] 子账户明细统一字段；
 - [ ] 交易状态查询如何使用渠道交易流水自动补参；

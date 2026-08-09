@@ -5,6 +5,12 @@
 > 确认日期：2026-08-04
 > 范围：中信、平安的转账、消费、退款、提现，以及中信平台付款、平台收款
 
+> 2026-08-09 中信退款边界修订：中信退款不查询或关联 Front 本地原转账、消费记录，不维护累计退款
+> 金额。当前仅 `original_biz_order_no + original_biz_sub_order_no` 用于原交易定位；
+> `original_capability/original_channel_transaction_id/original_front_ssn/original_biz_transaction_id/
+> original_biz_sub_transaction_id` 作为可空兼容列保留，中信 Handle 不读写。
+> 平安退款结构不在本次修订范围，按 `FRONT-TODO-002` 等待确认。
+
 ## 1. 最终拆表结论
 
 渠道交易数据必须同时按银行和交易业务拆分物理表。禁止再建立一张
@@ -60,20 +66,24 @@ ROW_FORMAT`；如果字符集导致索引长度或数据库方言不兼容，必
 
 ```text
 FrontRequest.baseData.platformCode
-→ TransactionRouter 选择中信或平安 TransactionHandle
-→ Application Service / 持久化端口按 capability 选择该银行对应业务表
+→ 当前 API 方法内部固定 capability
+→ Transaction Registry 按 (BankCode, capability) 选择具体能力 Handler
+→ 该 Handler 使用自己的固定业务 Repository
 → 具体 Repository 执行固定表 SQL
 ```
 
 约束：
 
-- 对外请求只传 `platformCode` 和业务逻辑类型，不允许传数据库表名；
-- Router 仍只按银行选择 Handle，不改回复合路由键；
-- 表路由必须使用枚举或显式 `switch` 映射到固定 Repository，禁止字符串拼接动态表名；
+- 对外请求不传 `capability` 或数据库表名；当前 API 方法在服务内部固定确定业务类型；
+- 交易领域 Registry 使用类型安全的 `(BankCode, FrontCapability)` 直接定位能力 Handler；不得把 bizFunc、
+  账户类型或物理表名混入 key；
+- `capability` 同时作为渠道流水记录值，平安转账共享表用它区分三种真实调用；不得用于猜测领域、统一
+  能力预校验、公共 Dispatch 二次分派或动态选择 Repository；
+- 表由当前能力 Handler 固定，不得字符串拼接动态表名；
 - 表名中的银行维度是事实来源，表内不重复保存可产生矛盾的 `platform_code`；
-- 未支持能力在进入持久化前抛 `CAPABILITY_NOT_SUPPORTED`，不得写入别的业务表；
-- 状态查询已知 `platformCode + capability` 时直接访问单表；只有 `frontSsn` 时，只在该银行的有限业务表
-  中通过固定 `UNION ALL` 或固定 Repository 顺序定位，禁止扫描另一家银行；
+- 具体银行未注册该 capability 时由 Registry 返回 `CAPABILITY_NOT_SUPPORTED`，不得写入别的业务表；
+- 状态查询只在 `platformCode` 已选中的银行范围内，通过明确业务定位条件或固定 Repository 顺序查找，
+  禁止扫描另一家银行，也不得让调用方提交物理表名；
 - `frontSsn` 由 Front 的全局流水算法生成；每张表再使用唯一索引防止表内重复。跨表唯一性不能依赖
   单表索引，必须由生成器保证。
 
@@ -152,26 +162,28 @@ Java 统一使用 `String` 承载业务记录 ID，以兼容数字 ID 和 UUID�
 平安 4 张）均按此统一定义，已内置于 [09-final-rebuild-all-tables.sql](./09-final-rebuild-all-tables.sql)
 （DROP+CREATE 一步到位，不需要 ALTER）。
 
-转账、消费原交易表额外保存：
+当前转账、消费表仍存在以下旧字段：
 
 ```text
-refunded_amount  // 累计已确认退款金额，单位为分
+refunded_amount  // 旧累计退款字段；中信目标结构删除，平安是否保留待确认
 ```
 
-退款表额外保存：
+退款表的 `original_*` 字段分为当前有效定位字段和兼容保留字段：
 
 ```text
-original_capability
-original_channel_transaction_id
-original_front_ssn
-original_biz_transaction_id
-original_biz_sub_transaction_id
-original_biz_order_no
-original_biz_sub_order_no
+original_biz_order_no              // 当前中信退款必填，映射 ORI_BUSS_ID
+original_biz_sub_order_no          // 当前中信退款必填，映射 ORI_BUSS_SUB_ID
+original_capability                // 可空兼容列，当前中信 Handle 不读写
+original_channel_transaction_id    // 可空兼容列，当前中信 Handle 不读写
+original_front_ssn                 // 可空兼容列，当前中信 Handle 不读写
+original_biz_transaction_id        // 可空兼容列，当前中信 Handle 不读写
+original_biz_sub_transaction_id    // 可空兼容列，当前中信 Handle 不读写
 ```
 
-`original_capability + original_channel_transaction_id` 用于在同银行的转账表或消费表中定位原交易，
-不保存原物理表名。
+五个兼容列只为保持现有表结构可平滑迁移，必须允许 `NULL`，不得因其存在要求 Handle
+回填，也不得依赖它们查询本地原交易。现有库执行
+[09C-citic-refund-legacy-columns-nullable.sql](09C-citic-refund-legacy-columns-nullable.sql) 放宽非空约束；新建库直接使用
+09B 或 09-final。
 
 ## 5. 三个 reserve 字段约束
 
@@ -212,9 +224,11 @@ reserve3 VARCHAR(1024)
 
 ```text
 请求校验
-→ Router 选择银行 Handle 并校验能力
+→ 当前 API 方法内部固定 capability 并进入交易领域
+→ Transaction Registry 按 (BankCode, capability) 选择能力 Handler
 → 租户银行配置加载成功
-→ 按银行 + capability 选择固定业务 Repository
+→ 通用执行节点进入已选能力 Handler
+→ 能力 Handler 使用固定 Repository
 → 在当前银行业务表执行重复交易检查
 → Handle 按银行规则生成 frontSsn
 → INSERT INIT，保存业务关联字段和明确业务字段
@@ -229,7 +243,7 @@ reserve3 VARCHAR(1024)
 约束：
 
 - 必须在发送银行请求前成功创建对应银行、对应业务表记录；
-- 配置加载失败、银行不支持、能力未接入时不得写其他业务表；
+- 配置加载失败、银行不支持、具体方法不支持或未接入时不得写其他业务表；
 - 流水创建失败时禁止调用银行；
 - 银行超时写 `UNKNOWN`，禁止直接写 `FAILED` 或自动重发；
 - 银行同步受理但非终态时写 `ACCEPTED/PROCESSING`；
@@ -256,23 +270,21 @@ tenant_id + biz_order_no + biz_sub_order_no
 5. 平安 `TRANSFER/TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND` 共用同一物理表，因此三者之间也执行同一
    重复交易检查。
 
-## 9. 退款关联与并发控制
+## 9. 退款边界与并发控制
 
-退款先按 `platformCode + originalFrontSsn` 或 `platformCode + originalBizOrderNo +
-originalBizSubOrderNo` 在同银行转账、消费表定位原记录，并确认 `original_capability`；两组同时提供时
-必须命中同一记录。随后校验租户、原业务关联、订单、原状态、原金额、原账户和资金类型。
+### 9.1 中信退款
 
-同一数据库事务中：
+中信退款固定使用请求 `orgBizOrderNo + orgBizSubOrderNo` 组装银行
+`ORI_BUSS_ID + ORI_BUSS_SUB_ID`。其他中信协议必填字段由请求 `specialData` 或账户配置按字段契约提供。
+Front 不查询本地原转账、消费记录，不校验原交易状态或累计退款金额，也不更新原交易表。
 
-1. 对对应银行原转账或消费表记录执行 `SELECT ... FOR UPDATE`；
-2. 汇总同银行退款表中关联该原记录、状态属于
-   `INIT/SENDING/ACCEPTED/PROCESSING/SUCCESS/UNKNOWN` 的退款金额；
-3. 校验“已成功 + 正在处理/未知 + 本次退款”不超过原交易 `amount`；
-4. 插入同银行退款表 `INIT` 记录后提交事务；
-5. 退款确认成功后，使用乐观锁更新原转账或消费表的 `refunded_amount`；
-6. `UNKNOWN` 退款在状态确认前持续占用可退款额度。
+中信仅对本次退款表执行 `tenantId + bizOrderNo + bizSubOrderNo` 重复交易检查；并发请求由该表的
+三字段唯一性或等效原子写入规则防止重复发送。部分退款额度、原交易状态和退款资格由上游业务系统及银行负责。
 
-禁止跨银行关联原交易，也禁止在调用银行期间长时间持有数据库事务或行锁。
+### 9.2 平安退款
+
+平安是否需要本地原交易关联、额度控制和对应字段，按 `FRONT-TODO-002` 等待逐项核对；不得自动复制
+中信结论或保留旧设计作为既定目标。
 
 ## 10. 明确字段与敏感数据
 
@@ -311,10 +323,11 @@ snapshot_key_version
 | `idx_front_store_time` | 租户门店时间范围审计查询 |
 | `idx_front_data_source` (`tenant_id`, `data_source_id`) | 支持按租户+数据源实例查询 |
 
-退款表额外提供 `idx_front_original_transaction` 和 `idx_front_original_ssn`。
+中信退款的 `idx_front_original_transaction/idx_front_original_ssn` 随兼容列暂时保留，当前 Handle
+不依赖这两个索引。后续如需删除，必须另行确认并提供 ALTER 脚本；平安退款索引按
+`FRONT-TODO-002` 等待确认。
 
-所有渠道表均不建立跨表外键。业务表可能位于其他服务或数据库；退款与原交易的完整性由 Front
-Repository/Domain Service 在事务内显式校验。
+所有渠道表均不建立跨表外键。中信退款的原业务完整性由上游业务系统负责，Front 只保存和发送明确字段。
 
 ## 12. 分库与分区
 

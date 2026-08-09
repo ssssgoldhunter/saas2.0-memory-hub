@@ -3,7 +3,8 @@
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：current
 > 最后核对：2026-08-05，中信 v4.7 Word
-> 平安状态：全部查询先 `PENDING_INTEGRATION`，等待人工逐接口核对
+> 平安状态：全部查询运行时返回 `ADAPTER_NOT_READY`，后续接入登记为
+> [FRONT-TODO-001](12-front-implementation-issues/FRONT-TODO-001-pingan-query-handle-integration.md)，等待人工逐接口核对
 
 ## 1. 范围和固定方法
 
@@ -40,8 +41,7 @@ FrontRequest
 BankRequestContext
 ├─ baseData
 ├─ specialData
-└─ tenantBankConfig
-   ├─ accountConfig 通用账户配置
+└─ accountConfig 通用账户配置
    └─ accountSpecialData 银行账户特殊配置
 ```
 
@@ -57,12 +57,15 @@ BankRequestContext
 | 字段 | 说明 |
 |---|---|
 | `tenantId/storeId/platformCode` | 租户、门店和银行路由字段 |
-| `frontSsn` | 原 Front 发起流水号 |
-| `bizOrderNo` | 原交易业务主流水号 |
-| `bizSubOrderNo` | 原交易业务子流水号 |
+| `originalCapability` | 被查询原交易能力，只允许 `TRANSFER/CONSUME/REFUND/WITHDRAW` |
+| `originalTransactionDate` | 原交易日期，格式 `yyyyMMdd` |
+| `frontSsn` | 可选的原 Front 流水；当前中信查询不使用，只在结果中原样保留 |
+| `bizOrderNo` | 原交易业务主流水，四类查询均必填 |
+| `bizSubOrderNo` | 原交易业务子流水；转账、消费、退款必填，提现不向银行上送 |
 
-定位规则：`frontSsn` 或 `bizOrderNo + bizSubOrderNo` 至少提供一组；业务主、子流水必须成组提供。
-同时提供时，持久层必须校验它们指向同一条渠道交易记录。
+当前 API capability 仍由交易状态查询入口固定为 `TRANSACTION_STATUS_QUERY`，用于定位当前查询 Handle；
+`originalCapability` 只描述被查询原交易类型，用于该 Handle 选择银行查询字段，两者不得混用。
+Front 只完成银行报文装配，不校验 `frontSsn` 与业务流水在上游业务系统中是否属于同一笔交易。
 
 ### 3.2 中信请求映射
 
@@ -72,31 +75,27 @@ bizFunc = 74
 chnlNo  = 0010
 ```
 
-中信银行支持三种原交易定位条件三选一：
+中信银行协议支持三种原交易定位条件三选一：
 
 1. `ORI_USER_SSN`：原中信流水；
 2. `oriTransSsn`（银行语义 `ORI_REQ_SSN`）：原 Front 发起流水；
 3. `BUSS_ID + BUSS_SUB_ID`：业务主、子流水。
 
-Front 映射固定为：
+当前 Front 明确采用业务流水定位，不扫描本地渠道表，也不在三种定位方式间自动猜测。映射固定为：
 
 | 中信字段 | Front 数据来源 | 约束 |
 |---|---|---|
-| `oriTransSsn` | `baseData.frontSsn` | Front 发起流水，不是中信流水 |
-| `BUSS_ID/BUSS_SUB_ID` | `baseData.bizOrderNo/bizSubOrderNo` | 成组上送 |
-| `acctNo` | 原渠道交易记录的用户编号 | 银行用途 74 要求，加密；调用方不能伪造 |
-| `ORI_USER_SSN` | 原渠道交易记录的中信流水 | 选择中信流水定位方式时上送 |
-| `TRANS_TYPE` | `specialData.transactionType` | 可选；上送时必须同时提供业务主、子流水 |
+| `oriTransDate` | `baseData.originalTransactionDate` | 必填，格式 `yyyyMMdd` |
+| `BUSS_ID` | `baseData.bizOrderNo` | 四类原交易能力均必填 |
+| `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | `TRANSFER/CONSUME/REFUND` 必填；`WITHDRAW` 不上送 |
+| `acctNo` | `specialData.acctNo` | 必填；协议原始 key，由中信 Handle 加密后上送 |
+| `TRANS_TYPE` | 中信查询 Handle 本地固定值 `01` | `TRANSFER/CONSUME/REFUND` 上送；`WITHDRAW` 不上送 |
 | `laasSsn` | 中信 Handle 生成 | 唯一，调用方不可覆盖 |
 
-`specialData.transactionType` 白名单：
-
-| 值 | 中信语义 |
-|---|---|
-| `00` | 支付 |
-| `01` | 退款 |
-| `02` | 平台补贴 |
-| `03` | 平台扣罚 |
+状态查询不接受 `specialData.transactionType`。银行字段 key `TRANS_TYPE` 放在
+`CiticTransactionStatusQueryContractKeys`，值 `01` 是该接口当前实现的固定报文参数，放在
+`CiticQueryHandle`。这一取值依据 lsym 生产/uat 实现中转账、消费查询的现网报文行为；退款按中信 Word
+协议同样使用 `01`。在取得真实银行联调证据前不得擅自把转账、消费改为 `00`。
 
 返回中，`frontSsn/bizOrderNo/bizSubOrderNo` 原样保留查询定位值；银行 `status` 映射
 `TransactionStatusResult.frontStatus`，`queryId` 映射 `frontQueryId`；确认允许透出的中信流水、日期、
