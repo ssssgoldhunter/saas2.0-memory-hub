@@ -112,7 +112,7 @@ BankRequestContext<T>
 | `transAmt` | `baseData.amount` | 单位为分，必须大于 0 |
 | `outAcctNo` | `specialData.outAcctNo` | 付款钱包账号，按中信协议加密 |
 | `inAcctNo` | `specialData.inAcctNo` | 收款钱包账号，按中信协议加密 |
-| `remark` | `baseData.remark` | Handle 校验银行长度；长度待从 Word 协议确认 |
+| `remark` | `baseData.remark` | Handle 校验银行长度；最大 256（C 256 O），已从 Word 协议确认 |
 
 ### 4.2 中信 reserve 映射
 

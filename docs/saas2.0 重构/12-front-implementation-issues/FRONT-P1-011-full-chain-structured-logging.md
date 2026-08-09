@@ -17,11 +17,11 @@
 
 - `CiticWalletHttpClient` 和 `PingAnWalletHttpClient` 已在 HTTP `execute()` 前记录
   `wallet_request_sending`，payload 为最终请求 `bodyJson`，满足查询钱包发送前日志要求。
-- `CiticQueryHandle.invokeQuery()` 和 `PingAnQueryHandle.invokeQuery()` 又额外记录
-  `bank_request_assembled`，同一查询请求被重复打印。
-- 两个 Query Handle 的 `queryMetadata()` 都通过 Java 反射读取
-  `tenantId/platformCode/dataSourceId/bizOrderNo/bizSubOrderNo` 并吞掉异常；这些采集不属于最新查询日志要求。
-- 当前 Query Handle 没有补 `capability`；按最新边界这是正确的，不得再增加。
+- 两个 Query Handle 已删除 `queryMetadata()` 反射字段采集方法。
+- 两个 Query Handle 的 `invokeQuery()` 已删除 `bank_request_assembled` 日志，查询请求仅通过
+  `wallet_request_sending` 记录一次。metadata 只含 `bankCode` 和银行接口 `apiName`，不含
+  `capability`、`bizOrderNo/bizSubOrderNo` 等交易型字段。
+- 查询链路日志不含 `capability`；按最新边界这是正确的，不得再增加。
 
 ## 验收标准
 

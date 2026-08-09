@@ -46,14 +46,14 @@
 | [FRONT-P1-003](FRONT-P1-003-query-pagination.md) | P1 | 分页 code/msg/total 和游标协议不符合约束 | CLOSED |
 | [FRONT-P1-004](FRONT-P1-004-citic-status-locator.md) | P1 | 中信状态查询未按交易类型选择业务流水字段 | CLOSED |
 | [FRONT-P1-005](FRONT-P1-005-refund-lifecycle.md) | P1 | 中信退款定位、协议必填字段来源及职责越界 | CLOSED |
-| [FRONT-P1-006](FRONT-P1-006-channel-state-on-exception.md) | P1 | 银行异常后渠道记录停留在 SENDING | FIXED_PENDING_REVIEW |
+| [FRONT-P1-006](FRONT-P1-006-channel-state-on-exception.md) | P1 | 银行异常后渠道记录停留在 SENDING | OPEN |
 | [FRONT-P1-007](FRONT-P1-007-pingan-auth-code-resend.md) | P1 | 平安授权码重发请求对象和持久化不完整 | CLOSED |
 | [FRONT-P1-008](FRONT-P1-008-duplicate-transaction.md) | P1 | 重复交易语义及三字段精确匹配不正确 | CLOSED |
 | [FRONT-P1-009](FRONT-P1-009-platform-transfer-persistence.md) | P1 | 中信平台收付款落库方向错误 | CLOSED |
 | [FRONT-P1-010](FRONT-P1-010-sharding-fail-closed.md) | P1 | 分库配置异常时错误回退默认数据源 | CLOSED |
 | [FRONT-P1-011](FRONT-P1-011-full-chain-structured-logging.md) | P1 | 查询链路存在重复日志和无效反射采集 | FIXED_PENDING_REVIEW |
 | [FRONT-P1-012](FRONT-P1-012-duplicate-transaction-atomicity.md) | P1 | 重复交易检查的实例边界 | CLOSED |
-| [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | FIXED_PENDING_REVIEW |
+| [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | OPEN |
 | [FRONT-P2-001](FRONT-P2-001-base-special-boundary.md) | P2 | baseData 与 specialData 字段边界未落实 | CLOSED |
 | [FRONT-P2-002](FRONT-P2-002-persistence-converter.md) | P2 | Handle 反射赋值违反对象转换约束 | CLOSED |
 | [FRONT-P2-003](FRONT-P2-003-resource-consistency.md) | P2 | LiteFlow 与 DDL 存在多份冲突资源 | CLOSED |
@@ -62,21 +62,23 @@
 | [FRONT-P2-006](FRONT-P2-006-capability-dispatch-overcoupling.md) | P2 | 银行 + capability 未直接映射到能力 Handler | CLOSED |
 | [FRONT-P2-007](FRONT-P2-007-handler-fixed-value-consistency.md) | P2 | Handle 银行固定参数和公共常量口径混用 | CLOSED |
 
-当前合计：`21 CLOSED + 3 FIXED_PENDING_REVIEW + 0 OPEN + 2 TODO + 1 DEFERRED`。
+当前合计：`21 CLOSED + 1 FIXED_PENDING_REVIEW + 2 OPEN + 2 TODO + 1 DEFERRED`。
 
 ## 当前仍需代码修复
 
-当前没有 `OPEN` 问题；P1-006、P1-011、P1-013 已修复并处于 `FIXED_PENDING_REVIEW`，等待用户逐一确认。
+P1-006、P1-013 处于 `OPEN` 状态（第五轮修复已实施，待用户确认）；P1-011 处于 `FIXED_PENDING_REVIEW`，文档已同步清理，可确认关闭。
 
-## 已修复、待用户确认关闭（3 项）
+## 已修复、待用户确认关闭（1 项）
 
-1. `FRONT-P1-006`：try 覆盖完整异常窗口（DTO 组装→响应持久化），`isClearlyNotSent()` 区分 FAILED/UNKNOWN。
-2. `FRONT-P1-011`：删除两个 Query Handle 的反射 metadata 和重复 `bank_request_assembled` 日志。
-3. `FRONT-P1-013`：删除跨能力统一校验，按中信/平安具体接口拆分 baseData 必填/格式校验，补 resend 校验；第二
-   轮补充中信 refund 日期格式校验、平安 fee 局部变量化+负数拒绝、remark 长度校验（平安 256/512）、
-   bizSubOrderNo 逐接口条件写入。
+1. `FRONT-P1-011`：删除两个 Query Handle 的反射 metadata 和重复 `bank_request_assembled` 日志；
+   文档已同步更新当前代码证据，删除旧问题描述。
 
-以上 3 项不得重复修改；用户确认后才能从 `FIXED_PENDING_REVIEW` 改为 `CLOSED`。
+## 未关闭（2 项）
+
+1. `FRONT-P1-006`（OPEN）：第五轮修复——CiticWalletHttpClient 异常分类改用根异常判断，非连接级异常统一 fallback → `WALLET_RESULT_UNKNOWN`。
+2. `FRONT-P1-013`（OPEN）：第五轮修复——中信 transfer/consume bizSubOrderNo 改为必填并加 64 长度校验；平安 transferAuth/resend remark 改为 120、orderNo 加 30 长度；中信/平安各接口订单字段加长度校验；平安 refund fee 撤回猜测遵守 TODO-002；06/07/08 字段契约同步更新已确认长度。
+
+以上 2 项不得重复修改；用户确认后才能从 `OPEN` 改为 `CLOSED`。
 
 ## 本轮用户确认关闭（4 项）
 

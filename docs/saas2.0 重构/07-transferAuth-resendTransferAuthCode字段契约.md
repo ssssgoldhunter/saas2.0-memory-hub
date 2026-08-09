@@ -193,7 +193,7 @@ FrontTransferAuthCodeResult extends FrontBaseResult
 | `transAmt` | `baseData.amount` | 人民币分，包含手续费，必须大于 0 |
 | `fee` | `baseData.fee` | 人民币分，无手续费传 0 |
 | `ccy` | Handle 常量 `CNY` | 当前固定人民币 |
-| `remark` | `baseData.remark` | Handle 校验协议长度 |
+| `remark` | `baseData.remark` | Handle 校验协议长度；最大 120，已从 Word 协议确认 |
 
 金额全链路使用 `Long` 人民币分，不得转换为元或使用浮点数。
 
@@ -242,8 +242,8 @@ FrontTransferAuthCodeResult extends FrontBaseResult
 | `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务请求覆盖 |
 | `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，SM2 加密 |
 | `tranType` | Handle 固定 `2` | 当前 Front 只使用“支付”分支 |
-| `orderNo` | `baseData.bizOrderNo` | 业务主订单号 |
-| `remark` | `baseData.remark` | 业务备注 |
+| `orderNo` | `baseData.bizOrderNo` | 业务主订单号；最大 30 |
+| `remark` | `baseData.remark` | 业务备注；最大 120 |
 | `intAcctNo` | `specialData.intAcctNo` | 转入见证子账户，SM2 加密 |
 
 `intAcctNo` 是平安 v5.5 和现有接口的原始拼写。实现时不得凭习惯改成 `inAcctNo`。

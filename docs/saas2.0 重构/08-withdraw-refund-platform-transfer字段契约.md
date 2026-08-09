@@ -151,7 +151,7 @@ chnlNo  = 0010
 | `acctNo` | `specialData.acctNo` | 加密 |
 | `cardNoEnc` | `specialData.cardNoEnc` | 加密 |
 | `transAmt` | `baseData.amount` | 人民币分 |
-| `remark` | `baseData.remark` | 按银行长度校验；长度待从 Word 协议确认 |
+| `remark` | `baseData.remark` | 按银行长度校验；最大 512（C 512 O），已从 Word 协议确认 |
 | `reserve.WITH_TYPE` | Handle 固定 `00` | 当前只开放用户提现，不开放平台提现 `01` |
 | `reserve.BUSS_ID` | `baseData.bizOrderNo` | 业务主流水 |
 | `reserve.TRANS_DT/TRANS_TM` | `baseData.businessDate/businessTime` | `yyyyMMdd/HHmmss` |
