@@ -2,7 +2,7 @@
 
 - 状态：FIXED_PENDING_REVIEW
 - 优先级：P1
-- 影响：查询 API 不需要交易链路级别的全阶段定位日志；当前 Query Handle 又增加一层请求日志并通过反射采集
+- 影响：查询 API 不需要交易链路级别的全阶段定位日志；修复前 Query Handle 又增加一层请求日志并通过反射采集
   业务字段，造成重复输出和无效复杂度。
 
 ## 最新边界（2026-08-09 用户确认）
@@ -41,3 +41,10 @@
 3. `PingAnQueryHandle.invokeQuery()`：同上——删除反射 metadata 和 `bank_request_assembled` 日志。
 4. `PingAnQueryHandle`：删除整个 `queryMetadata()` 方法及未使用的 `FrontLogJsonUtils` 导入。
 5. 两家 `WalletHttpClient` 的 `wallet_request_sending` 保持不动，继续输出发送前完整脱敏请求 JSON。
+
+## 关闭条件
+
+- 两个 Query Handle 不再通过反射猜测日志字段，也不重复记录发送前银行请求；
+- 查询请求只由 WalletHttpClient 在真正发送前记录一次完整、已脱敏 JSON；
+- 查询日志不新增 `capability` 或交易型 metadata，不改变查询处理和错误语义；
+- 当前状态保持 `FIXED_PENDING_REVIEW`，等待用户确认后才能改为 `CLOSED`。

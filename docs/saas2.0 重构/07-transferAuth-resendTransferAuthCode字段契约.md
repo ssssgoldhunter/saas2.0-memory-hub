@@ -210,8 +210,8 @@ FrontTransferAuthCodeResult extends FrontBaseResult
 | `inMemberCode` | `specialData.inMemberCode` | 转入方交易网会员代码 |
 | `inSubAcctName` | `specialData.inSubAcctName` | 转入方见证子账户户名，SM2 加密 |
 | `tranType` | Handle 固定 `01` | 当前普通鉴权转账 |
-| `orderNo` | `baseData.bizOrderNo` | 必填，必须满足平安全局唯一约束 |
-| `remark` | `baseData.remark` | 旧 mdl 写死 `Remark`，新实现改为真实业务备注 |
+| `orderNo` | `baseData.bizOrderNo` | 必填，最大 30，必须满足平安全局唯一约束 |
+| `remark` | `baseData.remark` | 最大 120；旧 mdl 写死 `Remark`，新实现改为真实业务备注 |
 | `messageOrderNo` | `request.specialData.messageOrderNo` | 上一步返回的短信指令号明文 |
 | `messageCheckCode` | `request.specialData.messageCheckCode` | 短信验证码，SM2 加密 |
 

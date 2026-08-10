@@ -28,94 +28,39 @@
 - 06、07、08 字段契约：只在现有口径不明确时同步必填、格式和长度；
 - 不修改 Router、Registry、Dispatch、Mapper、DDL 或查询 TODO。
 
-## 当前核验结果（2026-08-09）
+## 当前代码证据（2026-08-10）
 
-1. 两个交易 Handle 新增了同一个 `validateRequiredBaseData()`，无差别要求所有交易能力必须提供
-   `bizOrderNo/amount/businessDate/businessTime`；这违反"银行 + 具体接口"校验边界，可能拒绝协议并不需要
-   日期或时间的平安接口。
-2. `fee == null` 被统一回写为 0，尚未逐接口确认"必填"还是"允许缺省为 0"，并且修改了请求 DTO。
-3. 平安 `resendTransferAuthCode()` 未调用该校验，仍直接执行 `String.valueOf(data.getAmount())`，null 会进入银行报文。
-4. `remark` 等银行长度限制仍未按具体接口核对和实现。
+1. 两个 Transaction Handle 已删除跨银行、跨能力的 `validateRequiredBaseData()`，校验放在具体银行能力方法内。
+2. 中信 transfer/consume 的 `BUSS_ID + BUSS_SUB_ID` 均为必填且最大 64；withdraw、refund、
+   platformPay/platformReceive 的订单字段也按协议校验最大 64。
+3. 中信需要业务日期、时间的接口均在 INSERT INIT 和钱包调用前校验非空及 `yyyyMMdd/HHmmss` 格式。
+4. 平安 transfer/consume 的可选 `orderId` 最大 30；transferAuth/resendTransferAuthCode 的
+   `orderNo` 最大 30、`reserve.remark` 最大 120；普通交易备注最大 256、提现备注最大 512。
+5. 平安已确认接口使用局部 fee 值，未提供时按协议传 0，负数拒绝，且不修改请求 DTO。
+6. 平安退款仍由 `FRONT-TODO-002` 管理；本问题未猜测默认 fee，也未扩大退款协议范围。
+7. 06、07、08 字段契约已同步本问题涉及的必填、格式和长度；未改变
+   `baseData/specialData/accountSpecialData` 边界。
 
-以下问题已在前两轮修复中关闭，本轮的侧重点不同：
-5. ~~中信退款 `businessDate/businessTime` 仅非空校验，缺少 `yyyyMMdd/HHmmss` 格式校验。~~ → 2026-08-09 已修复。
-
-## 已有修改（已完成，2026-08-09）
-
-1. 删除 `CiticTransactionHandle.validateRequiredBaseData()` 和
-   `PingAnTransactionHandle.validateRequiredBaseData()` 两个跨能力统一校验方法。
-2. `CiticTransactionHandle` 新增 `requireField`/`requirePositive`/`requireDateyyyyMMdd`/`requireTimeHHmmss`
-   四个静态辅助方法；`transfer()`/`consume()`/`withdraw()`/`doPlatformTransfer()` 各自调用校验，
-   并增加 `businessDate` 的 `yyyyMMdd` 格式和 `businessTime` 的 `HHmmss` 格式校验。
-3. `PingAnTransactionHandle` 新增 `requireField`/`requirePositive` 两个静态辅助方法；
-   `transfer()`/`consume()`/`transferAuth()`/`withdraw()` 各自验证 `bizOrderNo` + `amount`，
-   不校验 `businessDate/businessTime`（平安协议不使用 baseData 中的日期时间）。
-4. `PingAnTransactionHandle.resendTransferAuthCode()` 新增 `bizOrderNo` + `amount` 必填校验，
-   消除 `String.valueOf(null)` → `"null"` 进入银行报文的风险。
-5. `fee` 为 null 时默认设为 0L 的逻辑在每个方法独立处理，不再修改请求 DTO。
-
-## 本次修复（2026-08-09 第二轮）
-
-1. **`CiticTransactionHandle.refund()` 日期格式补全**：businessDate 追加 `requireDateyyyyMMdd`，businessTime 追加 `requireTimeHHmmss`，替代原仅非空校验。
-2. **平安四方法 fee 局部变量化**：`transfer()`/`consume()`/`transferAuth()`/`withdraw()` 将 `if (data.getFee() == null) data.setFee(0L)` 替换为局部变量 `Long fee = data.getFee() != null ? data.getFee() : 0L`；fee < 0 时抛 `INVALID_REQUEST`；使用局部变量组装银行请求和持久化，不再修改请求 DTO。
-3. **remark 长度校验**（平安已确认、中信本轮确认）：
-   - 两个 Handle 新增 `validateMaxLength(value, maxLength, fieldName)` 静态辅助方法。
-   - 平安 transfer/consume：**256**（Word 协议 C 256 O），本地常量 `REMARK_MAX_LENGTH_PINGAN_TRANSFER`。
-   - 平安 withdraw：**512**（Word 协议 C 512 O），本地常量 `REMARK_MAX_LENGTH_PINGAN_WITHDRAW`。
-   - 平安 transferAuth/resendTransferAuthCode：**256**（用户确认保留发送并校验）。
-4. **bizSubOrderNo 按接口逐一定性**（只在银行 reserve 有映射的接口调整）：
-   - 中信 transfer/consume `BUSS_SUB_ID`：选填，改用 `putIfNotBlank` 条件写入。
-   - 平安 transfer/consume `ORDER_ID`：选填（银行协议 Optional），不为空时写入。
-   - 中信 refund 的 bizSubOrderNo 已确认为必填（保持原有校验）。
-   - 其余能力维持既有写入方式，不做统一提升。
-
-### 本轮修复（2026-08-09 第三轮）
-
-5. **中信 `data.setFee(0L)` 改为局部变量**：`transfer()`/`consume()`/`withdraw()`/`doPlatformTransfer()`
-   的 `if (data.getFee() == null) data.setFee(0L)` 改为
-   `Long fee = data.getFee() != null ? data.getFee() : 0L`，不再修改请求 DTO。
-6. **平安 insert 方法 entity fee 用局部计算值**：`buildTransferInitRecord()`/`insertConsumeInitRecord()`/
-   `insertWithdrawInitRecord()`/`insertRefundInitRecord()` 的 `entity.setFee(data.getFee())` 改为
-   `entity.setFee(data.getFee() != null ? data.getFee() : 0L)`，使渠道流水 fee 与银行请求 fee 一致
-   （调用方未传时银行请求为 `"0"`，数据库不再存 null）。
-7. **transferAuth/resend remark 加 `validateMaxLength`**：用户确认平安 transferAuth 和
-   resendTransferAuthCode 的 remark 保留发送并校验 256 字符。已在对应 RESERVE_REMARK 写入前
-   增加 `validateMaxLength(data.getRemark(), REMARK_MAX_LENGTH_PINGAN_TRANSFER, "baseData.remark")`。
-8. **平安 refund `data.getFee()` → 局部变量**：`refund()` 的 `request.setFee(String.valueOf(data.getFee()))`
-   改为局部变量 `Long refundFee = data.getFee() != null ? data.getFee() : 0L`，消除 null 时发送
-   字符串 `"null"` 的风险。
-
-### 本轮修复（2026-08-09 第四轮）
-
-9. **中信 remark 长度校验**：根据 Word 协议确认各接口 remark 长度限制并添加 `validateMaxLength`：
-   - transfer/consume/platformPay/platformReceive：**256**
-   - withdraw：**512**
-   - refund（refundReason/MEMO）：**100**
-
-### 本轮修复（2026-08-09 第五轮）
-
-10. **中信 transfer/consume bizSubOrderNo 必填 + 长度**：Word 协议 BUSS_ID/BUSS_SUB_ID 均为 C64 必填。
-    `transfer()`/`consume()` 增加 `requireField(data.getBizSubOrderNo())`，长度校验 64；
-    `fillTransferReserveFields()` 将 `putIfNotBlank` 改为`put`，确保始终写入。
-11. **中信各接口业务订单字段长度校验**：transfer/consume/withdraw/refund/platformPay/platformReceive
-    的 `bizOrderNo`、`bizSubOrderNo`、`originalBizOrderNo`/`originalBizSubOrderNo` 增加 `validateMaxLength` 为 64。
-12. **平安 transferAuth/resend remark 修正**：从 256 改为 Word 协议实际的 **120**；orderNo 增加 **30** 长度校验。
-13. **平安 transfer/consume ORDER_ID 长度校验**: fillTransferReserve 的 `bizSubOrderNo` 写入 ORDER_ID 前加 **30** 长度校验。
-14. **平安 refund fee 撤回 P1-013 第三轮猜测**：fee 为 null 时不设为 "0"，遵守 TODO-002 "不猜测协议"原则。
-
-### 逐接口校验总表
+## 逐接口校验总表
 
 | 能力 | 银行 | bizSubOrderNo | order/bizOrderNo/bizSubOrderNo 长度 | businessDate/businessTime | fee | remark 长度 |
 |---|---|---|---|---|---|---|
-| transfer | 中信 | **必填(requireField → put)** | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 局部变量，null→0 | 256 |
-| consume | 中信 | **必填(requireField → put)** | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 局部变量，null→0 | 256 |
-| withdraw | 中信 | 不写入 reserve | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 局部变量，null→0 | 512 |
+| transfer | 中信 | **必填(requireField → put)** | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 银行协议忽略，不上送 | 256 |
+| consume | 中信 | **必填(requireField → put)** | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 银行协议忽略，不上送 | 256 |
+| withdraw | 中信 | 不写入 reserve | 64（C64 必填） | requireDateyyyyMMdd + requireTimeHHmmss | 银行协议忽略，不上送 | 512 |
 | refund | 中信 | 必填(requireField) + 原交易必填 | 64（C64，含原交易主子流水） | requireDateyyyyMMdd + requireTimeHHmmss | 不适用 | 100（refundReason/MEMO） |
-| platformPay | 中信 | 选填(putIfNotBlank) | 64 | requireDateyyyyMMdd + requireTimeHHmmss | 局部变量，null→0 | 256 |
-| platformReceive | 中信 | 选填(putIfNotBlank) | 64 | requireDateyyyyMMdd + requireTimeHHmmss | 局部变量，null→0 | 256 |
+| platformPay | 中信 | 选填(putIfNotBlank) | 64 | requireDateyyyyMMdd + requireTimeHHmmss | 银行协议忽略，不上送 | 256 |
+| platformReceive | 中信 | 选填(putIfNotBlank) | 64 | requireDateyyyyMMdd + requireTimeHHmmss | 银行协议忽略，不上送 | 256 |
 | transfer | 平安 | 选填(不为空写 ORDER_ID) | ORDER_ID/bizSubOrderNo **30** | 不校验 | 局部变量，null→0，负拒绝 | 256 |
 | consume | 平安 | 选填(不为空写 ORDER_ID) | ORDER_ID/bizSubOrderNo **30** | 不校验 | 局部变量，null→0，负拒绝 | 256 |
 | transferAuth | 平安 | 使用 bizOrderNo(orderNo) | ORDER_NO/bizOrderNo **30** | 不校验 | 局部变量，null→0，负拒绝 | **120** |
 | resendTransferAuthCode | 平安 | 使用 bizOrderNo(orderNo) | ORDER_NO/bizOrderNo **30** | 不校验 | 不适用 | **120** |
 | withdraw | 平安 | 不写入 reserve | 不校验 | 不校验 | 局部变量，null→0，负拒绝 | 512 |
 | refund | 平安(TODO-002) | 待确认 | 待确认 | 待确认 | **不猜测（null 时不设 fee）** | 待确认 |
+
+## 关闭条件
+
+- 当前代码和 06、07、08 字段契约保持一致；
+- 所有已启用接口在 INSERT INIT 和钱包调用前完成银行报文所需的 baseData 校验；
+- 平安查询和退款未确认部分继续由 TODO 管理，不借本问题扩展；
+- 当前状态保持 `FIXED_PENDING_REVIEW`，等待用户确认后才能改为 `CLOSED`。

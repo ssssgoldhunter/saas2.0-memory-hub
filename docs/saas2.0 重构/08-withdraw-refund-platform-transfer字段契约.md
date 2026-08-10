@@ -153,7 +153,7 @@ chnlNo  = 0010
 | `transAmt` | `baseData.amount` | 人民币分 |
 | `remark` | `baseData.remark` | 按银行长度校验；最大 512（C 512 O），已从 Word 协议确认 |
 | `reserve.WITH_TYPE` | Handle 固定 `00` | 当前只开放用户提现，不开放平台提现 `01` |
-| `reserve.BUSS_ID` | `baseData.bizOrderNo` | 业务主流水 |
+| `reserve.BUSS_ID` | `baseData.bizOrderNo` | 业务主流水，必填，最大 64（C64 M） |
 | `reserve.TRANS_DT/TRANS_TM` | `baseData.businessDate/businessTime` | `yyyyMMdd/HHmmss` |
 | `reserve.FEE_TYPE` | Handle 固定 `2` | 当前用户承担手续费 |
 | `reserve.WITH_ACCNAME` | `specialData.WITH_ACCNAME` | 加密 |
@@ -210,8 +210,8 @@ chnlNo  = 0010
 | `ORI_USER_C_NM` | `specialData.ORI_USER_C_NM` | 银行协议选填，有值时上送 |
 | `ORI_USER_C_AMT` | `baseData.amount` | 原收款方本次退款金额，人民币分 |
 | `P_SELF_FLAG/P_DEAL_AMT` | Handle 固定 `N/0` | 首版普通退款不含平台自有资金 |
-| `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 两者独立必填，退款业务流水 |
-| `ORI_BUSS_ID/SUB_ID` | `orgBizOrderNo/orgBizSubOrderNo` | 当前 Front 固定采用，成组必填 |
+| `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 两者独立必填、最大 64，退款业务流水 |
+| `ORI_BUSS_ID/SUB_ID` | `orgBizOrderNo/orgBizSubOrderNo` | 当前 Front 固定采用，成组必填、最大 64 |
 | `ORI_USER_SSN` | 当前 Front 不使用 | 银行协议支持的替代定位项；不得用 `orgFrontSsn/transSsn` 冒充 |
 | `ORI_USER_TRANS_DT` | `specialData.ORI_USER_TRANS_DT` | 独立必填，格式 `yyyyMMdd` |
 | `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 两者独立必填，格式 `yyyyMMdd/HHmmss` |
@@ -275,7 +275,7 @@ ccy = CNY
 | `outAcctNm` | 不取用户名称 | `specialData.outAcctNm`，加密 |
 | `inAcctNm` | `specialData.inAcctNm`，加密 | 不取用户名称 |
 | `transAmt` | `baseData.amount`，人民币分 | `baseData.amount`，人民币分 |
-| `bussId/bussSubId` | `bizOrderNo/bizSubOrderNo` | `bizOrderNo/bizSubOrderNo` |
+| `bussId/bussSubId` | `bizOrderNo/bizSubOrderNo` | 主流水必填、最大 64；子流水选填、有值时最大 64 |
 | `payDate/payTime` | `businessDate/businessTime` | `businessDate/businessTime` |
 | `dealType` | `specialData.dealType`，按 2041 枚举校验 | `specialData.dealType`，按 2042 枚举校验 |
 | `fundTp` | `specialData.fundTp`，且必须命中租户中信配置 | 同左 |

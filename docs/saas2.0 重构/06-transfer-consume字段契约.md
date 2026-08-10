@@ -123,8 +123,8 @@ BankRequestContext<T>
 | `USER_C_AMT` | `baseData.amount` | 收款用户入账金额，单位为分，必须大于 0 |
 | `P_SELF_FLAG` | Handle 固定值 `N` | 当前普通 transfer/consume 无平台自有资金动账 |
 | `P_SELF_AMT` | Handle 固定值 `0` | 单位为分，与 `P_SELF_FLAG=N` 配套 |
-| `BUSS_ID` | `baseData.bizOrderNo` | 商户业务主订单号 |
-| `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | 商户业务子订单号 |
+| `BUSS_ID` | `baseData.bizOrderNo` | 商户业务主订单号，必填，最大 64（C64 M） |
+| `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | 商户业务子订单号，必填，最大 64（C64 M） |
 | `TRANS_DT` | `baseData.businessDate` | `yyyyMMdd` |
 | `TRANS_TM` | `baseData.businessTime` | `HHmmss` |
 | `FUND_TP` | 中信账户配置 | 当前取 `default_fund_type` |
@@ -195,7 +195,7 @@ errCode == D5000000
 | `inAcctId` | `specialData.inAcctId` | 转入方商户会员编号 |
 | `inAcctName` | `specialData.inAcctName` | 转入方户名，按协议加密 |
 | `transType` | Handle 常量 `01` | 普通交易 |
-| `orderId` | `baseData.bizSubOrderNo` | 订单号；按业务规则保证唯一 |
+| `orderId` | `baseData.bizSubOrderNo` | 订单号，选填，最大 30；有值时按业务规则保证唯一 |
 | `orderInfo` | consume 的 `baseData.orderInfo` 或 transfer 专用白名单 | 订单内容，可选 |
 `functionFlag` 不能由业务系统随意提交一个银行原值。lsym 生产 Handle 没有使用 `6`；当前新 Front
 只实现 `9`，尚未覆盖旧 `0107 → 7` 场景。是否保留 `0107` 由平安接口重新核对后确认；确认前不得
