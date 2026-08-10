@@ -731,7 +731,7 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 `/refund + bizFunc=02`；禁止反向转账模拟退款。`platformPay/platformReceive` 仅中信支持，平安必须
 返回 `UNSUPPORTED`。中信退款固定使用 `orgBizOrderNo + orgBizSubOrderNo` 组装
 `ORI_BUSS_ID + ORI_BUSS_SUB_ID`；其他动态银行字段由请求 `specialData` 使用银行协议原始 key 提供，
-Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `FRONT-TODO-002` 等待确认，不得套用中信结论。
+Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `TODO-002` 等待确认，不得套用中信结论。
 中信 2041/2042 的平台侧由商户自有资金登记簿隐式确定，不传平台银行账号，业务系统也不得伪造该账号。
 
 中信退款的最新代码参考为 `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy` 分支
@@ -1207,7 +1207,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 字段和协议未确认时，只允许创建 `PENDING_INTEGRATION` 骨架，不允许伪造银行请求或成功响应。
 
 平安五个查询当前统一由 `PingAnQueryHandle.pendingIntegration()` 返回 `ADAPTER_NOT_READY`，对应
-`FRONT-TODO-001`。后续必须一次只领取并核对一个接口；不得因为整理本地固定参数而移除挡板、创建
+`TODO-001`。后续必须一次只领取并核对一个接口；不得因为整理本地固定参数而移除挡板、创建
 未经确认的字段 ContractKeys，或继续补写下方分析草稿。
 
 ---
@@ -1388,7 +1388,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - [ ] 重复交易统一返回 `TRANSACTION_ALREADY_EXISTS(F300001, "交易已存在")`，不存在旧的
       `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义；
 - [ ] 中信退款不存在 `loadOriginalRefundFields` / `fillRefundAccountFieldsFromOriginal` 等本地原交易查询；
-      平安退款是否关联原交易按 `FRONT-TODO-002` 单独确认；
+      平安退款是否关联原交易按 `TODO-002` 单独确认；
 - [ ] 平台收付款表也存 acct（pay_account_id / rec_account_id）。
 
 ### H. 分库与分区

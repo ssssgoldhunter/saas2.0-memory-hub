@@ -335,7 +335,7 @@ com/chinaums/common/core/constant/front/
 
 1. `bizFunc/chnlNo/path/transSsn/transTime` 只能由具体银行 Handle 决定；
 2. 中信退款只检查本次退款流水是否重复，并校验能否组装有效银行报文；不加载或锁定原渠道交易，
-   不计算累计退款金额；平安退款边界仍按 `FRONT-TODO-002` 等待确认；
+   不计算累计退款金额；平安退款边界仍按 `TODO-002` 等待确认；
 3. `specialData` 和 `accountSpecialData` 分开读取，禁止整体 `putAll`；
 4. 每个字段显式映射、显式校验、显式加密；
 5. 平安平台付款、平台收款直接返回 `CAPABILITY_NOT_SUPPORTED`；
@@ -360,7 +360,7 @@ com/chinaums/common/core/constant/front/
 ```
 
 中信退款表只保存本次退款、原业务主子流水和银行请求/响应所需明确字段，不保存原渠道记录主键、
-原能力或累计退款金额，也不更新中信转账、消费原表。平安退款持久化边界按 `FRONT-TODO-002` 等待确认。
+原能力或累计退款金额，也不更新中信转账、消费原表。平安退款持久化边界按 `TODO-002` 等待确认。
 平安平台收付款不支持，不得落入其他表。详细 DDL 见
 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
 

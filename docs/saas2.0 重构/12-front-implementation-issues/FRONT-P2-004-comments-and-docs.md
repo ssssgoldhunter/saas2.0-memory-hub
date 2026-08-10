@@ -54,9 +54,8 @@
    从 specialData 读取，Front 不查询本地原交易补齐"；字段级注释同步修正。
 2. `CiticWithdrawContractKeys.java` 字段注释 `ACCOUNT_NO/CARD_NO` 修正为"取 specialData"，
    删除 `baseData.withdrawAccountId/baseData.bankCardNo` 等错误来源描述。
-3. WIKI 曾按错误的“全部已完成”状态收缩处理顺序；当时重新核验确认 P1-004/006/011/013 为 OPEN。
-   当前 P1-004 已由用户确认关闭，P1-006/011/013 保持 `FIXED_PENDING_REVIEW`；具体状态只引用 Issue README，
-   避免再次产生双份状态。
+3. WIKI 曾按错误的“全部已完成”状态收缩处理顺序；当时重新核验确认 P1-004/006/011/013 仍需处理。
+   当前 P1-004/006/011/013 均已由用户确认关闭；具体状态只引用 Issue README，避免再次产生双份状态。
 4. 修正 `BasePageQuery`、`RequestContext`、`FrontExecutionInfo`、两家提现 ContractKeys 和
    `BankTransactionHandle` 的过时注释；清理 10 个 ServiceImpl 的快照遗留描述。
 5. 为 `00` 和 `04` 增加历史文档标识，旧阶段状态不再作为当前开发入口。

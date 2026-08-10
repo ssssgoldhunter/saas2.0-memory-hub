@@ -9,7 +9,7 @@
 > 金额。当前仅 `original_biz_order_no + original_biz_sub_order_no` 用于原交易定位；
 > `original_capability/original_channel_transaction_id/original_front_ssn/original_biz_transaction_id/
 > original_biz_sub_transaction_id` 作为可空兼容列保留，中信 Handle 不读写。
-> 平安退款结构不在本次修订范围，按 `FRONT-TODO-002` 等待确认。
+> 平安退款结构不在本次修订范围，按 `TODO-002` 等待确认。
 
 ## 1. 最终拆表结论
 
@@ -283,7 +283,7 @@ Front 不查询本地原转账、消费记录，不校验原交易状态或累�
 
 ### 9.2 平安退款
 
-平安是否需要本地原交易关联、额度控制和对应字段，按 `FRONT-TODO-002` 等待逐项核对；不得自动复制
+平安是否需要本地原交易关联、额度控制和对应字段，按 `TODO-002` 等待逐项核对；不得自动复制
 中信结论或保留旧设计作为既定目标。
 
 ## 10. 明确字段与敏感数据
@@ -325,7 +325,7 @@ snapshot_key_version
 
 中信退款的 `idx_front_original_transaction/idx_front_original_ssn` 随兼容列暂时保留，当前 Handle
 不依赖这两个索引。后续如需删除，必须另行确认并提供 ALTER 脚本；平安退款索引按
-`FRONT-TODO-002` 等待确认。
+`TODO-002` 等待确认。
 
 所有渠道表均不建立跨表外键。中信退款的原业务完整性由上游业务系统负责，Front 只保存和发送明确字段。
 

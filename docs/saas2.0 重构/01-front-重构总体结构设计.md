@@ -675,7 +675,7 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 - 付款/收款门店、金额、手续费等公共业务数据；
 - 业务及银行所需明确字段；不保存整段 `baseData/specialData` 快照；
 - 中信退款的原业务主子流水及银行协议必填字段；不关联 Front 本地原转账、消费记录。
-  平安退款是否需要本地原交易关联按 `FRONT-TODO-002` 等待确认。
+  平安退款是否需要本地原交易关联按 `TODO-002` 等待确认。
 
 物理表必须按“银行 + 交易业务”拆分：
 
@@ -852,7 +852,7 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 - [ ] 首版交易业务最终范围；
 - [ ] 每类交易核心 `baseData`；
 - [ ] 重复交易键和主/子订单关系；
-- [ ] 退款原交易定位及协议字段；中信按 `FRONT-P1-005`，平安按 `FRONT-TODO-002`；
+- [ ] 退款原交易定位及协议字段；中信按 `FRONT-P1-005`，平安按 `TODO-002`；
 - [ ] 平安、中信 `specialData` 字段；
 - [ ] 银行响应到 Front 状态的映射。
 

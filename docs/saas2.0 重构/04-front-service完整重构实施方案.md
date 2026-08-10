@@ -1321,7 +1321,7 @@ biz_sub_order_no
 并保存金额、手续费、币种、收付款门店及账户/会员/姓名/卡号等明确字段，不保存整段
 `baseData/specialData` 或银行报文快照。每张表统一包含 `reserve1/reserve2/reserve3` 三个 `VARCHAR(1024)` 临时扩展
 字段。中信退款表只保存本次退款及银行请求、响应所需明确字段，不关联本地原转账或消费记录，
-中信转账、消费表不维护累计退款金额；平安退款持久化边界仍按 `FRONT-TODO-002` 等待确认。
+中信转账、消费表不维护累计退款金额；平安退款持久化边界仍按 `TODO-002` 等待确认。
 
 不保存来源业务物理表名，不建立跨服务数据库外键。不保存密钥、验证码、支付密码和完整租户银行配置。
 内部渠道表的账户、会员、姓名和卡号字段本期不要求数据库加密，但禁止输出到日志、异常消息和普通接口响应。
@@ -1342,7 +1342,7 @@ tenantId + bizOrderNo + bizSubOrderNo
 4. 业务系统主动重做必须更换 `bizOrderNo` 或 `bizSubOrderNo`；
 5. 该规则在目标银行、目标业务物理表内检查；`frontSsn` 由生成器保证跨表不重复；
 6. 中信退款不查询或校验本地原交易及累计退款金额，只校验本次中信退款请求能否组装有效银行报文；
-   平安退款边界仍按 `FRONT-TODO-002` 等待确认。
+   平安退款边界仍按 `TODO-002` 等待确认。
 
 ### 15.4 状态机
 
@@ -1418,7 +1418,7 @@ PingAnTransactionStatusQueryHandler → (PING_AN, TRANSACTION_STATUS_QUERY)
 | 授权转账 | `UNSUPPORTED` | `SUPPORTED` |
 | 授权码重发 | `UNSUPPORTED` | `SUPPORTED` |
 | 消费 | `SUPPORTED` | `SUPPORTED` |
-| 退款 | `SUPPORTED`，请求字段契约按 `FRONT-P1-005` 收口中 | `SUPPORTED`，原交易字段及持久化边界按 `FRONT-TODO-002` 待确认 |
+| 退款 | `SUPPORTED`，请求字段契约按 `FRONT-P1-005` 收口中 | `SUPPORTED`，原交易字段及持久化边界按 `TODO-002` 待确认 |
 | 提现 | `SUPPORTED` | `SUPPORTED` |
 | 平台付款 | `SUPPORTED` | `UNSUPPORTED` |
 | 平台收款 | `SUPPORTED` | `UNSUPPORTED` |

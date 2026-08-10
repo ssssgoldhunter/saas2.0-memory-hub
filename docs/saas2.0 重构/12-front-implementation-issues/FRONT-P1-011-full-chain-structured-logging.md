@@ -1,6 +1,6 @@
 # FRONT-P1-011 查询链路存在重复日志和无效反射采集
 
-- 状态：FIXED_PENDING_REVIEW
+- 状态：CLOSED
 - 优先级：P1
 - 影响：查询 API 不需要交易链路级别的全阶段定位日志；修复前 Query Handle 又增加一层请求日志并通过反射采集
   业务字段，造成重复输出和无效复杂度。
@@ -42,9 +42,9 @@
 4. `PingAnQueryHandle`：删除整个 `queryMetadata()` 方法及未使用的 `FrontLogJsonUtils` 导入。
 5. 两家 `WalletHttpClient` 的 `wallet_request_sending` 保持不动，继续输出发送前完整脱敏请求 JSON。
 
-## 关闭条件
+## 关闭记录
 
 - 两个 Query Handle 不再通过反射猜测日志字段，也不重复记录发送前银行请求；
 - 查询请求只由 WalletHttpClient 在真正发送前记录一次完整、已脱敏 JSON；
 - 查询日志不新增 `capability` 或交易型 metadata，不改变查询处理和错误语义；
-- 当前状态保持 `FIXED_PENDING_REVIEW`，等待用户确认后才能改为 `CLOSED`。
+- 2026-08-10 用户确认静态验收没有问题，关闭本问题。

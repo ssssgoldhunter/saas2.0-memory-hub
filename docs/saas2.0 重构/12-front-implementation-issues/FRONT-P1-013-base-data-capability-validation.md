@@ -1,6 +1,6 @@
 # FRONT-P1-013 baseData 缺少按银行具体能力的必填和格式校验
 
-- 状态：FIXED_PENDING_REVIEW
+- 状态：CLOSED
 - 优先级：P1
 - 影响：Bean Validation 允许部分银行必填字段为 null，Handle 可能把 null 或字符串 `"null"` 组装进银行请求。
 
@@ -19,7 +19,7 @@
 4. 需要业务日期、时间的接口必须拒绝 null，并继续校验 `yyyyMMdd/HHmmss`。
 5. 不把某银行、某接口的规则上升为所有交易的公共业务规则。
 6. 不改变 `baseData/specialData/accountSpecialData` 边界，不新增 capability 输入字段。
-7. 平安查询和退款未确认部分继续遵守 `FRONT-TODO-001/002`，不得借本问题提前启用或猜测协议。
+7. 平安查询和退款未确认部分继续遵守 `TODO-001/002`，不得借本问题提前启用或猜测协议。
 
 ## 建议修改范围
 
@@ -37,7 +37,7 @@
 4. 平安 transfer/consume 的可选 `orderId` 最大 30；transferAuth/resendTransferAuthCode 的
    `orderNo` 最大 30、`reserve.remark` 最大 120；普通交易备注最大 256、提现备注最大 512。
 5. 平安已确认接口使用局部 fee 值，未提供时按协议传 0，负数拒绝，且不修改请求 DTO。
-6. 平安退款仍由 `FRONT-TODO-002` 管理；本问题未猜测默认 fee，也未扩大退款协议范围。
+6. 平安退款仍由 `TODO-002` 管理；本问题未猜测默认 fee，也未扩大退款协议范围。
 7. 06、07、08 字段契约已同步本问题涉及的必填、格式和长度；未改变
    `baseData/specialData/accountSpecialData` 边界。
 
@@ -58,9 +58,9 @@
 | withdraw | 平安 | 不写入 reserve | 不校验 | 不校验 | 局部变量，null→0，负拒绝 | 512 |
 | refund | 平安(TODO-002) | 待确认 | 待确认 | 待确认 | **不猜测（null 时不设 fee）** | 待确认 |
 
-## 关闭条件
+## 关闭记录
 
 - 当前代码和 06、07、08 字段契约保持一致；
 - 所有已启用接口在 INSERT INIT 和钱包调用前完成银行报文所需的 baseData 校验；
 - 平安查询和退款未确认部分继续由 TODO 管理，不借本问题扩展；
-- 当前状态保持 `FIXED_PENDING_REVIEW`，等待用户确认后才能改为 `CLOSED`。
+- 2026-08-10 用户确认静态验收没有问题，关闭本问题。

@@ -15,7 +15,6 @@
 | `OPEN` | 当前 HEAD/工作区仍存在未满足的验收项，允许后续领取 |
 | `FIXED_PENDING_REVIEW` | 代码和引用文档已有完整静态证据，等待用户确认 |
 | `CLOSED` | 用户已确认完成，不得重复修改 |
-| `TODO` | 能力或协议明确延后，不计入当前缺陷清零 |
 | `DEFERRED` | 安全治理或外部协调事项，必须单独授权 |
 
 问题子文件必须按以下顺序组织：状态与影响、边界或问题证据、验收标准、当前核验结果、关闭条件。
@@ -51,9 +50,9 @@
 | [FRONT-P1-008](FRONT-P1-008-duplicate-transaction.md) | P1 | 重复交易语义及三字段精确匹配不正确 | CLOSED |
 | [FRONT-P1-009](FRONT-P1-009-platform-transfer-persistence.md) | P1 | 中信平台收付款落库方向错误 | CLOSED |
 | [FRONT-P1-010](FRONT-P1-010-sharding-fail-closed.md) | P1 | 分库配置异常时错误回退默认数据源 | CLOSED |
-| [FRONT-P1-011](FRONT-P1-011-full-chain-structured-logging.md) | P1 | 查询链路存在重复日志和无效反射采集 | FIXED_PENDING_REVIEW |
+| [FRONT-P1-011](FRONT-P1-011-full-chain-structured-logging.md) | P1 | 查询链路存在重复日志和无效反射采集 | CLOSED |
 | [FRONT-P1-012](FRONT-P1-012-duplicate-transaction-atomicity.md) | P1 | 重复交易检查的实例边界 | CLOSED |
-| [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | FIXED_PENDING_REVIEW |
+| [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | CLOSED |
 | [FRONT-P2-001](FRONT-P2-001-base-special-boundary.md) | P2 | baseData 与 specialData 字段边界未落实 | CLOSED |
 | [FRONT-P2-002](FRONT-P2-002-persistence-converter.md) | P2 | Handle 反射赋值违反对象转换约束 | CLOSED |
 | [FRONT-P2-003](FRONT-P2-003-resource-consistency.md) | P2 | LiteFlow 与 DDL 存在多份冲突资源 | CLOSED |
@@ -62,45 +61,27 @@
 | [FRONT-P2-006](FRONT-P2-006-capability-dispatch-overcoupling.md) | P2 | 银行 + capability 未直接映射到能力 Handler | CLOSED |
 | [FRONT-P2-007](FRONT-P2-007-handler-fixed-value-consistency.md) | P2 | Handle 银行固定参数和公共常量口径混用 | CLOSED |
 
-当前合计：`22 CLOSED + 2 FIXED_PENDING_REVIEW + 0 OPEN + 2 TODO + 1 DEFERRED`。
+当前合计：`24 CLOSED + 0 OPEN + 1 DEFERRED`。
 
 ## 当前状态摘要
 
-当前没有 `OPEN` 问题；P1-011、P1-013 已完成代码和引用文档静态核验，处于
-`FIXED_PENDING_REVIEW`，等待用户确认。
+当前没有 `OPEN` 或 `FIXED_PENDING_REVIEW` 问题；P0/P1/P2 共 24 项已全部关闭。
+平安五个查询接口接入和平安退款边界确认属于后续待办，不属于 Issue，统一记录在
+[13-front后续待办](../13-front后续待办.md)。
 
-## 已修复、待用户确认关闭（2 项）
-
-1. `FRONT-P1-011`：删除两个 Query Handle 的反射 metadata 和重复 `bank_request_assembled` 日志；
-   文档已同步更新当前代码证据，删除旧问题描述。
-2. `FRONT-P1-013`：中信 transfer/consume 的主子流水必填且最大 64；平安 transferAuth/resend
-   remark 最大 120、orderNo 最大 30；其他已启用接口订单和备注长度按 Word 协议同步；
-   平安退款继续由 TODO-002 管理，不猜测协议。
-
-## 当前仍需修复
-
-当前没有 `OPEN` 问题。
-
-## 本轮用户确认关闭（5 项）
+## 本轮用户确认关闭（7 项）
 
 1. `FRONT-P0-002`：确认 Front 接收 header 后注入四字段，以及 Front 调用 Feign API 时转发四字段。
 2. `FRONT-P1-004`：确认中信转账/消费/退款按业务主子流水查询，提现按业务主流水查询。
 3. `FRONT-P2-004`：确认当前 Java 注释、WIKI 和历史文档状态口径。
 4. `FRONT-P2-007`：确认协议字段 key 与 Handle 单接口固定 value 的常量职责边界。
 5. `FRONT-P1-006`：确认只将明确建连失败写 `FAILED`，无状态码的 Hutool/IO/SSL/连接中断异常写 `UNKNOWN`。
+6. `FRONT-P1-011`：确认两个 Query Handle 已删除反射 metadata 和重复请求日志。
+7. `FRONT-P1-013`：确认已启用接口的 baseData 校验和 06、07、08 字段契约一致。
 
-以上 5 项已改为 `CLOSED`，不得重复领取或修改。
+以上 7 项已改为 `CLOSED`，不得重复领取或修改。
 `FRONT-P1-005` 的代码、字段契约和目标 DDL 已收口，用户已确认已有物理库完成
 `09C-citic-refund-legacy-columns-nullable.sql`，该问题已关闭。
-
-## 延后 TODO
-
-以下事项明确延后，不计入当前 P0/P1/P2 缺陷清零：
-
-| ID | 事项 | 状态 |
-|---|---|---|
-| [FRONT-TODO-001](FRONT-TODO-001-pingan-query-handle-integration.md) | 平安五个查询 Handle 逐接口核对和接入 | TODO |
-| [FRONT-TODO-002](FRONT-TODO-002-pingan-refund-boundary-confirmation.md) | 平安退款边界与协议字段人工确认 | TODO |
 
 ## 延后安全事项
 
@@ -111,13 +92,13 @@
 ## 本轮核验边界
 
 - 状态依据代码分支 `limeng_front@41d0192`、修复提交 `8591008`，以及记忆体当前工作区静态证据；
-- P1-006 已由用户确认关闭；P1-011、P1-013 保持 `FIXED_PENDING_REVIEW`，等待用户确认；
+- P1-006、P1-011、P1-013 已由用户确认关闭；
 - `FRONT-P1-012` 继续保持 `CLOSED`；两家交易 Handle 已登记 report 汇总四实例后的第二次重复查询 TODO；
 - 本轮没有新增测试、没有运行测试、没有执行编译，不用历史"编译通过"替代当前验收；
-- 平安五个查询和平安退款继续保持 TODO，不得由其他 issue 顺带启用；
+- 平安五个查询和平安退款已移出 Issue，统一由 `13-front后续待办.md` 跟踪，不得由其他 Issue 顺带启用；
 - 明文凭据保持独立安全事项，凭据轮换、Git 历史重写和强制推送必须另行授权。
 
 ## 完成度口径
 
-- 当前 P0/P1/P2 已无 `OPEN` 问题；22 项已关闭，2 项处于 `FIXED_PENDING_REVIEW`。
-- TODO 和 DEFERRED 不阻止当前功能 issue 逐项关闭，但上线计划必须单独跟踪。
+- 当前 P0/P1/P2 已无 `OPEN` 或 `FIXED_PENDING_REVIEW` 问题，24 项全部关闭。
+- 后续待办和 `DEFERRED` 安全事项不计入功能 Issue 完成度，但上线计划必须单独跟踪。

@@ -4,7 +4,7 @@
 > 状态：current
 > 最后核对：2026-08-05，中信 v4.7 Word
 > 平安状态：全部查询运行时返回 `ADAPTER_NOT_READY`，后续接入登记为
-> [FRONT-TODO-001](12-front-implementation-issues/FRONT-TODO-001-pingan-query-handle-integration.md)，等待人工逐接口核对
+> [平安查询接入待办](13-front后续待办.md)，等待人工逐接口核对
 
 ## 1. 范围和固定方法
 

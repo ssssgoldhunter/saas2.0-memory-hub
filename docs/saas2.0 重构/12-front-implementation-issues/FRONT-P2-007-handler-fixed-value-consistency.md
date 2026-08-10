@@ -36,7 +36,7 @@
   提现类型/手续费承担方，均已改用 `CiticTransactionHandle` 本地带语义常量；
 - 平安转账/消费、鉴权转账、授权码重发和提现的固定 functionFlag/tranType/交易网/证件类型值，均已
   改用 `PingAnTransactionHandle` 本地带语义常量；平安查询草稿中的固定值保留在
-  `PingAnQueryHandle` 本地并继续受 `FRONT-TODO-001` 约束；
+  `PingAnQueryHandle` 本地并继续受 `TODO-001` 约束；
 - 已删除 common-core 中上述确认无其他调用方的公共 value 常量；协议字段 key 和业务方选择的
   `dealType` 等枚举值保持不变；
 - 实际发送值未改变，用户已确认关闭。
@@ -46,7 +46,7 @@
 1. 对所有迁移项先检查全仓引用，只删除已由具体 Handler 等值接管且无其他调用方的公共 value。
 2. 保留所有协议字段 key；没有修改 `specialData/accountSpecialData` 的输入 key、响应 key 或实际银行报文值。
 3. 同步更新 `05-front代码开发约束.md`、`06-transfer-consume字段契约.md` 和历史交接说明中的常量职责。
-4. 未启用或补写平安查询能力；其草稿代码仍由 `FRONT-TODO-001` 管理。
+4. 未启用或补写平安查询能力；其草稿代码仍由 `TODO-001` 管理。
 
 ## 关闭记录（2026-08-09）
 
