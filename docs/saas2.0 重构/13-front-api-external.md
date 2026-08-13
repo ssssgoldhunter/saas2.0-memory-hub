@@ -48,12 +48,13 @@ Front 是 SaaS 2.0 的多银行渠道支付适配层，对内部业务系统提�
 | `storeId` | String | 否 | 门店 ID | `"20001"` |
 | `platformCode` | String | 是 | 银行编码，`zxegj` 或 `pajzb` | `"zxegj"` |
 | `clientId` | String | 否 | 客户端 ID（自动注入） | `"web"` |
-| `dataSourceId` | String | 否 | 数据源标识（自动注入） | `"2"` |
+| `dataSourceId` | String | 是 | 数据源标识，由请求方在 baseData 中传入 | `"2"` |
 
 | 注意：
 | - `tenantId` / `clientId` / `platformCode` / `dataSourceId` 四个参数由 Feign 拦截器自动传递，
 |   业务系统只需在请求头或 Feign 配置中正确设置；
-| - 请求体中的 `baseData.tenantId` / `baseData.platformCode` 可不传，由 Front 自动注入。
+| - 请求体中的 `baseData.tenantId` / `baseData.platformCode` / `baseData.dataSourceId` 必须由请求方传入，
+|   `clientId` 由 Feign 拦截器自动注入，可不传。
 
 ### 2.2 公共交易业务字段
 
