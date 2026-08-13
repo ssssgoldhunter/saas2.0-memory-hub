@@ -640,7 +640,8 @@ CREATE TABLE `front_citic_platform_pay_transaction` (
   `pay_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '付款方业务门店 ID',
   `rec_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '收款方业务门店编码',
   `rec_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '收款方业务门店 ID',
-`pay_account_id` VARCHAR(100) DEFAULT NULL COMMENT '付款方电子账户号（原始值，未加密）',
+`rec_account_id` VARCHAR(100) DEFAULT NULL COMMENT '收款方电子账户号（平台付款时用户是收款方）（原始值，未加密）',
+  `rec_name` VARCHAR(200) DEFAULT NULL COMMENT '收款方电子账户户名',
   `amount`                            BIGINT        NOT NULL                COMMENT '平台付款金额，单位为人民币分',
   `fee`                               BIGINT        NOT NULL DEFAULT 0      COMMENT '平台付款手续费，单位为人民币分',
   `currency`                          VARCHAR(20)   NOT NULL DEFAULT 'CNY'  COMMENT '币种',
@@ -700,7 +701,8 @@ CREATE TABLE `front_citic_platform_receive_transaction` (
   `pay_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '付款方业务门店 ID',
   `rec_store_no`                      VARCHAR(100)  DEFAULT NULL            COMMENT '收款方业务门店编码',
   `rec_store_id`                      VARCHAR(100)  DEFAULT NULL            COMMENT '收款方业务门店 ID',
-`rec_account_id` VARCHAR(100) DEFAULT NULL COMMENT '收款方电子账户号（原始值，未加密）',
+`pay_account_id` VARCHAR(100) DEFAULT NULL COMMENT '付款方电子账户号（平台收款时用户是付款方）（原始值，未加密）',
+  `pay_name` VARCHAR(200) DEFAULT NULL COMMENT '付款方电子账户户名',
   `amount`                            BIGINT        NOT NULL                COMMENT '平台收款金额，单位为人民币分',
   `fee`                               BIGINT        NOT NULL DEFAULT 0      COMMENT '平台收款手续费，单位为人民币分',
   `currency`                          VARCHAR(20)   NOT NULL DEFAULT 'CNY'  COMMENT '币种',
@@ -752,10 +754,10 @@ CREATE TABLE `front_citic_platform_receive_transaction` (
 | 6 | `front_pingan_refund_transaction` | 71 | 2 | 10 | 平安退款 |
 | 7 | `front_citic_withdraw_transaction` | 62 | 2 | 8 | 中信提现 |
 | 8 | `front_pingan_withdraw_transaction` | 63 | 2 | 8 | 平安提现 |
-| 9 | `front_citic_platform_pay_transaction` | 58 | 2 | 8 | 中信平台付款 |
-| 10 | `front_citic_platform_receive_transaction` | 58 | 2 | 8 | 中信平台收款 |
+| 9 | `front_citic_platform_pay_transaction` | 59 | 2 | 8 | 中信平台付款 |
+| 10 | `front_citic_platform_receive_transaction` | 59 | 2 | 8 | 中信平台收款 |
 
-退款表（5、6）物理上比普通交易表多 7 个 `original_*` 字段 + 2 个原交易索引；其中中信退款当前仅使用 `original_biz_order_no/original_biz_sub_order_no`，其他 5 列为可空兼容列，Handle 不读写。转账/消费表（1-4）比平台表多 1 个 `refunded_amount` 字段。除平台收付款表（9、10）外，其余 8 张表均含银行账户标识字段（v4 新增）：中信转账/消费/退款各 4 个（`pay_account_id`/`pay_name`/`rec_account_id`/`rec_name`），中信提现 4 个（`withdraw_account_id`/`withdraw_account_name`/`bank_card_no`/`bank_card_holder_name`）；平安对应表各多 1～2 个 `*_member_id`（转账/消费/退款 +6、提现 +5）。所有表均含 `create_by`/`create_time`/`update_by`/`update_time` 4 个审计字段（对应 Entity 父类 BaseEntity，MyBatis-Plus 自动填充）。
+退款表（5、6）物理上比普通交易表多 7 个 `original_*` 字段 + 2 个原交易索引；其中中信退款当前仅使用 `original_biz_order_no/original_biz_sub_order_no`，其他 5 列为可空兼容列，Handle 不读写。转账/消费表（1-4）比平台表多 1 个 `refunded_amount` 字段。所有表均含银行账户标识字段（v4 新增）：中信转账/消费/退款各 4 个（`pay_account_id`/`pay_name`/`rec_account_id`/`rec_name`），中信平台付款 2 个（`rec_account_id`/`rec_name`），中信平台收款 2 个（`pay_account_id`/`pay_name`），中信提现 4 个（`withdraw_account_id`/`withdraw_account_name`/`bank_card_no`/`bank_card_holder_name`）；平安对应表各多 1～2 个 `*_member_id`（转账/消费/退款 +6、提现 +5）。所有表均含 `create_by`/`create_time`/`update_by`/`update_time` 4 个审计字段（对应 Entity 父类 BaseEntity，MyBatis-Plus 自动填充）。
 
 ---
 
