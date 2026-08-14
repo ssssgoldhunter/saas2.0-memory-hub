@@ -259,9 +259,54 @@ com.chinaums.common.core.constant.front
 业务系统可依赖这些常量组装 specialData，但银行原始字段只能由 Handle 使用。禁止直接提交
 `TRANS_DATE/PAGE/TRANS_TYPE/ORI_USER_SSN/acctNo` 等银行字段。
 
+## 8.1 中信账户余额查询（35/36/46，2026-08-14 核对）
+
+接口：`POST /cwap/account/send/query-acct-info`，`chnlNo=0010`。
+
+账户范围 → bizFunc：
+
+| Front accountScope | bizFunc | 语义 | registerAttr |
+|---|---|---|---|
+| `PLATFORM_FUNDS_ACCOUNT` | 35 | 交易资金账户余额 | 不要求 |
+| `USER_SUB_ACCOUNT` | 46 | 用户余额 | **必填** |
+| `FUNCTIONAL_ACCOUNT` | 36 | 公共登记簿余额 | **必填** |
+
+`specialData`：
+
+| key | 必填 | 说明 |
+|---|---|---|
+| `acctNo` | 是 | 用户/账户编号，Handle 加密后映射顶层 `acctNo` |
+| `registerAttr` | 46/36 协议必填 | 登记簿类型：`00` 公共计息收费、`12` 自有资金、`13` 担保、`17` 待结算手续费、`14` 用户登记簿（lsym UAT 实测有效，Word 枚举未列）、`TA` 交易资金账户、`RO` 平台剩余透支额度 |
+
+> 协议必填但 **front 不强制校验**（2026-08-14 用户确认）：`registerAttr` 缺失时直接透传给银行，
+> 由银行返回 `D5951105 请求参数校验失败`。
+
+响应金额单位（Word v4.7 + lsym UAT 实测）：
+
+| bizFunc | 字段 | 单位 |
+|---|---|---|
+| 35 | `PRE_AMOUNT`（上一日余额） | 分 |
+| 36 | `balance` | 分 |
+| 46 | `balance` / `withdrawAmt` / `preAmount` | 元（Handle 统一元转分） |
+
+46 成功响应实测（lsym UAT 2026-08-14）：
+
+```json
+{"sysRespCode":"00000","withdrawAmt":699690.17,"preAmount":699690.17,
+ "balance":699690.17,"remark1":0,"remark3":"699690.17|0.00|0","errCode":"D5000000","errInfo":"success"}
+```
+
+注意：46 查询的 `acctNo`（用户编号）必须属于请求 `mchntMbrId`（商户编号），否则返回
+`P0030 用户编号需与商户编号一致`；用户编号不存在返回 `JU005 用户编号不存在`。
+
+常量：`CiticAccountQueryContractKeys`（`RESPONSE_BALANCE/PRE_AMOUNT/WITHDRAW_AMOUNT/FROZEN_BALANCE/
+FUNCTIONAL_ACCOUNT_TYPE`）。
+
 ## 9. 当前实现状态和 TODO
 
 - 中信 74/24/25 的路径、bizFunc、chnlNo、specialData 白名单和单日规则已确认；
+- 中信 35/36/46 账户余额查询已按 Word v4.7 + lsym UAT 实测核对：46/36 的
+  `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
 - 中信 24/25 当前只做单日分页，不支持跨日；
 - 平安账户状态、账户余额、交易状态、平台明细、交易明细全部先标

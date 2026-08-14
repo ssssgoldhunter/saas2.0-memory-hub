@@ -58,6 +58,27 @@
 `00` 和 `04` 保留历史交接、设计过程与目标说明，不再承担当前完成状态。凡是其中出现的“已实现/未实现”与
 当前代码或 Issue 清单冲突，一律以当前代码、本文、05 和 12 为准。
 
+## 2.1 代码扫描优先使用 CodeGraph（2026-08-14 约定）
+
+工作区已安装 CodeGraph，索引覆盖整个 `IdeaProjects_saas_dep`（含代码仓库与记忆体）。
+任何涉及**定位符号、查调用链、评估改动影响面、浏览文件结构**的扫描，必须优先使用 CodeGraph CLI
+（与 Cursor 中 codegraph MCP 工具输出一致），再配合 read/grep 看细节：
+
+```bash
+codegraph query <符号关键词>   # 搜索符号（同 codegraph_search）
+codegraph node <符号>          # 符号源码 + 位置 + 签名（同 codegraph_node）
+codegraph explore <查询>       # 相关符号源码 + 调用路径（同 codegraph_explore）
+codegraph callers <符号>       # 查找调用者
+codegraph callees <符号>       # 查找被调用者
+codegraph impact <符号>        # 改动影响面分析
+codegraph files                # 项目文件结构
+codegraph status               # 索引状态
+```
+
+- 索引目录：`IdeaProjects_saas_dep/.codegraph`（SQLite，daemon 自动同步变更）；
+- 命令在工作区根目录执行；AI 会话若未暴露 MCP 工具，CLI 是等价通道；
+- 底层直查：`sqlite3 .codegraph/codegraph.db`（nodes/edges/files 表，跨工程定位比 grep 精准）。
+
 ## 3. 必读顺序
 
 1. [05-front代码开发约束](05-front代码开发约束.md)：编码前必须完整阅读，属于强制约束。
@@ -127,8 +148,8 @@
 - 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
   `TableDataInfo<TransactionDetailItem>`，禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
-- `FrontExceptionHandler` 和敏感字段脱敏日志工具；交易链路执行完整日志矩阵，查询链路只强制钱包真正发送前
-  输出完整脱敏请求 JSON，查询日志不要求 `capability` 或交易型 metadata；
+- `FrontExceptionHandler` 和结构化日志工具；交易链路执行完整日志矩阵，查询链路只强制钱包真正发送前
+  输出完整请求 JSON，查询日志不要求 `capability` 或交易型 metadata；
 - LiteFlow 框架已落地：7 个公共节点（`frontRequestValidate`/`frontTransactionRoute`/
   `frontQueryRoute`/`bankHandleContextPrepare`/`frontTransactionDispatch`/`frontQueryDispatch`/
   `frontResponseNormalize`）+ 13 条链（8 交易 + 5 查询）；公共 `frontIdempotencyCheck` 已删除，
@@ -238,9 +259,10 @@ AbstractBankHandle.prepareContext
 - 每张渠道交易表必须保存业务主/子记录关联字段、业务及银行所需明确字段和
   `reserve1/reserve2/reserve3`；不保存报文快照；
 - 渠道表允许保存本系统内部使用的账户、会员、姓名、卡号等原始值，本期不要求数据库字段加密；
-  但仍禁止在日志、异常消息和普通接口响应中输出这些敏感值；
+  日志允许明文输出这些值（用户 2026-08-14 确认取消日志敏感值掩码），但普通接口响应仍按各自契约
+  不输出敏感值；
 - 本阶段信任边界是内部系统，ShardingSphere 数据源连接配置的加密和安全加固不作为本期开发、验收项；
-  该豁免不影响银行协议要求的签名/加密，也不放宽日志安全要求；
+  该豁免不影响银行协议要求的签名/加密；日志明文策略以用户 2026-08-14 确认为准；
 - `baseData` 只保存内部业务系统公共数据；银行侧账户、会员、姓名、卡号等身份类动态数据均放入
   请求 `specialData`，由具体银行 Handle 按常量白名单逐字段映射；
 - 重复交易校验固定使用当前银行业务表内的
@@ -265,9 +287,9 @@ AbstractBankHandle.prepareContext
 - 只有 Front 业务成功时顶层 `R.code=200`；银行业务失败时顶层也必须返回失败码，并在 data 内保留
   统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
 - 交易链路按 05 §8 记录 API、Handle、报文组装和钱包访问日志；查询链路只强制钱包真正发送前输出
-  带银行编码和实际接口名的完整脱敏请求 JSON，不要求 `capability` 或交易型 metadata；
-- 完整 JSON 保留全部字段和层级，但密钥、账户配置、账号、卡号、手机号、证件号、姓名和验证码等
-  敏感字段只允许输出脱敏值；`Authorization`、签名头和完整银行 URL 不进入报文日志；
+  带银行编码和实际接口名的完整请求 JSON，不要求 `capability` 或交易型 metadata；
+- 完整 JSON 保留全部字段和层级，字段值按明文输出（用户 2026-08-14 确认取消日志敏感值掩码）；
+  `Authorization`、签名头和完整银行 URL 不进入报文日志；
 - 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
 
 ## 7. 后续 AI 的实现单位

@@ -701,8 +701,8 @@ failure
 - 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等账户配置字段；
 - 不得传密钥、私钥、完整银行配置；
-- API、Handle 和钱包调用日志必须打印字段及层级完整的 JSON；`specialData` 中的敏感字段值必须先脱敏，
-  不得以“禁止完整打印”为由省略非敏感字段或只记录摘要。
+- API、Handle 和钱包调用日志必须打印字段及层级完整的 JSON；`specialData` 字段值按明文输出
+  （2026-08-14 用户确认取消日志敏感值掩码），不得以“禁止完整打印”为由省略非敏感字段或只记录摘要。
 
 **常量类命名规范**：
 - Java 变量名用 `PAY_`/`REC_` 前缀（付款 PAY_/收款 REC_），如 `PAY_ACCOUNT_NO`/`REC_ACCOUNT_NO`/`PAY_NAME`/`REC_NAME`；
@@ -1065,7 +1065,7 @@ Front 交易链路日志必须是结构化 JSON。每个阶段是独立日志点
 
 查询链路使用简化日志口径：不要求 `capability`，不要求 API 查询入口额外提取交易型业务定位字段，
 也不复制交易链路的 `bank_request_assembled` 日志。查询渠道侧唯一强制的请求报文日志是钱包 HTTP Client
-真正发送前的 `wallet_request_sending`，必须包含银行编码、实际钱包接口名和字段层级完整、完成脱敏的最终
+真正发送前的 `wallet_request_sending`，必须包含银行编码、实际钱包接口名和字段层级完整的最终
 银行请求 JSON。禁止为查询日志使用反射或字段猜测；已有框架通用 API 访问/失败日志可以保留。
 
 上述交易 API、Handle、数据组装和钱包日志必须从请求 `baseData` 提取并以独立 JSON 字段携带以下定位数据；
@@ -1083,12 +1083,13 @@ Front 交易链路日志必须是结构化 JSON。每个阶段是独立日志点
 完整 JSON 规则：
 
 - “完整”指保留对象的全部业务字段和原始层级，不得在业务代码中主动截断、删字段或降级为摘要；
-- 普通对象应序列化为 JSON 后记录；对象较大时允许转成完成脱敏的 `JSONObject` 直接交给日志工具输出；
+- 普通对象应序列化为 JSON 后记录；对象较大时允许转成 `JSONObject` 直接交给日志工具输出；
 - 每条业务日志自身必须是合法 JSON，并明确包含 `event`、`methodName`、定位字段和 `payload`；
 - API 入口必须打印完整 `FrontRequest`，包括完整 `baseData` 和完整 `specialData` 结构；
 - Handle 开始日志不得包含完整 `accountConfig/accountSpecialData`，银行请求组装完成日志以最终银行报文为准；
-- 完整 JSON 必须保留全部字段和层级，但账号、姓名、银行卡、手机号、证件号、验证码、短信指令号、
-  密钥、签名等敏感字段只能输出脱敏值。完整打印不等于允许输出敏感明文。
+- 完整 JSON 必须保留全部字段和层级，账号、姓名、银行卡、手机号、证件号、验证码等出现在报文中的
+  字段值按明文输出（2026-08-14 用户确认取消日志敏感值掩码）；`appKey`、签名头、`Authorization` 等
+  调用控制值不进入报文日志。
 
 其他必须记录的信息：
 
@@ -1102,14 +1103,13 @@ Front 交易链路日志必须是结构化 JSON。每个阶段是独立日志点
 
 禁止记录：
 
-- 未脱敏的完整 `specialData`；
 - 完整 `accountSpecialData`；
 - 租户完整银行配置；
-- 密钥、私钥、签名原文；
-- 完整卡号、手机号、证件号、短信验证码；
-- 平安短信指令号 `smsIdx/messageOrderNo`；
-- 未脱敏的银行请求和响应报文；
-- `Authorization`、签名头、`appKey`、私钥或完整银行 URL。
+- `appKey`、私钥、签名原文（调用控制值，不进入报文日志）；
+- `Authorization`、签名头或完整银行 URL。
+
+> 2026-08-14 用户确认：取消日志敏感值掩码，请求/响应报文中的账号、卡号、姓名、手机号、证件号、
+> 验证码等业务字段值允许明文输出到日志；上述“禁止记录”仅限调用控制值与配置对象。
 
 日志异常级别：
 
@@ -1189,7 +1189,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 4. 在支持该业务的银行下增加唯一能力 Handler，并声明 `bankCode + capability`；不支持的银行不注册该键；
 5. 依赖对应领域 Registry 的自动构造器注册，不修改中央 `switch`、Router 分类判断或能力状态表；
 6. 增加 Front 错误映射；
-7. 增加全链路日志和脱敏；
+7. 增加全链路结构化日志（2026-08-14 起字段值明文，无掩码）；
 8. 只有用户明确要求时才增加 API、Registry、Handler、异常和序列化测试或执行编译；
 9. 更新能力矩阵、方法映射和本文档相关章节。
 
@@ -1411,12 +1411,12 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - [ ] 交易钱包 Client 存在 `wallet_request_sending`、`wallet_response_received/wallet_request_failed` 独立日志点；
 - [ ] 交易 API、Handle、组装和钱包日志均携带 `bizOrderNo/bizSubOrderNo/tenantId/platformCode/dataSourceId`
       以及实际方法名、银行编码；无值时保留 key 并记录 `null`；
-- [ ] 查询钱包 Client 在真正发送前记录一次完整脱敏请求 JSON；Query Handle 不重复打印同一报文，
+- [ ] 查询钱包 Client 在真正发送前记录一次完整请求 JSON；Query Handle 不重复打印同一报文，
       不通过反射采集 metadata，不要求 `capability` 或交易型定位字段；
-- [ ] 请求、组装报文和响应日志保留全部业务字段与层级；大对象可使用已脱敏 `JSONObject` 直接输出，
+- [ ] 请求、组装报文和响应日志保留全部业务字段与层级；大对象可使用 `JSONObject` 直接输出，
       不主动截断或只打印摘要；
-- [ ] 日志不输出未脱敏的 `specialData`、银行报文、账户配置、账号、姓名、卡号、手机号、验证码、密钥或签名；
-      Handle 开始日志不打印完整 `accountConfig/accountSpecialData`。
+- [ ] 日志字段值按明文输出（2026-08-14 用户确认取消掩码）；`appKey`、签名头、`Authorization`、
+      完整银行 URL 不进入日志；Handle 开始日志不打印完整 `accountConfig/accountSpecialData`。
 
 ### K. DDL 变更同步（见 §10.5）
 

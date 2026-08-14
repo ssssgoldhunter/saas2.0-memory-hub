@@ -202,6 +202,51 @@ catering-front (实际业务服务)
 - `TenantTestProperties.java`：`@ConfigurationProperties` 绑定 YAML 测试数据
 - `CateringWebTestApplication.java`：入口，`@EnableFeignClients` 扫描 `catering-api-front`
 
+### 7.1 业务失败响应的透出（2026-08-14 修复）
+
+Feign 调用 `catering-front` 时，若 front 正常返回但业务失败（HTTP 200 + `R.code != 200`，
+如银行拒绝交易），公共 `FeignJsonDecoder` 会按设计把该响应转为 `ServiceException`，
+Feign 框架再包装为 `DecodeException` 抛出。
+
+`FrontTestController.callFeign/callFeignTable` 捕获 `FeignException`，沿 cause 链提取
+`ServiceException` 的真实消息（如"银行拒绝交易"）返回给浏览器 UI：
+
+- `R` 类型接口：`R.fail(真实消息)`；
+- `TableDataInfo` 分页接口：`code=500 + msg=真实消息` 的错误对象。
+
+不捕获时异常会落到公共 `GlobalExceptionHandler` 的 `RuntimeException` 兜底分支，
+被吞成 `发生未知异常，请联系管理员`，丢失真实业务失败原因，本修复即为解决该问题。
+
+### 7.2 结构化调用日志（2026-08-14 升级）
+
+web-test 后端调用日志由 `[test] >>>/<<<` 文本样式升级为与 catering-front 交易链路一致的结构化
+event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），覆盖全部 13 个
+测试接口及 `/tenants`。每条日志是合法单行 JSON：
+
+- `test_context_prepared`：RequestContext 装配完成（tenantId/platformCode/dataSourceId）；
+- `test_request_sending`：Feign 调用发送前，payload=完整请求体；
+- `test_response_received`：调用成功返回，payload=完整响应体，带 `elapsedMs`；
+- `test_request_failed`：远程失败，payload=`{exceptionType,message}`，带 `elapsedMs`，保留完整堆栈；
+- `test_tenants_loaded`：租户列表加载。
+
+同一次调用三条事件日志共用同一 `traceId`（`test_` 前缀 + UUID），metadata 携带
+`tenantId/platformCode/dataSourceId/storeId` 定位字段；字段值按明文输出（与 front 日志口径一致，
+2026-08-14 用户确认无掩码）。
+
+### 7.3 账户状态查询缺少 acctNo 的修复（2026-08-14）
+
+`queryAccountStatus`（中信 2058 查询用户状态）协议要求 `specialData.acctNo`（用户编号）必填，
+但 web-test 的 acctStatus Tab 此前 `specialData` 恒为空，导致 front 返回
+`F100001 specialData.acctNo不能为空`。修复分两层：
+
+1. **前端**：`index.html` acctStatus Tab 新增 `field-acctStatus-acctNo` 输入框（账户选择联动填充）；
+   `app.js buildQueryBody` acctStatus 分支改为 `specialData = { acctNo: ... }`；说明文字同步更正。
+2. **后端自动补全**：`FrontTestController.setupContext` 在请求 `specialData.acctNo` 缺失时，
+   从 `application.yml` 租户配置取**第一个账户**的 `accountNo` 自动补全（用户已选账户时不做覆盖），
+   与 `platformCode/dataSourceId` 的补全逻辑一致。
+
+其余查询 Tab（acctBalance/transStatus/transDetail）acctNo 输入与 specialData 填充已齐备，未改动。
+
 ## 8. 维护说明
 
 ### 8.1 新增测试租户

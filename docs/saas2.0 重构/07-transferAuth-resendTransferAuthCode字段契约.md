@@ -353,8 +353,9 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 3. 逐字段组装钱包基础字段和 `reserve`，禁止 `putAll`；
 4. `transSsn/transTime` 每次由平安 Handle 生成，`bizFunc/chnlNo/functionFlag/tranType` 使用常量；
 5. 渠道流水保存能力、业务请求号、业务订单、明确账户字段、`frontSsn/queryId`、原始响应码和归一化状态；
-6. 验证码、短信指令号、手机号、账户号、户名、密钥及完整 JSON 不得写日志；
-7. API、Handler、报文组装和钱包调用前后均记录结构完整且完成脱敏的 JSON，并携带 `tenantId`、
+6. 验证码、短信指令号、手机号、账户号、户名等字段值按明文输出到日志（2026-08-14 用户确认取消
+   日志敏感值掩码）；`appKey`、签名头和完整银行 URL 不进入日志；
+7. API、Handler、报文组装和钱包调用前后均记录结构完整的 JSON，并携带 `tenantId`、
    `storeId`、`bankCode`、`capability`、`bizRequestNo`、`bizOrderNo`、`bizSubOrderNo`、`platformCode`、
    `dataSourceId`、`frontSsn`、`frontRespCode`、`elapsedMs` 等定位字段；
 8. 超时或无法确认银行是否受理时返回 `UNKNOWN/F400002`，资金交易不得盲目重试；
