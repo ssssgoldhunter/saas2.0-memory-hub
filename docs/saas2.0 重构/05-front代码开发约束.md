@@ -528,43 +528,36 @@ lsym 该模块依赖的原生 mapstruct 坐标（`org.mapstruct:mapstruct` + `ma
 
 catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用
 **ShardingSphere-JDBC STANDARD 模式**（不是 Hint，不是 dynamic-datasource），由 SQL 中的
-分片键 `tenant_id` 自动路由。
+分片键 `data_source_id` 自动路由。
 
-- **分片键**：`tenant_id`（每条 SQL 自带，不需要额外字段或 Hint）；
+- **分片键**：`data_source_id`（每条渠道流水 SQL 自带，由业务请求方在 `baseData.dataSourceId`
+  传入，经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到 Entity 的 `data_source_id` 列）；
 - **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
-  1. 从 SQL 的 `tenant_id` 值拿到租户标识；
-  2. 调 `RemoteConfigServiceClient.getConfigValue("tenant_base_config")` 查配置中心
-     （通过 `TenantHelper.dynamic` 切租户上下文），返回 JSON，解析取 `data_source_id` 字段
-     获取数据源编号（如 "2"）；
-  3. `formatDataSourceName("2")` → `"ds_2"`，返回给 ShardingSphere 路由；
-- **配置位置**：`resources/shardingsphere-config.yaml`，
-  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml`；
-- **新增库**：在 `shardingsphere-config.yaml` 加 `ds_3` 数据源 + 给租户配置
-  `tenant_base_config` 的 JSON 里 `data_source_id=3`，重新发布即可，不改代码；
-- **配置前提**：`tenant_base_config` 是租户上线必备配置，正常调用链不允许缺失；
-- **失败策略**：即使按部署规范不应缺失，只要运行时发生配置缺失、JSON 解析失败、`data_source_id` 缺失或计算出的
-  `ds_x` 不在可用数据源列表时必须立即抛出系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源
-  或广播到其他租户数据库；
+  1. 从 SQL 的 `data_source_id` 值拿到数据源编号（如 `"2"`）；
+  2. `formatDataSourceName("2")` → `"ds_2"`，返回给 ShardingSphere 路由；
+  3. 算法**不查配置中心、不做远程查询**，仅校验值存在且 `ds_x` 在可用数据源列表中；
+- **配置位置**：`resources/shardingsphere-config-${profile}.yaml`（dev/uat/prod），
+  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config-${spring.profiles.active:dev}.yaml`；
+- **新增库**：在 `shardingsphere-config-*.yaml` 加 `ds_3` 数据源，业务请求方传 `data_source_id=3`
+  即可路由到新库，不改代码；
+- **失败策略**：`data_source_id` 为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
+  系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源或广播到其他租户数据库；
 - **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
-  SQL 的 `tenant_id` 自动触发分片路由；
+  SQL 的 `data_source_id` 自动触发分片路由；
 - **不使用 dynamic-datasource**（`@DS` / `DynamicDataSourceContextHolder`）和 Hint
   （`HintManager`）；
-- **`data_source_id` 列的作用**：`data_source_id` 会存入渠道流水表的 `data_source_id` 列
-  （VARCHAR(30) NOT NULL），仅作实例标识记录，方便跨库排查；**不参与 ShardingSphere 路由决策**
-  （路由仍按 tenant_id 由 `TenantDataSourceShardingAlgorithm` 算法决定）。Handle 在 INSERT
-  渠道流水时通过 `data.getDataSourceId()` 落库。
+- **`tenant_id` 的作用**：`tenant_id` 仍是每条记录的租户标识（多租户隔离、MySQL 分区键之一），
+  但**不作为分库路由键**——分库由 `data_source_id` 决定。
 
 涉及类：
 
 | 类 | 模块 | 职责 |
 |---|---|---|
-| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法（查配置中心 → 拼 ds_x） |
-| `ShardingAlgorithmInjector` | catering-front `sharding` | 启动时注入 `RemoteConfigServiceClient`（算法类不走 Spring Bean） |
-| `TenantConfigKeys` | catering-common-core `catering.base.constant` | `tenant_base_config` 配置 key 常量（JSON，含 `data_source_id` 字段） |
+| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法（`data_source_id` 直接拼 `ds_x`，不查配置中心） |
 
-其他业务项目可直接 copy `TenantDataSourceShardingAlgorithm` 和 `ShardingAlgorithmInjector`
-使用，只需确保依赖 `catering-api-system`（RemoteConfigServiceClient）且配置中心有
-`tenant_base_config` 配置项（JSON 格式，分片算法解析 `data_source_id` 字段）。
+> 历史设计曾设想“分片键 `tenant_id` + 算法查配置中心 `tenant_base_config` 解析 `data_source_id`”，
+> 并配套 `ShardingAlgorithmInjector` 注入 `RemoteConfigServiceClient`；**当前代码未采用该方案**，
+> 直接以 `data_source_id` 为分片键，`ShardingAlgorithmInjector` 不存在，算法不依赖任何配置中心客户端。
 
 #### 3.10.2 分区：MySQL LINEAR KEY
 
@@ -1174,14 +1167,13 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）；
 - 不在 catering-front 使用 `dynamic-datasource`（`@DS` / `DynamicDataSourceContextHolder`）
   或 Hint（`HintManager`）做分库切换；分库固定用 ShardingSphere-JDBC STANDARD 模式，
-  分片键 `tenant_id`（见 §3.10.1）；
-- 不使用 `FrontDataSourceHelper`——已废弃，STANDARD 模式下 SQL 自带 `tenant_id` 自动路由，
+  分片键 `data_source_id`（见 §3.10.1）；
+- 不使用 `FrontDataSourceHelper`——已废弃，STANDARD 模式下 SQL 自带 `data_source_id` 自动路由，
   Handle 代码不需要任何数据源切换包裹；
 - 不在 Application Service 手动读 HTTP header——参数注入由 `catering-common-feign` 的
   `RequestContextInterceptor` + `BaseDataRequestBodyAdvice` 自动完成（见 §3.10.3）；
-- 渠道流水表的 `data_source_id` 列只做实例标识记录，不得用于分库路由决策——分库仍按
-  `tenant_id` 走 `TenantDataSourceShardingAlgorithm`；也不得在业务查询里用它做过滤条件
-  （用 tenant_id 代替）；
+- 分库路由键是 `data_source_id`（由业务请求方在 `baseData` 传入，回填到渠道流水 `data_source_id`
+  列）；`tenant_id` 是租户标识与 MySQL 分区键，不参与分库路由决策；
 - 10 张渠道流水表必须使用 `LINEAR KEY (tenant_id, store_id) PARTITIONS 30` 分区（见 §3.10.2）。
 
 ---
@@ -1308,7 +1300,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - [ ] header 与请求体识别字段冲突时明确失败，不得静默保留请求体值；
 - [ ] `RequestContext.afterCompletion` 调 `clear()` 清理 ThreadLocal；
 - [ ] Handle 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列；
-- [ ] `data_source_id` 只做实例标识记录，**不参与 ShardingSphere 路由决策**（路由按 tenant_id）。
+- [ ] 分库路由键是 `data_source_id`（由 `baseData.dataSourceId` 透传回填到渠道流水 `data_source_id` 列，见 §3.10.1）；`tenant_id` 是租户标识与分区键，不参与分库路由。
 
 ### B. 模块与依赖
 
@@ -1393,8 +1385,8 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 ### H. 分库与分区
 
-- [ ] ShardingSphere STANDARD 模式，分片键 `tenant_id`，算法 `TenantDataSourceShardingAlgorithm`；
-- [ ] 算法查配置中心 `tenant_base_config`（JSON），解析 `data_source_id` 字段拼 `ds_x`；
+- [ ] ShardingSphere STANDARD 模式，分片键 `data_source_id`，算法 `TenantDataSourceShardingAlgorithm`；
+- [ ] 算法直接把 `data_source_id` 值拼成 `ds_x`（不查配置中心，见 §3.10.1）；
 - [ ] 配置缺失、解析失败或目标 `ds_x` 不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
 - [ ] 本阶段不验收 `shardingsphere-config-{dev,uat,prod}.yaml` 的连接配置加密和安全加固；后续部署任务单独处理；
 - [ ] `FrontDataSourceHelper` 已废弃不存在，Handle 无数据源切换代码；

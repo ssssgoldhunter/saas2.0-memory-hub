@@ -142,11 +142,11 @@
 - Handle 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
   调银行 → `updateResponse`（UPDATE 状态/响应码）；中信退款不再查询原渠道表补字段，固定使用
   `originalBizOrderNo + originalBizSubOrderNo` 组装银行原交易定位字段；五个旧 `original_*` 列仅作为可空兼容列保留；
-- ShardingSphere-JDBC 分库：使用 STANDARD 模式，SQL 分片键固定为 `tenant_id`，
-  `TenantDataSourceShardingAlgorithm` 根据租户配置中的 `data_source_id` 选择 `ds_x`；
-  请求头和 `baseData.dataSourceId` 只用于上下文传递、日志和落库记录，不直接决定 SQL 路由；
-  租户数据源配置属于上线必备配置，正常情况下必须存在；若配置缺失、解析失败或目标数据源不存在，
-  必须立即失败，禁止默认进入 `ds_0` 或第一个数据源；
+- ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
+  `TenantDataSourceShardingAlgorithm` 直接把 `data_source_id` 的值拼成 `ds_x` 路由（不查配置中心）；
+  `data_source_id` 由业务请求方在 `baseData` 传入，请求头同名字段用于跨服务透传与落库记录；
+  若 `data_source_id` 缺失、为空或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
+  禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
 - 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→

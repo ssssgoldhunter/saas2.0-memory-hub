@@ -266,9 +266,7 @@ Feign 接口：`FrontTransactionApi`，服务名 `catering-front`，前缀 `/fro
 
 **baseData 类型：** `TransferAuthCodeBusinessData`（继承 `BaseTransactionBusinessData`）
 
-| baseData 额外字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `bankMobile` | String | 否 | 银行预留手机号（用于校验） |
+baseData 无额外字段（继承 `BaseTransactionBusinessData`）。
 
 **specialData 字段：**
 
@@ -386,14 +384,12 @@ Feign 接口：`FrontTransactionApi`，服务名 `catering-front`，前缀 `/fro
 | `bizOrderNo` | String | 是 | 业务主订单号 |
 | `bizSubOrderNo` | String | 否 | 业务子订单号 |
 
-**specialData 字段：**
+**specialData 字段：**（平台侧账号由商户自有资金登记簿隐式确定，只上送用户收款侧字段）
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `outAcctNo` | String | 是 | 平台付款账号 |
-| `inAcctNo` | String | 是 | 收款账号 |
-| `outAcctNm` | String | 是 | 平台付款账户名 |
-| `inAcctNm` | String | 是 | 收款账户名 |
+| `inAcctNo` | String | 是 | 收款账号（用户侧） |
+| `inAcctNm` | String | 是 | 收款账户名（用户侧） |
 | `dealType` | String | 是 | 交易类型 |
 | `fundTp` | String | 是 | 资金类型 |
 | `contractId` | String | 否 | 协议编号 |
@@ -555,14 +551,19 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 | `data.frontRespCode` | 说明 |
 |---|---|
 | `"200"` | 业务成功 |
-| `"F100001"` | 银行编码不支持 |
-| `"F100002"` | 能力不支持 |
-| `"F100003"` | 能力待接入 |
-| `"F200001"` | 租户银行配置缺失 |
-| `"F200002"` | 配置解析失败 |
+| `"F100001"` | 请求参数非法（参数校验失败） |
+| `"F100003"` | 租户银行配置不存在/未启用 |
+| `"F100004"` | 请求银行与租户配置不一致 |
+| `"F200001"` | 银行不支持 |
+| `"F200002"` | 当前银行不支持该能力 |
+| `"F200003"` | 适配器尚未接入（如平安查询） |
 | `"F300001"` | 交易已存在（重复交易） |
-| `"F400001"` | 银行业务拒绝（查看 `frontRespDesc`） |
-| `"F500001"` | 银行调用超时 |
+| `"F400001"` | 钱包通信失败（可确认未送达） |
+| `"F400002"` | 钱包结果未知，需查询确认 |
+| `"F400003"` | 钱包响应格式错误 |
+| `"F400004"` | 银行渠道拒绝（查看 `frontRespDesc`） |
+| `"F400005"` | 钱包平台层拒绝 |
+| `"F900001"` | Front 内部异常 |
 
 ---
 

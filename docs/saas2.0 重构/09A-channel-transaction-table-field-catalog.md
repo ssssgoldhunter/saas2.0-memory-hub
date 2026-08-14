@@ -677,31 +677,32 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
 | 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
 | 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 19 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方电子账户号（原始值，未加密） |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台付款金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台付款手续费，单位为人民币分 |
-| 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 24 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台付款协议业务编号 bizFunc |
-| 25 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 26 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 27 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台付款流水 |
-| 28 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 29 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 30 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 31 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 32 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 33 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 34 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台付款状态，仅供查询与审计 |
-| 35 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 36 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 37 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 38 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台付款状态 |
-| 39 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 40 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 41 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 42 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 43 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
+| 19 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方电子账户号（平台付款时用户是收款方）（原始值，未加密） |
+| 20 | `rec_name` | `VARCHAR(200)` | 是 | `NULL` | `—` | 收款方电子账户户名 |
+| 21 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台付款金额，单位为人民币分 |
+| 22 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台付款手续费，单位为人民币分 |
+| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 24 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 25 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台付款协议业务编号 bizFunc |
+| 26 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 27 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 28 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台付款流水 |
+| 29 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 30 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 31 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 32 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 33 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 34 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 35 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台付款状态，仅供查询与审计 |
+| 36 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 37 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 38 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 39 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台付款状态 |
+| 40 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 41 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 42 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 43 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 44 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
@@ -742,31 +743,32 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
 | 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
 | 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 19 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方电子账户号（原始值，未加密） |
-| 20 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台收款金额，单位为人民币分 |
-| 21 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台收款手续费，单位为人民币分 |
-| 22 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 23 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
-| 24 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台收款协议业务编号 bizFunc |
-| 25 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 26 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 27 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台收款流水 |
-| 28 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 29 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
-| 30 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 31 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 32 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
-| 33 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
-| 34 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台收款状态，仅供查询与审计 |
-| 35 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 36 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 37 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 38 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台收款状态 |
-| 39 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 40 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 41 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 42 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 43 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
+| 19 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方电子账户号（平台收款时用户是付款方）（原始值，未加密） |
+| 20 | `pay_name` | `VARCHAR(200)` | 是 | `NULL` | `—` | 付款方电子账户户名 |
+| 21 | `amount` | `BIGINT` | 否 | `—` | `—` | 平台收款金额，单位为人民币分 |
+| 22 | `fee` | `BIGINT` | 否 | `0` | `—` | 平台收款手续费，单位为人民币分 |
+| 23 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 24 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信协议渠道编号 chnlNo |
+| 25 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信平台收款协议业务编号 bizFunc |
+| 26 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 27 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 28 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等平台收款流水 |
+| 29 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
+| 30 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 31 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 32 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 33 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信业务层原始响应码 sysRespCode |
+| 34 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 中信业务层原始响应说明 sysRespDesc |
+| 35 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 中信原始平台收款状态，仅供查询与审计 |
+| 36 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 37 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 38 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 39 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化平台收款状态 |
+| 40 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 41 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 42 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 43 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 44 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 
