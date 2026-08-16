@@ -1,0 +1,7 @@
+# Obsidian 界面状态（每台机器不同，不同步）
+obsidian-brain/.obsidian/workspace.json
+obsidian-brain/.obsidian/workspace-mobile.json
+obsidian-brain/.trash/
+
+# macOS 系统文件
+.DS_Store

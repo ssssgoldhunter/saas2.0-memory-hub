@@ -162,6 +162,7 @@
 | SSH | lsym-memory-hub 用 `~/.ssh/lsym_memory_hub` 密钥 |
 | DSH-TUI | `@huiliyi37/dsh-tianshu-tui`（`~/.dsh/profiles/tui`），启动 `npx -y @deepseek-ai/dsh --profile tui` |
 | OH-DSH Desktop | `/Applications/Oh-DSH Desktop.app`（v0.1.6，desktop/web/tui 三端），启动器 `ohdsh`（`~/.local/bin/ohdsh`） |
+| 第二大脑同步 | 本仓库 `obsidian-brain/` 目录（private，Obsidian vault 跨机同步，见该目录 README） |
 
 ---
 
@@ -178,6 +179,7 @@
 | 交易快速参考 | lsym/mdl `memory-hub/docs/TRANSACTION_QUICK_REFERENCE.md` |
 | 权威设计文档 | lsym/mdl `memory-hub/docs/SUPPLY_CHAIN_DESIGN_V5.5.md` |
 | 框架结构 | lsym/mdl `memory-hub/architecture/FRAMEWORK_STRUCTURE.md` |
+| 第二大脑（Obsidian vault 同步） | `saas2.0-memory-hub/obsidian-brain/`（第二台电脑 clone 后直接作为 vault 打开） |
 | Codex 记忆 | `~/.codex/memories/`（插件维护，勿手改格式） |
 | Claude 计划 | `~/.claude/plans/` |
 
