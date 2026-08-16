@@ -16,8 +16,8 @@
 | 全局指令 | `~/.dsh/AGENTS.md`（= 工作区 `DSH.md` 副本） |
 | 默认模型 | `deepseek-v4-flash`（provider `deepseek-official`，effort high） |
 | 会话工作区 | `/Users/limeng/workspaces/IdeaProjects_saas_dep`（SaaS 2.0） |
-| 记忆库 | `saas2.0-memory-hub/`（git，GitHub 同步） |
-| 第二大脑 | Obsidian `~/ObsidianBrain`（仅本地，不随 git 同步） |
+| 记忆库 | `saas2.0-memory-hub/`（git，GitHub 同步，**private**） |
+| 第二大脑 | Obsidian `~/ObsidianBrain`（本机主 vault）；跨机同步副本 = 记忆库 `obsidian-brain/` 目录（随 git 同步，见该目录 README） |
 
 ---
 
@@ -196,6 +196,7 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
 |------|-------------------------------|------|
 | DSH 工作手册 | `DSH.md` | `~/.dsh/AGENTS.md`（DSH 全局，每会话加载） |
 | 行为准则 | `开发操作手册.md` | 项目记忆体 `docs/开发操作手册.md`（已在库内） |
+| 第二大脑（Obsidian vault） | 本仓库 `obsidian-brain/`（不在 agent-environment/ 内，在记忆库根） | Obsidian 直接打开该目录作为 vault（见 `obsidian-brain/README.md`） |
 
 ---
 
