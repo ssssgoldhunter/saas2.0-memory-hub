@@ -27,6 +27,16 @@
 | SaaS Front 入口 | `saas2.0-memory-hub/docs/saas2.0 重构/WIKI-START.md` | 多银行重构的强制入口（§6） |
 | UMS 记忆 | `IdeaProjects_saas_dep/UMS.md` | UMS 新增记忆（见 MEMORY.md §6） |
 
+### 分工具手册（由本手册派生的三份工具专用版）
+
+| 工具 | 文件 | 生效方式 |
+|------|------|----------|
+| **Codex** | `~/.codex/AGENTS.md` | Codex 全局自动读取 |
+| **Claude Code** | `~/.claude/CLAUDE.md` | Claude Code 全局自动读取 |
+| **DSH**（DeepSeek Harness） | 工作区根 `DSH.md` + `~/.dsh/AGENTS.md` | DSH 每次会话自动加载 `$DSH_HOME/AGENTS.md` |
+
+> 本 `WORK_MANUAL.md` 是三份文件的合并权威版；三份文件内容为对应工具裁剪版。修改规则时以本文件为准再同步到三份。
+
 ---
 
 ## 1. 核心编码准则（Karpathy 4 条，强制）
