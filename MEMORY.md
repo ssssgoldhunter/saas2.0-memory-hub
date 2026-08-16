@@ -160,6 +160,8 @@
 | Claude Code 模型 | 经 `open.bigmodel.cn/api/anthropic` 用 GLM：opus/sonnet→`glm-5.2[1M]`、haiku→`glm-4.5-air` |
 | 记忆库 GitHub | `github.com/ssssgoldhunter/{lsym,mdl,saas2.0}-memory-hub`（自动 push 同步） |
 | SSH | lsym-memory-hub 用 `~/.ssh/lsym_memory_hub` 密钥 |
+| DSH-TUI | `@huiliyi37/dsh-tianshu-tui`（`~/.dsh/profiles/tui`），启动 `npx -y @deepseek-ai/dsh --profile tui` |
+| OH-DSH Desktop | `/Applications/Oh-DSH Desktop.app`（v0.1.6，desktop/web/tui 三端），启动器 `ohdsh`（`~/.local/bin/ohdsh`） |
 
 ---
 
