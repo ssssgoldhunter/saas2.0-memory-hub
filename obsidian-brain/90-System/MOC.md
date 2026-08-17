@@ -19,7 +19,9 @@
 - mdl → `IdeaProjects_mdl_dep/mdl-memory-hub/llms.txt`
 
 ### 30-Areas（长期领域知识）
-- （按需新增：架构、金融渠道、Java、前端、运维…）
+- 金融渠道/
+  - [[specialData组装工具类模式]]（多银行渠道适配：标准结构超集 + 实例工厂 + 能力 check + 双层校验，2026-08-17）
+- （按需新增：架构、Java、前端、运维…）
 
 ### 40-Resources（参考资源）
 - （按需新增）
