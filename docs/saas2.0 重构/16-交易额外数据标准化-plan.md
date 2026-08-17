@@ -74,7 +74,7 @@
   （键走 FrontBankRequestConstants，新增 3 个常量）；bizFunc/chnlNo 配置死在 Handle，
   transSsn/laasSsn 为 Handle 生成能力，tenantId/mchntId 走账户配置。
 
-## 交易状态查询收盘状态（2026-08-18 凌晨，全部未提交）
+## 交易状态查询收盘状态（2026-08-18；代码已提交推送：b41d885e/da4e833c/3260241a/a58c33d8，仍未编译）
 
 - 统一请求最终形态：`QueryTransStatusRequest(context)` 实例构造，字段 capability/transactionDate/
   bizOrderNo/bizSubOrderNo/frontSsn/specialData（无 original 前缀、无 static）；
