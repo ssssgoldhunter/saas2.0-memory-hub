@@ -241,6 +241,10 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
   modlens 3.17.3 / vision-toolkit 0.1.7 / dsh-obsidian-assistant 等依赖；
 - **第二大脑应用**：Obsidian 1.13.7（universal dmg）已装 `/Applications/Obsidian.app`，
   vault = `~/ObsidianBrain`（已从记忆库 obsidian-brain/ 初始化）。
+- **插件加载错误修复（2026-08-17）**：Desktop 报
+  `Failed to load plugins ... dsh-client-ui-obsidian-memory ... loaded without registering`，
+  是 UI 插件 0.2.5 与 HARNESS 加载器不兼容；升级 `dsh-client-ui-obsidian-memory` 到 **0.3.1**
+  后清缓存重启解决。
 
 ---
 
