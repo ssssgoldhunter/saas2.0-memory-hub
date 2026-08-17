@@ -64,9 +64,19 @@
 4. web-test 两步冒烟通过；
 5. 输出执行报告：每 Phase 实际改动文件清单 + 自检结果，交用户复核。
 
-## catering-consume 侧（业务侧实施，不在本计划编译范围）
+## Phase C catering-consume 侧组装 check 组件（可与 Phase 1-3 并行启动，联调依赖 Phase 3 完成）
 
-按 spec §7 契约执行：flow 加组装 check 节点 → Feign 调 FrontAssembleApi → 校验注入交易请求 → 失败即终止不降级。由业务侧团队或后续单独任务领取，front 侧 Phase 1-7 完成即可联调。
+按 spec §7 组件设计执行：
+
+1. `consume/flow/component/base/platform/AbstractSpecialDataAssembleCheck`：模板方法（调
+   FrontAssembleApi → 校验 → 回填 slot → 失败终止）+ 两个抽象方法；注入 FrontAssembleApi Feign；
+2. 11 个子类：中信 6 + 平安 5，bean 名 `zxTransferAssembleCheck` 风格；`capability()` 返回子类常量；
+   `buildRequest` 首版允许 TODO 抛 BaseException("组装请求收集待实现") 占位；
+3. consume 与 fund 两个 `TransSlot` 各加 `assembledSpecialData` 字段（JSONObject，@Data 自动生成访问器）；
+4. 各交易链（transfer/consume/refund/withdraw/deduction）在组交易请求的组件之前引用对应 check
+   （银行渠道分支后，如 ConsumeTrans04 之前挂 paConsumeAssembleCheck）；
+5. catering-consume 当前被注释出 maven reactor（catering-modules/pom.xml），编译验证时单独
+   `cd catering-modules/catering-consume && mvn compile -DskipTests` 或临时恢复模块。
 
 ## 回滚策略
 

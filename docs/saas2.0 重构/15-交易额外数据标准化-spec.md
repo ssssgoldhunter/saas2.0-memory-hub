@@ -250,15 +250,36 @@ public class SpecialDataAssemblerRegistry {
 | BankRequestContext | 不加 assembledSpecialData |
 | 查询 5 能力 | 不涉及 |
 
-## 7. catering-consume 侧集成契约（业务侧实施）
+## 7. catering-consume 侧集成契约（2026-08-17 补充组件设计）
 
-1. 新增 LiteFlow 节点（组装 check）：位于组交易请求之前；Feign 调 `FrontAssembleApi.assembleSpecialData`；
-   校验返回 `R.code==200` 且 `specialData` 非空（平安退款除外，为空对象），将 `specialData` 原样放入
-   交易请求 `FrontRequest.specialData`；
-2. 失败处置：组装失败（参数缺失/组合不支持）直接终止业务链，错误码透出，**不得**降级为自行拼协议键；
-3. 组装结果不缓存跨请求复用（验证码/日期类字段时效性强），单笔交易单次组装；
-4. catering-consume 当前被注释出 maven reactor（catering-modules/pom.xml），实施时自行评估是否
-   恢复模块构建。
+组装 check 以**一系列 (银行 × capability) 组件**落地，放
+`consume/flow/component/base/platform/`（与 PlatformInfoCheck 并列；withdraw/deduction 所在的
+fund flow 与 consume 同属一个 Spring 应用，LiteFlow 按 bean 名引用，无包限制）：
+
+```java
+public abstract class AbstractSpecialDataAssembleCheck extends NodeComponent {
+    // 模板方法 process()：
+    // 1. AssembleSpecialDataRequest req = buildRequest(slot);          ← 变化段，子类实现
+    // 2. req.setCapability(capability());                              ← 子类常量
+    // 3. frontAssembleApi.assembleSpecialData(req)                     ← Feign 调 front 组装 API
+    //    platformCode/tenantId/clientId/dataSourceId 由 Feign 拦截器 + BaseDataRequestBodyAdvice
+    //    从请求上下文自动注入，子类不填
+    // 4. 校验：R.code==200 且 specialData 非 null（平安退款组装结果为空对象，豁免非空校验）
+    // 5. slot.setAssembledSpecialData(result.specialData)              ← 交易组件组 FrontRequest 时取用
+    // 6. 失败抛 BaseException 终止链，禁止降级为自行拼协议键
+    protected abstract FrontCapability capability();
+    protected abstract AssembleSpecialDataRequest buildRequest(/* 对应 slot */);
+}
+```
+
+- 子类 11 个（bean 名 `zxTransferAssembleCheck` 等）：中信 6（Transfer/Consume/Withdraw/Refund/
+  PlatformPay/PlatformReceive）+ 平安 5（Transfer/Consume/TransferAuth/AuthCodeResend/Withdraw）；
+- 平安 Refund 免 check：组装结果为空对象，交易组件直接带空 specialData；
+- `buildRequest` 允许暂 TODO（从 slot 收集 pay/rec/oriPay/oriRec/bankCard 的逻辑等账户体系定型），
+  但 `capability()` 与基类调用/校验/回填段必须实现；
+- `consume/flow/slot/TransSlot` 与 `fund/flow/slot/TransSlot` 各增加
+  `private JSONObject assembledSpecialData;`；
+- 组装结果单笔交易单次使用，不缓存跨请求复用（验证码/日期类字段时效性强）。
 
 ## 8. web-test 改造
 
