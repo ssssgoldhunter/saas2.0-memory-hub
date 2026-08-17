@@ -126,6 +126,11 @@
   4 参数自动注入（Feign → RequestContextInterceptor → BaseDataRequestBodyAdvice）、Handle 持久化三阶段
   （INSERT INIT → UPDATE SENDING → UPDATE RESPONSE）、重复交易校验
   （`tenantId + bizOrderNo + bizSubOrderNo`，命中返回「交易已存在」）。
+- specialData 组装工具类（2026-08-17 落地，15 号 spec 唯一事实来源）：`catering-api-front` 的
+  `FrontSpecialDataAssembler`——实例工具零 static、工厂分发（`BankSpecialDataAssembler` 接口 +
+  中信/平安独立组装类，(bank × capability) 12 能力映射，键全走 `*ContractKeys`）；标准账户结构
+  pay/rec/oriPay/oriRec + bankCard/auth（certNo/certType 通用预留不上送）；consume 侧 7 个能力
+  check 骨架（buildRequest 待账户体系 storeNo 定型补实）；web-test 交易 Tab 两步调用已改造。
 - 完成状态只以 `docs/saas2.0 重构/12-front-implementation-issues/` 为准（OPEN / FIXED_PENDING_REVIEW /
   CLOSED / DEFERRED）；平安 5 查询与退款边界为普通后续待办（`13-front后续待办.md`）。
 - 关键结论：中信退款真退款 `/refund + bizFunc=23`（参考 lsym UAT `lsym_20260625_limeng_refundTask`）；

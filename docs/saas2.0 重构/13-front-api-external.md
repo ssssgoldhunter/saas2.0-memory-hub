@@ -374,20 +374,19 @@ baseData 无额外字段（继承 `BaseTransactionBusinessData`）。
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `acctNo` | String | 是 | 提现账号 |
-| `outAcctId` | String | 是 | 提现账户 ID |
 | `cardNoEnc` | String | 是 | 银行卡号（加密） |
-| `nameEnc` | String | 是 | 持卡人姓名（加密） |
-| `WITH_ACCNAME` | String | 是 | 银行账户名称 |
+| `WITH_ACCNAME` | String | 是 | 银行账户户名（加密） |
 
 **平安 specialData 字段：**
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `acctNo` | String | 是 | 提现账号 |
-| `outAcctId` | String | 是 | 提现账户 ID |
-| `cardNoEnc` | String | 是 | 银行卡号（加密） |
-| `userNameEnc` | String | 是 | 用户名（加密） |
-| `certNo` | String | 是 | 证件号（加密） |
+| `acctNo` | String | 是 | 提现子账户号（加密） |
+| `outAcctId` | String | 是 | 提现会员编号（进 mchntMbrId） |
+| `cardNoEnc` | String | 是 | 绑定卡号（加密） |
+| `nameEnc` | String | 是 | 客户户名（加密） |
+| `userNameEnc` | String | 是 | 持卡人户名（加密） |
+| `certNo` | String | 否 | 证件号，选填：有值才加密为 `certNoEnc` 上送，不传不上送（提现为"不验证"模式 6033，当前非必填；标准结构中已预留，暂不组装上送） |
 
 ---
 

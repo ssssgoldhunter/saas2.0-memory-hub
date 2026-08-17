@@ -19,6 +19,9 @@
      package-private、非 Spring Bean），主类 `assemble()` → `bankAssembler()` 工厂按
      platformCode→BankCode 创建银行类、银行类内 switch capability，(bank × capability) 两级寻址；
      校验辅助方法降为包内可见供银行类复用。web-test/consume 调用方零影响（重编译即可）；
+   - 标准结构 AccountInfo 增加 `certNo`/`certType` **通用预留字段**（2026-08-17 用户确认：
+     平安场景可能需要、目前不组装上送；激活 = 对应银行组装器加"有则输出" + 15 号矩阵补行；
+     13 号 §4.6 提现 specialData 表已按 Handle 实际必填集修正——中信 3 键、平安 5 键 + certNo 选填）；
    - `AuthTransferBusinessData` 改名**暂缓**（涉及 front 服务 7 处，违反零改动，独立清理项）。
 
 2. **Phase 2 consume 侧组装 check 骨架（已完成，buildRequest 为 TODO 占位）**

@@ -299,7 +299,8 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 
 1. front 服务零改动（无新接口/新节点/新注册表；AuthTransferBusinessData 改名暂缓为独立清理项）；
 2. 查询类 5 能力不涉及；
-3. certNo / 门店→账户配置解析（二期，另行评审配置结构）；
+3. certNo/certType 组装上送**激活**（已进 AccountInfo 通用预留字段，需要时在对应银行组装器加
+   "有则输出"并补矩阵行）／门店→账户配置解析（二期，另行评审配置结构）；
 4. 平安退款查表字段补齐（TODO-002 范畴）；
 5. 组装结果缓存、工具类鉴权特殊化（本地调用，无此面）；
 6. 不新增 JUnit 测试（用户明确：不编译、不跑测试；验证以 web-test 人工两步调用为准）；
