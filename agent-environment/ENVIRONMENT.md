@@ -13,7 +13,7 @@
 | 桌面端 | Oh-DSH Desktop 0.1.6（Electron，数据目录 `~/.ohdsh`） |
 | DSH_HOME | `~/.ohdsh`（desktop profile：`profiles/desktop`） |
 | Web GUI | `http://127.0.0.1:3080`（`dsh web` 独立实例，用 `~/.dsh` 全局配置；桌面端自带实例端口随机） |
-| 全局指令 | `~/.dsh/AGENTS.md`（= 工作区 `DSH.md` 副本） |
+| 全局指令 | 桌面端 `~/.ohdsh/AGENTS.md`（= 工作区 `DSH.md` 副本，**2026-08-17 部署**）；web 端 `~/.dsh/AGENTS.md` |
 | 默认模型 | `deepseek-v4-flash`（provider `deepseek-official`，effort high） |
 | 会话工作区 | `/Users/limeng/workspaces/IdeaProjects_saas_dep`（SaaS 2.0） |
 | 记忆库 | `saas2.0-memory-hub/`（git，GitHub 同步，**private**） |
@@ -175,6 +175,7 @@ documents、spreadsheets、presentations、chrome、computer-use、pdf、templat
 - 用途：严格高级工程师模式（行为准则内置 persona）
 - 新电脑重建：复制本仓库 `agent-environment/presets/ssss-dsh/` 到 `~/.ohdsh/.agent-presets/ssss-dsh/`
 - 设为默认：settings 里 `agent-presets.default = ssss-dsh`
+  （2026-08-17 已写入 `~/.ohdsh/settings.yaml`；缺失时新会话回退到系统默认 `standard`）
 
 ---
 
