@@ -62,7 +62,8 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
    组装失败（缺必填/银行不支持该能力）直接提示并终止，不发交易
 5. **第二步**：确认弹窗中部展示组装出的协议键 specialData、下部展示完整交易报文，
    确认后发送交易请求（specialData 原样带入）
-6. 查询类 Tab 维持协议键直传（10 号契约），不走组装
+6. 查询类 Tab：**交易状态查询也走两步组装**（账户下拉→组装端点→{acctNo}/{mchntMbrId} 注入查询请求，
+   frontSsn 输入平安必填、capability/transactionDate 字段已去 original 前缀）；其余查询 Tab 暂协议键直传
 
 ### 4.2 租户与账户选择
 

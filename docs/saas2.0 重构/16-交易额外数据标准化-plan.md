@@ -74,6 +74,18 @@
   （键走 FrontBankRequestConstants，新增 3 个常量）；bizFunc/chnlNo 配置死在 Handle，
   transSsn/laasSsn 为 Handle 生成能力，tenantId/mchntId 走账户配置。
 
+## 交易状态查询收盘状态（2026-08-18 凌晨，全部未提交）
+
+- 统一请求最终形态：`QueryTransStatusRequest(context)` 实例构造，字段 capability/transactionDate/
+  bizOrderNo/bizSubOrderNo/frontSsn/specialData（无 original 前缀、无 static）；
+- 对外契约同步去前缀（TransactionStatusQueryData + FrontQueryApi + 两 Handle 报错 + web-test + 05/10/13）；
+- PingAnQueryRequest 加 TODO[QUERY-UNIFY] 过渡标记（查询统一路线，迁完删除）；
+- 修复 buildTransStatusWire 泛型通配符编译错误（context 参数改为具体类型）；
+- `bankEAccountId→cardNoEnc` 疑问结案（用户裁决）：系 lsym 99 验证码路径填法，交易状态查询用不到，
+  现状（提现查渠道表 bankCardNo）维持；
+- **遗留**：整批代码未编译未提交（用户已知）；中信退款 TRANS_TYPE=01 待协议核对；
+  4 个查询能力迁移统一模式待启动；consume 存量修复进行中。
+
 ## 待办 Phase
 
 ### Phase 3 web-test 两步调用（2026-08-17 已完成，编译/冒烟待用户授权后补）

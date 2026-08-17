@@ -54,6 +54,8 @@ assembler.newPay().setBankEAccountId("…").setBankAccountName("…");       // 
 JSONObject specialData = assembler.assemble();                          // → {"outAcctNo":…,"USER_D_NM":…,…}
 ```
 
+查询能力已支持交易状态查询的组装（`capability=TRANSACTION_STATUS_QUERY`，矩阵见 15 号 spec §4.3），
+其余查询能力暂协议键直传、逐个迁移中（查询统一路线见 10 号）。
 注意：交易/查询 API 的 wire 契约不变，specialData 仍收协议键原文；直传协议键仍合法
 （Handle `requireSpecialData` 逐键校验保留），工具类只是协议键的推荐产生方式。
 
@@ -463,30 +465,44 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 ---
 
-### 5.3 单笔交易状态查询
+### 5.3 单笔交易状态查询（2026-08-17 重构后最终形态）
 
 **`POST /front/v1/queries/transactions/status`**
 
-**baseData 类型：** `TransactionStatusQueryData`
+**baseData 类型：** `TransactionStatusQueryData`（字段不带 original 前缀，用户裁决 2026-08-17）
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `capability` | String | 是 | 原交易能力枚举名（如 `TRANSFER`、`CONSUME`） |
-| `transactionDate` | String | 是 | 原交易日期 yyyyMMdd |
-| `frontSsn` | String | 否 | 前端流水号（用于回显） |
-| `bizOrderNo` | String | 是 | 业务主订单号（转账/消费/退款必带子订单号） |
-| `bizSubOrderNo` | String | 否 | 业务子订单号 |
+| `capability` | String | 是 | 被查交易能力枚举名：`TRANSFER` / `CONSUME` / `REFUND` / `WITHDRAW` / `RECHARGE`（充值仅平安支持 04；中信返回不支持） |
+| `transactionDate` | String | 中信必填 | 交易日期 yyyyMMdd（中信必填并强校验；平安查三天前记录时上送，可选） |
+| `frontSsn` | String | **平安必填** | 原 Front 渠道流水号（交易响应 `frontSsn` 回传、渠道表 `front_ssn` 落库）：平安按其定位原交易；中信仅结果回显可选 |
+| `bizOrderNo` | String | 是 | 业务主订单号 |
+| `bizSubOrderNo` | String | 条件 | 转账/消费/退款查询必填；提现/充值查询不传 |
 
-| 约束：
-| - 转账、消费、退款查询必须同时提供 `bizOrderNo` + `bizSubOrderNo`；
-| - 提现查询只传 `bizOrderNo`；
-| - `capability` 用于确定银行查询的 `bizFunc`，不参与当前 API 路由。
+约束：
+- 转账、消费、退款查询必须同时提供 `bizOrderNo` + `bizSubOrderNo`；
+- 提现/充值查询只按 `bizOrderNo`（中信）/ `frontSsn`（平安）定位；
+- `capability` 用于银行侧类型转译（中信 reserve.TRANS_TYPE 模式 / 平安 bizFunc 02/03/04），
+  不参与当前 API 路由（路由 capability 固定为 TRANSACTION_STATUS_QUERY）。
 
-**中信 specialData 字段：**
+**中信 specialData 字段**（可经组装工具生成：`capability=TRANSACTION_STATUS_QUERY` + `pay.bankEAccountId`）：
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `acctNo` | String | 是 | 用户编号 |
+| `acctNo` | String | 是 | 被查用户编号，SM2 加密上送 |
+
+**平安 specialData 字段**（可经组装工具生成：`pay.bankEMemberCode`）：
+
+| key | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `mchntMbrId` | String | 是 | 被查会员编号 |
+
+提现状态查询（03）专用的 `cardNoEnc`（原提现发起时的银行卡号）由 front 从平安提现渠道表
+按 (tenantId, frontSsn) 回查后 SM2 上送，**调用方不传**。
+
+**响应**：`frontStatus` 为内部交易状态三态常量（见 `FrontInternalTransStatus`）：
+`S` 成功 / `P` 处理中 / `F` 失败；银行状态无法识别时为 `null`（中信 04 已退款/05 已退汇归 S，
+资金经充值接口退回、后续由其他流程处理；映射表在各银行 QueryHandle 常量维护）。
 
 ---
 
