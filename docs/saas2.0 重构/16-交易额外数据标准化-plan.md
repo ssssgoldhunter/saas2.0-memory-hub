@@ -38,15 +38,21 @@
 
 ## 待办 Phase
 
-### Phase 3 web-test 两步调用（未开始）
+### Phase 3 web-test 两步调用（2026-08-17 已完成，编译/冒烟待用户授权后补）
 
-1. `FrontTestController` 新增 `POST /api/test/front/assemble/special-data`：入参反序列化为
-   `FrontSpecialDataAssembler`（BaseRequest 4 参数自动注入），调 `assemble()` 返回 specialData；
-2. `static/js/app.js` + `static/index.html`：账户下拉产出标准结构（accountNo→bankEAccountId、
-   name→bankAccountName、bankCardNo→pay.bankCard.bankCardNo；平台付款只填 rec、平台收款只填 pay、
-   提现填 pay+bankCard、退款填 oriPay/oriRec+originalBusinessDate、鉴权填 auth、平台收付 contractId 选填）；
-   交易 Tab 两步：先组装展示 → 注入交易请求 → 发交易；查询 Tab 不变；
-3. web-test 编译 + 启动冒烟（需用户当次授权编译）。
+1. ✅ `FrontTestController` 新增 `POST /api/test/front/assemble/special-data`：入参反序列化为
+   `FrontSpecialDataAssembler`（platformCode 缺省按 tenantId 从租户配置补全，RequestContext 写入），
+   本地调 `assemble()` 返回 `R<JSONObject>`；`FrontException` 转 `R.fail(msg)`；日志只记协议键名（脱敏）；
+2. ✅ `app.js`/`index.html`（index 结构未动）：交易 Tab 的协议键 schema（getSpecialSchema）整体替换为
+   标准结构 schema（getStandardSchema，std-* 输入：pay/rec/oriPay/oriRec 组 + bankCard 卡要素 +
+   auth 鉴权组 + originalBusinessDate/contractId）；账户下拉联动填标准字段（accountNo→bankEAccountId、
+   name→bankAccountName、bankCardNo→卡号；bankEMemberCode/cardHolderName 手填或租户配置扩展带出）；
+   `execTab` 改两步：先 POST 组装端点（失败即终止）→ 组装结果 specialData 原样带入交易请求 →
+   确认弹窗（参数行 + 组装结果 + 完整报文）后发送；resendAuth 同样两步但维持无弹窗直发；
+   门店 payStoreNo/recStoreNo 改为直接取所选账户（平台收付固定侧取租户第一账户），
+   dealType/fundTp 不再经 specialData 上送（租户级配置由 front 侧联动，红线不允许调用方覆盖）；
+3. ✅ 查询 Tab 协议键直传维持不变；`buildBody/collectSpecial/fillPlatformFixedSide` 等旧函数清除；
+   14 号使用说明 §4.1/§4.2/§4.3/§4.4/§6.2 已同步。
 
 ### Phase 4 buildRequest 补实（依赖账户体系按 storeNo 定型）
 

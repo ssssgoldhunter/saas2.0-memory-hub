@@ -50,48 +50,51 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 
 ## 4. UI 使用说明
 
-### 4.1 核心交互流程
+### 4.1 核心交互流程（2026-08-17 起为两步调用，模拟 consume 侧组装 check）
 
 1. 每个 Tab 顶部选择**租户** → 联动加载该租户的可用账户列表
-2. 选择**账户** → 自动填入该 Tab 的 specialData 字段（账号、名称、银行卡号等）
-3. 按业务需要填写/修改其他字段
-4. 交易类提交前弹窗二次确认
+2. 选择**账户** → 自动填入该 Tab 的**标准账户结构**字段（std-* 输入：银行电子账户id、
+   会员号、户名、卡要素），银行无关
+3. 按业务需要填写/修改其他字段（鉴权 auth、退款原交易日期、平台收付 contractId 等）
+4. 点击执行 → **第一步**：前端把标准结构 POST 到
+   `/api/test/front/assemble/special-data`，后端本地调用
+   `FrontSpecialDataAssembler.assemble()` 返回**协议键明文 specialData**；
+   组装失败（缺必填/银行不支持该能力）直接提示并终止，不发交易
+5. **第二步**：确认弹窗中部展示组装出的协议键 specialData、下部展示完整交易报文，
+   确认后发送交易请求（specialData 原样带入）
+6. 查询类 Tab 维持协议键直传（10 号契约），不走组装
 
 ### 4.2 租户与账户选择
 
 - 每个 Tab **独立选择租户**，互不影响
 - 双账户 Tab（转账、消费、鉴权转账、退款）需分别选择付款方和收款方
-- 平台付款/平台收款为**单下拉**：平台付款只选收款方、平台收款只选付款方，对端自动取租户配置的
-  第一个账户（`dealType/fundTp` 租户级配置同步只读填入）
+- 平台付款/平台收款为**单下拉**：平台付款只选收款方、平台收款只选付款方，对端（平台侧）
+  自动取租户配置的第一个账户，平台侧门店填入 baseData（dealType/fundTp 为租户级配置，
+  由 front 侧联动，不上送请求，见 §4.4）
 - 单账户 Tab（提现、授权码发送及所有查询 Tab）只选一个账户
 
-### 4.3 账户联动特殊字段
+### 4.3 账户联动的标准结构字段（std-*）
 
-各交易类型的 specialData 联动规则如下：
+2026-08-17 起，交易 Tab 的 specialData 协议键输入框已替换为**标准账户结构**输入（15 号 spec §3），
+协议键由组装工具类按 (platformCode, capability) 矩阵生成，页面不再出现协议键名：
 
-| Tab | specialData key | 来源 | 方向 |
-|---|---|---|---|
-| transfer / consume | `outAcctNo` | accountNo | 付款方 |
-| transfer / consume | `inAcctNo` | accountNo | 收款方 |
-| transfer / consume(中信) | `USER_D_NM` | name | 付款方 |
-| transfer / consume(中信) | `USER_C_NM` | name | 收款方 |
-| refund(中信) | `ORI_USER_D_ID` | accountNo | 付款方(用户确认) |
-| refund(中信) | `ORI_USER_D_NM` | name | 付款方 |
-| refund(中信) | `ORI_USER_C_ID` | accountNo | 收款方(用户确认) |
-| refund(中信) | `ORI_USER_C_NM` | name | 收款方 |
-| withdraw(中信) | `acctNo` | accountNo | 账户选择 |
-| withdraw(中信) | `outAcctId` | accountNo | 账户选择 |
-| withdraw(中信) | `cardNoEnc` | bankCardNo | 账户选择 |
-| withdraw(中信) | `nameEnc` / `WITH_ACCNAME` | name | 账户选择 |
-| platformPay / platformReceive(中信) | `outAcctNo` / `inAcctNo` | accountNo | 按方向 |
-| platformPay / platformReceive(中信) | `outAcctNm` / `inAcctNm` | name | 按方向 |
-| platformPay / platformReceive(中信) | `dealType` / `fundTp` | 租户级配置 **只读** | 自动填入 |
+| Tab | 填充的组 | 来源字段 → 标准字段 |
+|---|---|---|
+| transfer / consume / transferAuth | pay（下拉一）+ rec（下拉二） | accountNo→bankEAccountId、name→bankAccountName；bankEMemberCode 需手填（租户账户配置可加 `bankEMemberCode` 自动带出） |
+| resendAuth | pay + rec（同一所选账户） | accountNo→bankEAccountId；pay 另填 bankEMemberCode |
+| refund | oriPay（下拉一）+ oriRec（下拉二） | accountNo→bankEAccountId、name→bankAccountName；另手填 originalBusinessDate（yyyyMMdd，中信） |
+| withdraw | pay + 卡要素 | accountNo→bankEAccountId、name→bankAccountName、bankCardNo→pay.bankCard.bankCardNo；cardHolderName 手填（平安需要） |
+| platformPay | 仅 rec（下拉） | 平台侧由租户配置隐式定位；contractId 选填 |
+| platformReceive | 仅 pay（下拉） | 同上 |
+
+门店信息（payStoreNo/recStoreNo）直接取所选账户 storeNo 填入 baseData，不再经协议键中转；
+平台收付固定侧门店取租户第一个账户。
 
 ### 4.4 平台收付款资金配置（中信）
 
-`dealType` 和 `fundTp` 是**租户级配置**，非账户级。选择付款方/收款方（视方向而定）时自动填入，**只读不可修改**。
-
-对应 `zx_bank_config` 中的 `self_dealType` / `self_fund_type`。
+`dealType` 和 `fundTp` 是**租户级配置**（`zx_bank_config` 的 `self_dealType` / `self_fund_type`），
+由 front 侧租户账户配置联动，**不进入请求 specialData**（2026-08-17 起测试页不再上送，
+遵守"不允许调用方覆盖银行账户配置"红线）。
 
 ## 5. 测试数据
 
@@ -190,11 +193,17 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 }
 ```
 
-### 6.2 数据流
+### 6.2 数据流（交易类两步 + 查询类一步）
 
 ```
 浏览器 UI (index.html + app.js)
-  │ POST 到各 API 路径
+  │ 交易类第一步：标准账户结构(std-*) → POST /api/test/front/assemble/special-data
+  ▼
+FrontTestController.assembleSpecialData
+  │ 本地调用（无 Feign）catering-api-front FrontSpecialDataAssembler.assemble()
+  ▼  返回协议键明文 specialData
+浏览器确认弹窗（展示组装结果 + 完整报文）
+  │ 交易类第二步：POST /api/test/front/transaction/*（specialData 原样带入）
   ▼
 FrontTestController (@RequestMapping /api/test/front)
   │ FeignClient 代理
@@ -203,6 +212,8 @@ catering-front (实际业务服务)
   │ 处理并响应
   ▼
 浏览器展示 JSON 结果
+
+（查询类 Tab：仍单步 POST /api/test/front/query/*，specialData 协议键直传，见 10 号契约）
 ```
 
 ## 7. 后台实现
