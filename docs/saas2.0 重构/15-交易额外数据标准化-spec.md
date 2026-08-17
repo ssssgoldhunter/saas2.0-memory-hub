@@ -262,15 +262,15 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 | transferAssembleCheck | TRANSFER | consume | chainTransfer + chainTransferInner（同一类挂两处） |
 | transferAuthAssembleCheck | TRANSFER_AUTH | consume | chainConsumeAuth |
 | transferAuthCodeResendAssembleCheck | TRANSFER_AUTH_CODE_RESEND | consume | 服务层重发调用点（非独立链） |
-| withdrawAssembleCheck | WITHDRAW | fund | chainWithDraw（WithDrawTrans 前） |
-| deductionAssembleCheck | TRANSFER（扣款走转账，用户确认 2026-08-17） | fund | chainDeduction（DeductionTrans 前） |
+| withdrawAssembleCheck | WITHDRAW | consume | 原链已随划付迁移清空，待提现流程重建后落位 |
+| deductionAssembleCheck | TRANSFER（扣款走转账，用户确认 2026-08-17） | consume | 原链组件已删，待扣款流程重建后挂接 |
 
 - PlatformPay/PlatformReceive 组装映射保留在工具类中，但 **check 第一期不做**（consume 无调用链，等真实调用方出现再加）；
 - `buildRequest` 当前全部 TODO 占位（抛 BaseException，注明计划数据源：pay/rec ← slot.compayInfoMaps、
   bankCard ← basBankInfoMap、auth ← 授权签发结果+用户输入、originalBusinessDate ← 原交易日期），
   等账户体系按 storeNo 定型后补齐；骨架（调用/校验/回填/终止）为实实现；
-- `consume/flow/slot/TransSlot` 与 `fund/flow/slot/TransSlot` 各增加
-  `private JSONObject assembledSpecialData;`（已加，双 slot 是存量代码结构，用户知悉）；
+- slot 已统一：fund 树 slot 随划付迁移删除（2026-08 master 合并后），仅存 consume 树
+  `TransSlot.assembledSpecialData`；withdraw/deduction 两个 check 已改指 consume slot；
 - **当前未挂链**：老树银行组件本就 stub 待适配，fund 树在线走旧 FacadeApi，挂 TODO-抛异常的 check 会中断在线链路；
   挂接随各链的 front 新 API 适配进行；
 - 组装结果单笔交易单次使用，不缓存跨请求复用（验证码/日期类字段时效性强）。

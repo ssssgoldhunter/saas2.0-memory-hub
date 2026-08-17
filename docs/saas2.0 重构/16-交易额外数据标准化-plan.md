@@ -31,8 +31,12 @@
      Consume/Refund/Transfer/TransferAuth/TransferAuthCodeResend（consume 树 slot）+
      Withdraw/Deduction（fund 树 slot，Deduction 能力=TRANSFER）；
    - 两个 `TransSlot`（consume 树 + fund 树）各加 `assembledSpecialData`（JSONObject）；
-   - **未挂链**：老树银行组件 stub 待适配、fund 树在线走旧 FacadeApi，挂 TODO-抛异常 check 会中断在线链；
-     挂接随各链 front 新 API 适配进行（挂接点表见 15 号 §7）；
+   - **未挂链**：老树银行组件 stub 待适配；挂接随各链 front 新 API 适配进行（挂接点表见 15 号 §7）；
+   - **2026-08 master 合并后调整**：划付代码迁移删除整个 fund 包（-17253 行），fund slot 删除、
+     slot 统一为 consume 树；withdraw/deduction 两个 check 已重指向 consume TransSlot（已改未提交）；
+     chainWithDraw 清空、chainDeduction 仍引用已删组件（存量雷，报用户处理）；
+     front 侧合并为纯加法（划付文件处理 46 文件 +3177 行，SaasZxInterService 为注释体），
+     交易链/ContractKeys/Handle 零改动，15 号设计前提不变；
    - 基类取 slot 用 `this.getFirstContextBean()`（对齐 ConsumeTrans04/PlatformInfoCheck 现有写法，
      LiteFlow 2.12.1 无 getSlotBean(Class) API——已纠正）。
 
