@@ -200,4 +200,37 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
 
 ---
 
+## 9. 网络与 GitHub 认证事实（2026-08-17 实测）
+
+### 9.1 本机网络（github 访问受限）
+
+- **github.com 直连不通**（443 连接超时）；`api.github.com` 直连通（HTTP 200）；
+  `raw.githubusercontent.com` / `release-assets.githubusercontent.com` 直连和 HTTP 代理均被重置。
+- **可用通道**：
+  - 本地代理 `127.0.0.1:7890`（HTTP + SOCKS5，系统代理已开；npm 已配 proxy）；
+  - **git 已配全局代理**：`git config --global http.proxy/https.proxy = http://127.0.0.1:7890`；
+  - release 大文件（dmg 等）走 HTTP 代理会 SSL 重置，需用 **ghproxy 镜像**（`ghfast.top` /
+    `gh-proxy.com` / `ghproxy.net`）前缀 `https://<镜像>/https://github.com/...` 下载；
+    SOCKS5（`curl -x socks5h://127.0.0.1:7890`）可访问 github.com 但 release-assets 仍失败。
+
+### 9.2 GitHub 凭据（token 认证，不落明文文件）
+
+- 使用 GitHub PAT 替代 SSH，已通过 `git credential approve` 存入 **macOS 钥匙串**
+  （`credential.helper = osxkeychain`，全局）；
+- **lsym-memory-hub remote 已从 SSH 改为 https**：
+  `https://github.com/ssssgoldhunter/lsym-memory-hub.git`（原 `git@github.com-lsym-memory:` 废弃，
+  对应 `~/.ssh/lsym_memory_hub` 密钥未提供）；
+- saas2.0-memory-hub remote 本就是 https，同走钥匙串 token；
+- ⚠️ 会话中贴过的 PAT 用后应吊销轮换；token 值绝不写入记忆库。
+
+### 9.3 Oh-DSH Desktop 安装来源
+
+- 官方仓库：`hust-open-atom-club/oh-dsh`（GitHub），release `v0.1.6` 提供
+  `Oh-DSH-Desktop-0.1.6-arm64.dmg`（Apple Silicon）/ `-x64.dmg`（Intel）；
+- 2026-08-17 已装 `/Applications/Oh-DSH Desktop.app`（v0.1.6，arm64）；
+  首次运行后创建 `~/.ohdsh` 与桌面 profile，再补桌面插件（modlens/vision-toolkit）与
+  `cordis.patch.yml`（禁 oh-vision）。
+
+---
+
 **更新日期**：2026-08-16　**维护者**：ssssgoldhunter
