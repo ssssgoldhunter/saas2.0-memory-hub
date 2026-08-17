@@ -323,7 +323,7 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
      - 统一请求 `channel/protocol/QueryTransStatusRequest` **银行无关**，只含
        ①定位基础参数（capability/transactionDate/bizOrderNo/bizSubOrderNo/
        frontSsn，原样来自 baseData，全部需要传入）＋②组装 specialData（账户要素协议键原样）；
-       提供 `from(BankRequestContext)` 工厂，两行 Handle 共用；
+       由 `QueryTransStatusRequest(context)` 实例构造（无 static，每次查询新建、用完即弃），两行 Handle 共用；
      - 报文信封（transSsn/transTime/mchntId/laasSsn/bizFunc/chnlNo 等）**不在请求上**：
        各 Handle 用自身常量（bizFunc/chnlNo 配置死）、租户账户配置（mchntId/tenantId）与
        序列生成器生成；wire 直接以 JSONObject 构建，键全部走常量（FrontBankRequestConstants
