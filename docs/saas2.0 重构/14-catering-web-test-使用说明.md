@@ -34,7 +34,7 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 
 | 类别 | Tab | API 路径 | 备注 |
 |---|---|---|---|
-| 查询 | 账户状态查询 | `POST /query/account-status` | specialData 为空 |
+| 查询 | 账户状态查询 | `POST /query/account-status` | specialData={acctNo}，必填、联动自动填充 |
 | 查询 | 账户余额查询 | `POST /query/account-balance` | |
 | 查询 | 交易状态查询 | `POST /query/transaction-status` | |
 | 查询 | 平台交易明细 | `POST /query/platform-transaction-details` | 分页 |
@@ -55,12 +55,14 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 1. 每个 Tab 顶部选择**租户** → 联动加载该租户的可用账户列表
 2. 选择**账户** → 自动填入该 Tab 的 specialData 字段（账号、名称、银行卡号等）
 3. 按业务需要填写/修改其他字段
-4. 交易类需勾选**安全开关** + 弹窗二次确认后提交
+4. 交易类提交前弹窗二次确认
 
 ### 4.2 租户与账户选择
 
 - 每个 Tab **独立选择租户**，互不影响
-- 双账户 Tab（转账、消费、鉴权转账、退款、平台付款、平台收款）需分别选择付款方和收款方
+- 双账户 Tab（转账、消费、鉴权转账、退款）需分别选择付款方和收款方
+- 平台付款/平台收款为**单下拉**：平台付款只选收款方、平台收款只选付款方，对端自动取租户配置的
+  第一个账户（`dealType/fundTp` 租户级配置同步只读填入）
 - 单账户 Tab（提现、授权码发送及所有查询 Tab）只选一个账户
 
 ### 4.3 账户联动特殊字段
@@ -102,6 +104,8 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 | 字段 | 值 |
 |---|---|
 | tenantId | 80001 |
+| clientId | X001 |
+| dataSourceId | 0 |
 | platformCode | zxegj（中信） |
 | selfDealType | 03 |
 | selfFundType | 015001 |
@@ -119,6 +123,8 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 | 字段 | 值 |
 |---|---|
 | tenantId | 80002 |
+| clientId | X001 |
+| dataSourceId | 1 |
 | platformCode | zxegj（中信） |
 | selfDealType | 03 |
 | selfFundType | 015001 |
@@ -147,6 +153,9 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 | Java 字段 | YAML key | 说明 | 来源 |
 |---|---|---|---|
 | `tenantId` | `tenant-id` | 租户ID | 配置系统 |
+| `clientId` | `client-id` | 客户端ID（四必要参数之一，请求缺失时 setupContext 自动补全） | 配置系统 |
+| `platformCode` | `platform-code` | 银行平台编码（缺失时自动补全） | 配置系统 |
+| `dataSourceId` | `data-source-id` | 数据源ID（四必要参数之一，缺失时自动补全） | 配置系统 |
 | `selfDealType` | `self-deal-type` | 自营交易类型(中信) | zx_bank_config |
 | `selfFundType` | `self-fund-type` | 自营资金类型(中信) | zx_bank_config |
 | `defaultRole` | `default-role` | 默认角色(中信) | zx_bank_config |
@@ -223,15 +232,16 @@ web-test 后端调用日志由 `[test] >>>/<<<` 文本样式升级为与 caterin
 event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），覆盖全部 13 个
 测试接口及 `/tenants`。每条日志是合法单行 JSON：
 
-- `test_context_prepared`：RequestContext 装配完成（tenantId/platformCode/dataSourceId）；
+- `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode/dataSourceId）；
 - `test_request_sending`：Feign 调用发送前，payload=完整请求体；
 - `test_response_received`：调用成功返回，payload=完整响应体，带 `elapsedMs`；
 - `test_request_failed`：远程失败，payload=`{exceptionType,message}`，带 `elapsedMs`，保留完整堆栈；
 - `test_tenants_loaded`：租户列表加载。
 
-同一次调用三条事件日志共用同一 `traceId`（`test_` 前缀 + UUID），metadata 携带
-`tenantId/platformCode/dataSourceId/storeId` 定位字段；字段值按明文输出（与 front 日志口径一致，
-2026-08-14 用户确认无掩码）。
+同一次调用的 `test_request_sending` 与 `test_response_received/test_request_failed` **两条**事件
+日志共用同一 `traceId`（`test_` 前缀 + UUID）；`test_context_prepared` 独立输出、无 traceId，
+metadata 携带 `tenantId/clientId/platformCode/dataSourceId` 定位字段（无 storeId）；字段值按明文输出
+（与 front 日志口径一致，2026-08-14 用户确认无掩码）。
 
 ### 7.3 账户状态查询缺少 acctNo 的修复（2026-08-14）
 
@@ -243,7 +253,7 @@ event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），
    `app.js buildQueryBody` acctStatus 分支改为 `specialData = { acctNo: ... }`；说明文字同步更正。
 2. **后端自动补全**：`FrontTestController.setupContext` 在请求 `specialData.acctNo` 缺失时，
    从 `application.yml` 租户配置取**第一个账户**的 `accountNo` 自动补全（用户已选账户时不做覆盖），
-   与 `platformCode/dataSourceId` 的补全逻辑一致。
+   与 `clientId/platformCode/dataSourceId` 的补全逻辑一致。
 
 其余查询 Tab（acctBalance/transStatus/transDetail）acctNo 输入与 specialData 填充已齐备，未改动。
 
@@ -268,6 +278,6 @@ event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），
 
 ### 8.4 安全机制
 
-- 交易类 Tab 需勾选复选框 → 弹窗确认 → 提交
+- 交易类 Tab 提交前弹窗二次确认（无安全开关/复选框）
 - 查询类 Tab 无安全限制，直接提交
 - 交易类 Tab 每次提交前重新生成 `bizTransactionId`/`bizRequestNo` 防止重复

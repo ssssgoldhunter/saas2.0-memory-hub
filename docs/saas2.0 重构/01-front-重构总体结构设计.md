@@ -478,6 +478,11 @@ flowchart LR
 
 ### 9.3 Query Handler 内部结构
 
+> 2026-08-17 实现核对：落地结构为每银行一个 `CiticQueryHandle`/`PingAnQueryHandle`，
+> 通过 `capabilityDefinitions()` 以 `(BankCode, FrontCapability)` 复合键将每个查询能力绑定到唯一
+> 方法；`queryAccountBalance` 内部按 `AccountScope` 分派 35/36/46 属请求参数分派，不是 capability
+> switch。Registry 路由语义与本节一致，物理类未按能力拆分。
+
 一个银行按查询能力拆为独立 Handler；同银行能力之间允许复用银行内部 Service，但不得恢复大 Handle
 内部的 capability switch：
 

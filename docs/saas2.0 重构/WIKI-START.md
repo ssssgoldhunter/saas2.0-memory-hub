@@ -111,6 +111,10 @@ codegraph status               # 索引状态
     请求上下文、MyBatis 或 Feign 能力前先确认公共框架是否已有实现。
 19. [00-任务交接说明](00-任务交接说明.md)：仅在需要追溯历史决策时阅读，不作为当前完成状态。
 20. [14-catering-web-test-使用说明](14-catering-web-test-使用说明.md)：catering-front 接口测试工具的使用与维护文档，修改测试工具前应先阅读。
+21. [15-交易额外数据标准化-spec](15-交易额外数据标准化-spec.md)：specialData 标准账户结构（pay/rec）与
+    (bank × capability) 组装矩阵的契约文档；改动交易请求结构或转换器前必须完整阅读。
+22. [16-交易额外数据标准化-plan](16-交易额外数据标准化-plan.md)：15 号 spec 的分阶段执行计划，
+    供实施方按 Phase 0-7 顺序执行。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -242,7 +246,7 @@ AbstractBankHandle.prepareContext
 - API、Controller、Application Service 使用同一方法签名并原样透传；Router 和 Handle 不返回 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
-- 中信退款对外固定使用 `orgBizOrderNo + orgBizSubOrderNo`，映射银行
+- 中信退款对外固定使用 `originalBizOrderNo + originalBizSubOrderNo`，映射银行
   `ORI_BUSS_ID + ORI_BUSS_SUB_ID`；不得把 Front 的 `orgFrontSsn/transSsn` 当成中信
   `ORI_USER_SSN`，也不得为了补齐银行字段查询 Front 本地原交易表；
 - 中信退款的 `ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_TRANS_DT` 是定位字段之外的

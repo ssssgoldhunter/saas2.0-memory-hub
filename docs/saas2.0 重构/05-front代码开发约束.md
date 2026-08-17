@@ -1057,14 +1057,15 @@ Front 交易链路日志必须是结构化 JSON。每个阶段是独立日志点
 2. **Handle 执行前后**：具体银行 Handle 方法进入时记录 `handle_started`；正常结束记录
    `handle_completed`；业务失败或系统异常记录 `handle_failed`。日志必须包含实际方法名、Handle 类型、
    银行、耗时，以及字段、层级完整的输入和结果 JSON。
-3. **银行数据组装完成**：银行协议 DTO、reserve 和动态字段全部组装完成后、调用钱包 Client 前，单独记录
-   `bank_request_assembled`，打印最终待发送报文的完整 JSON。不得只记录 `bizFunc/frontSsn` 等摘要。
+3. **银行数据组装完成**：最终待发送报文的完整 JSON 由钱包 HTTP Client 真正发送前的
+   `wallet_request_sending` 统一记录（见第 4 条）；Handle 侧不单独记录
+   `bank_request_assembled`，避免同一报文重复打印。不得只记录 `bizFunc/frontSsn` 等摘要。
 4. **钱包访问前后**：钱包 HTTP Client 真正发送前记录 `wallet_request_sending`；收到响应后记录
    `wallet_response_received`；连接、超时、解析或其他异常记录 `wallet_request_failed`。必须包含实际钱包
    接口名、HTTP 状态（能够取得时）、耗时和字段、层级完整的请求或响应 JSON。
 
 查询链路使用简化日志口径：不要求 `capability`，不要求 API 查询入口额外提取交易型业务定位字段，
-也不复制交易链路的 `bank_request_assembled` 日志。查询渠道侧唯一强制的请求报文日志是钱包 HTTP Client
+Handle 侧也不重复记录请求报文日志。查询渠道侧唯一强制的请求报文日志是钱包 HTTP Client
 真正发送前的 `wallet_request_sending`，必须包含银行编码、实际钱包接口名和字段层级完整的最终
 银行请求 JSON。禁止为查询日志使用反射或字段猜测；已有框架通用 API 访问/失败日志可以保留。
 
@@ -1407,7 +1408,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - [ ] `frontRespCode/frontRespDesc` 来自同一个 `FrontErrorCode`；
 - [ ] 银行原始响应码不作 `R.code/frontRespCode`；
 - [ ] 交易 API 入口记录字段和层级完整的 `FrontRequest` JSON，返回或异常也有对应独立日志；
-- [ ] 交易 Handle 存在 `handle_started`、`bank_request_assembled`、`handle_completed/handle_failed` 独立日志点；
+- [ ] 交易 Handle 存在 `handle_started`、`handle_completed/handle_failed` 独立日志点（最终待发送报文由钱包 Client 的 `wallet_request_sending` 统一记录，Handle 不重复打印）；
 - [ ] 交易钱包 Client 存在 `wallet_request_sending`、`wallet_response_received/wallet_request_failed` 独立日志点；
 - [ ] 交易 API、Handle、组装和钱包日志均携带 `bizOrderNo/bizSubOrderNo/tenantId/platformCode/dataSourceId`
       以及实际方法名、银行编码；无值时保留 key 并记录 `null`；

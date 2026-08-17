@@ -2,7 +2,7 @@
 
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：current
-> 最后核对：2026-08-05，中信 v4.7 Word
+> 最后核对：2026-08-17（§8.1 含 2026-08-14 lsym UAT 实测复核）
 > 平安状态：全部查询运行时返回 `ADAPTER_NOT_READY`，后续接入登记为
 > [平安查询接入待办](13-front后续待办.md)，等待人工逐接口核对
 
@@ -98,8 +98,8 @@ chnlNo  = 0010
 协议同样使用 `01`。在取得真实银行联调证据前不得擅自把转账、消费改为 `00`。
 
 返回中，`frontSsn/bizOrderNo/bizSubOrderNo` 原样保留查询定位值；银行 `status` 映射
-`TransactionStatusResult.frontStatus`，`queryId` 映射 `frontQueryId`；确认允许透出的中信流水、日期、
-时间等银行差异字段进入返回 `specialData`，不得返回
+`TransactionStatusResult.frontStatus`，`queryId` 映射 `frontQueryId` 并同时透传进入返回
+`specialData`；确认允许透出的中信流水、日期、时间等银行差异字段进入返回 `specialData`，不得返回
 完整 `reserve`、`errCode/errInfo/sysRespCode/sysRespDesc`。
 
 ## 4. 中信平台交易资金账户明细
@@ -151,8 +151,9 @@ Word 中 `05` 标为“退款（预留）”，联调确认前常量可保留说
 
 ### 4.2 返回
 
-每条银行明细映射一个 `TransactionDetailItem`：公共日期、时间、类型、金额、资金方向、摘要进入强类型
-字段；`JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/REARK*` 等确认允许返回的银行差异字段逐项进入该条记录的
+每条银行明细映射一个 `TransactionDetailItem`：公共日期（`transDate`）、时间
+（`transTime`）、类型（`transType`，银行原始类型码）、金额（`amount`，分）、资金方向
+（`direction`）、摘要（`remark`）进入强类型字段；`JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/REARK*` 等确认允许返回的银行差异字段逐项进入该条记录的
 `specialData`。`TRANS_AMT/CUR_AMT` 的银行单位是元，进入 Front 公共金额字段必须使用十进制精确转分，
 禁止浮点运算。
 
@@ -279,7 +280,12 @@ com.chinaums.common.core.constant.front
 | `registerAttr` | 46/36 协议必填 | 登记簿类型：`00` 公共计息收费、`12` 自有资金、`13` 担保、`17` 待结算手续费、`14` 用户登记簿（lsym UAT 实测有效，Word 枚举未列）、`TA` 交易资金账户、`RO` 平台剩余透支额度 |
 
 > 协议必填但 **front 不强制校验**（2026-08-14 用户确认）：`registerAttr` 缺失时直接透传给银行，
-> 由银行返回 `D5951105 请求参数校验失败`。
+> 由银行返回 `D5951105 请求参数校验失败`。该透传对 35 同样生效：35 协议不要求 `registerAttr`，
+> 但 specialData 提供时 Handle 一并上送。
+
+返回字段映射（2026-08-17 核对）：46 的 `balance`→`balance`、`withdrawAmt`→`withdrawableBalance`、
+`preAmount`→`previousBalance`（三者单位元，Handle 统一元转分）；35 的 `PRE_AMOUNT`→`balance`
+（单位分，直取）；36 的 `balance`→`balance`（单位分，直取）。
 
 响应金额单位（Word v4.7 + lsym UAT 实测）：
 

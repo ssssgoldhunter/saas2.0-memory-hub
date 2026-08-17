@@ -432,6 +432,10 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 **baseData 类型：** `AccountBalanceQueryData`
 
+**baseData 专有字段：** `accountScope`（`AccountScope` 枚举：`PLATFORM_FUNDS_ACCOUNT` 平台交易资金账户 /
+`USER_SUB_ACCOUNT` 用户子账户 / `FUNCTIONAL_ACCOUNT` 功能登记簿账户；中信按此映射 bizFunc 35/46/36，
+平安暂未接入）
+
 **specialData 字段：**
 
 | key | 类型 | 必填 | 中信 | 平安 |

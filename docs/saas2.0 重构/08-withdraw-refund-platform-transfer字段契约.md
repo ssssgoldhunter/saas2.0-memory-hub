@@ -77,8 +77,8 @@ BankRequestContext<T>
 
 | 字段 | 说明 | 来源约束 |
 |---|---|---|
-| `orgBizOrderNo` | 原交易业务主流水号 | 中信退款必填；与子流水成组 |
-| `orgBizSubOrderNo` | 原交易业务子流水号 | 中信退款必填；与主流水成组 |
+| `originalBizOrderNo` | 原交易业务主流水号 | 中信退款必填；与子流水成组 |
+| `originalBizSubOrderNo` | 原交易业务子流水号 | 中信退款必填；与主流水成组 |
 | `bizOrderNo/bizSubOrderNo` | 本次退款业务主/子流水号 | 继承公共交易对象 |
 | `amount` | 本次退款金额 | 人民币分 |
 | `fee` | 本次退款手续费 | 人民币分；无手续费传 0 |
@@ -211,7 +211,7 @@ chnlNo  = 0010
 | `ORI_USER_C_AMT` | `baseData.amount` | 原收款方本次退款金额，人民币分 |
 | `P_SELF_FLAG/P_DEAL_AMT` | Handle 固定 `N/0` | 首版普通退款不含平台自有资金 |
 | `REFUND_BUSS_ID/SUB_ID` | 本次 `bizOrderNo/bizSubOrderNo` | 两者独立必填、最大 64，退款业务流水 |
-| `ORI_BUSS_ID/SUB_ID` | `orgBizOrderNo/orgBizSubOrderNo` | 当前 Front 固定采用，成组必填、最大 64 |
+| `ORI_BUSS_ID/SUB_ID` | `originalBizOrderNo/originalBizSubOrderNo` | 当前 Front 固定采用，成组必填、最大 64 |
 | `ORI_USER_SSN` | 当前 Front 不使用 | 银行协议支持的替代定位项；不得用 `orgFrontSsn/transSsn` 冒充 |
 | `ORI_USER_TRANS_DT` | `specialData.ORI_USER_TRANS_DT` | 独立必填，格式 `yyyyMMdd` |
 | `TRANS_DT/TRANS_TM` | 本次 `businessDate/businessTime` | 两者独立必填，格式 `yyyyMMdd/HHmmss` |
@@ -223,7 +223,7 @@ chnlNo  = 0010
 普通业务退款扩展和 `REQ_RESERVED`；这些内容不属于当前需求，不进入常量类或请求白名单。
 
 银行原协议允许 `ORI_BUSS_ID + ORI_BUSS_SUB_ID` 或 `ORI_USER_SSN` 二选一定位，但当前 Front 对外只
-开放前者：调用方必须提供 `orgBizOrderNo + orgBizSubOrderNo`。这一定位选择不影响其他字段的必填性；
+开放前者：调用方必须提供 `originalBizOrderNo + originalBizSubOrderNo`。这一定位选择不影响其他字段的必填性；
 `ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_TRANS_DT` 仍必须完整提供。
 
 渠道表中 `original_capability/original_channel_transaction_id/original_front_ssn/
