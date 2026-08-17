@@ -228,8 +228,19 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
 - 官方仓库：`hust-open-atom-club/oh-dsh`（GitHub），release `v0.1.6` 提供
   `Oh-DSH-Desktop-0.1.6-arm64.dmg`（Apple Silicon）/ `-x64.dmg`（Intel）；
 - 2026-08-17 已装 `/Applications/Oh-DSH Desktop.app`（v0.1.6，arm64）；
-  首次运行后创建 `~/.ohdsh` 与桌面 profile，再补桌面插件（modlens/vision-toolkit）与
-  `cordis.patch.yml`（禁 oh-vision）。
+- **启动失败修复**：Desktop profile 的 `dsh-obsidian-assistant` 插件要求 `vaultPath` 配置，
+  否则 runtime 报 `vaultPath is required` 退出。已在
+  `~/.ohdsh/profiles/desktop/cordis.patch.yml` 配置：
+  ```yaml
+  - id: dsh-obsidian-assistant
+    config:
+      vaultPath: /Users/limeng/ObsidianBrain
+  ```
+  启动失败时清 `~/.ohdsh/cache/*` 后重启；
+- Desktop 首次运行自动初始化 `~/.ohdsh/profiles/desktop`，并在 package.json 自动装好
+  modlens 3.17.3 / vision-toolkit 0.1.7 / dsh-obsidian-assistant 等依赖；
+- **第二大脑应用**：Obsidian 1.13.7（universal dmg）已装 `/Applications/Obsidian.app`，
+  vault = `~/ObsidianBrain`（已从记忆库 obsidian-brain/ 初始化）。
 
 ---
 
