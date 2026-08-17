@@ -438,7 +438,7 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `frontSsn` | String | 否 | 用于回显的 Front 流水号 |
+| `frontSsn` | String | 平安必填 | 原 Front 渠道流水号：平安按其定位原交易；中信仅回显 |
 
 **specialData 字段：** 无（传空对象 `{}`）
 

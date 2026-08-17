@@ -59,7 +59,7 @@ BankRequestContext
 | `tenantId/storeId/platformCode` | 租户、门店和银行路由字段 |
 | `originalCapability` | 被查询原交易能力，只允许 `TRANSFER/CONSUME/REFUND/WITHDRAW` |
 | `originalTransactionDate` | 原交易日期，格式 `yyyyMMdd` |
-| `frontSsn` | 可选的原 Front 流水；当前中信查询不使用，只在结果中原样保留 |
+| `frontSsn` | 原 Front 渠道流水号（交易响应 `FrontTransactionResult.frontSsn` 回传、渠道表 `front_ssn` 落库）；**平安必填**（按其定位原交易，映射 `oriTransSsn`），中信可选（仅结果回显）（2026-08-17 修订） |
 | `bizOrderNo` | 原交易业务主流水，四类查询均必填 |
 | `bizSubOrderNo` | 原交易业务子流水；转账、消费、退款必填，提现不向银行上送 |
 
