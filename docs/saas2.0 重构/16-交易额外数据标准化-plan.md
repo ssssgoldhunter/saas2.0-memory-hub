@@ -59,6 +59,16 @@
 3. web-test：交易状态查询 Tab 接组装端点（两步），新增 frontSsn 输入（平安必填），
    acctNo 输入降级为回退手填。
 
+## 交易状态查询二次修订（2026-08-17 晚，用户裁决，未提交）
+
+- **银行请求合并**：新增跨银行统一报文 `channel/protocol/QueryTransStatusRequest`，中信/平安
+  状态查询 Handle 均改用之（invokeQuery 参数放宽为 Object——内部仅 toJSONString）；
+  删除 CiticQueryTransStatusRequest，PingAnQueryRequest 移除状态查询专用字段；
+- **提现卡号渠道表回查（用户指出）**：平安提现状态查询（03）专用 cardNoEnc 从
+  `FrontPinganWithdrawTransaction` 按 (tenantId, frontSsn) 回查发起时银行卡号后 SM2 上送，
+  不经调用方；组装工具平安查询格回到 1 要素（mchntMbrId）；
+- RECHARGE 仅平安（04）接入，中信 default 拒绝。
+
 ## 待办 Phase
 
 ### Phase 3 web-test 两步调用（2026-08-17 已完成，编译/冒烟待用户授权后补）

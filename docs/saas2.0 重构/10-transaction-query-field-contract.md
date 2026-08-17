@@ -315,9 +315,15 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
   `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
 - **交易状态查询三件套（2026-08-17 用户裁决后落地）**：
-  1. 组装：TRANSACTION_STATUS_QUERY 纳入组装工具（中信 `pay.bankEAccountId→acctNo` 1 要素；
-     平安 `pay.bankEMemberCode→mchntMbrId` + `pay.bankEAccountId→cardNoEnc` 共 2 要素，
-     Handle 内 SM2；**acctNo 不上送**——经 lsym 02/03 生产代码核对修正，见 15 号 §4.3）；
+  1. 组装：TRANSACTION_STATUS_QUERY 纳入组装工具（中信 `pay.bankEAccountId→acctNo`、
+     平安 `pay.bankEMemberCode→mchntMbrId`，各 1 要素，Handle 内 SM2；
+     **提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，Handle 从平安提现渠道表
+     按 (tenantId, frontSsn) 回查**——lsym 生产规则 + 用户指出修正，见 15 号 §4.3）；
+  1b. **银行请求合并（用户裁决 2026-08-17）**：交易状态查询的银行报文合并为跨银行统一类
+     `channel/protocol/QueryTransStatusRequest`（报文骨架同源、字段并集，fastjson2 不序列化
+     null，各行只填本行字段）；中信 `CiticQueryTransStatusRequest` 删除，平安
+     `PingAnQueryRequest` 移除状态查询专用字段（仅账户状态/余额/明细使用）；差异消化点：
+     账户要素=组装 specialData、类型=capability 常量转译、定位=baseData 映射；
   2. 平安查询 Handle 已实现（去掉 PENDING_INTEGRATION）：bizFunc 按被查原交易能力选择
      （WITHDRAW→03，转账/消费/退款→02，lsym 生产规则）；`frontSsn` 平安必填（平安按原交易银行
      流水号 oriTransSsn 定位，中信按日期+订单号定位不需要）；`oriTransDate` 有值即上送；
