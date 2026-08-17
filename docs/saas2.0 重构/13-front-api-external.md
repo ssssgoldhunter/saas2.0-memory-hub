@@ -38,6 +38,25 @@ Front 是 SaaS 2.0 的多银行渠道支付适配层，对内部业务系统提�
 - `specialData`：**JSONObject**，保存当前银行、当前接口特有的动态字段，
   key 使用 **银行协议原始字段名**。
 
+### 2.0 specialData 组装工具类（推荐业务方使用，2026-08-17 起）
+
+业务方**不需要手写协议键**：`catering-api-front` 提供实例工具类
+`com.chinaums.front.api.assemble.FrontSpecialDataAssembler`，填银行无关的标准账户结构
+（pay/rec/oriPay/oriRec + bankCard/auth），本地调用 `assemble()` 即得当前银行+能力的协议键明文
+specialData，原样放入交易请求即可。用法与能力矩阵见
+[15-交易额外数据标准化-spec](15-交易额外数据标准化-spec.md) §3/§4。
+
+```java
+FrontSpecialDataAssembler assembler = new FrontSpecialDataAssembler();   // 每次组装新建,禁止复用
+assembler.setCapability(FrontCapability.TRANSFER);
+assembler.setPlatformCode("zxegj");
+assembler.newPay().setBankEAccountId("…").setBankAccountName("…");       // @Data setter
+JSONObject specialData = assembler.assemble();                          // → {"outAcctNo":…,"USER_D_NM":…,…}
+```
+
+注意：交易/查询 API 的 wire 契约不变，specialData 仍收协议键原文；直传协议键仍合法
+（Handle `requireSpecialData` 逐键校验保留），工具类只是协议键的推荐产生方式。
+
 ### 2.1 公共定位字段
 
 以下字段是所有 `baseData` 的基类 `FrontBaseRequestData` 统一包含：

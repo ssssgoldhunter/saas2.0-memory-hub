@@ -73,7 +73,9 @@
 - API 方法签名使用的请求和响应模型；
 - API 路径等契约常量；
 - 银行编码、能力、交易状态等契约枚举；
-- Bean Validation 和 OpenAPI 契约注解。
+- Bean Validation 和 OpenAPI 契约注解；
+- specialData 组装工具类 `FrontSpecialDataAssembler`（纯静态映射、全实例方法零 static，
+  银行路由用私有内部类写死，契约见 15 号 spec §5）。
 
 禁止保存：
 
@@ -690,6 +692,12 @@ failure
 
 **specialData 的 key 必须使用银行协议原始名**（如 `outAcctNo`/`inAcctNo`/`USER_D_NM`/`USER_C_NM`），
 与银行 word 文档的请求报文字段名完全一致，**禁止自定义 key 名**。
+
+**组装工具类双层口径（2026-08-17 起）**：业务方获取协议键 specialData 的推荐路径是
+catering-api-front 的实例工具类 `FrontSpecialDataAssembler`（标准账户结构 pay/rec 入参，
+本地调用 `assemble()` 输出协议键明文，矩阵与用法见 15 号 spec）；交易 API 的 wire 契约不变，
+仍只收协议键 specialData，Handle `requireSpecialData` 校验保留为直传时的最后防线。
+**本节"key 必须银行协议原始名"条款对交易请求继续有效**——工具类只是协议键的产生方式，不是新的契约层。
 
 约束：
 

@@ -2,7 +2,9 @@
 
 > 状态：中信、平安首版字段边界已确认，可作为后续 Handle 实现基线  
 > 范围：普通转账 `transfer`、消费 `consume`  
-> 银行：中信 `zxegj`、平安 `pajzb`
+> 银行：中信 `zxegj`、平安 `pajzb`  
+> 组装注记（2026-08-17）：业务方可经 `FrontSpecialDataAssembler` 组装工具类获取下述协议键
+> （标准结构 pay/rec → 协议键映射），标准结构与矩阵见 15 号 spec §4；直传协议键仍合法。
 
 ## 1. 依据和结论
 

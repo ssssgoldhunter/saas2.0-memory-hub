@@ -5,6 +5,9 @@
 > 范围：短信鉴权转账 `transferAuth`、转账授权码发送或重发 `resendTransferAuthCode`
 >
 > 银行：仅平安 `pajzb`；中信 `zxegj` 明确不支持
+>
+> 组装注记（2026-08-17）：业务方可经 `FrontSpecialDataAssembler` 组装工具类获取下述协议键
+> （鉴权入参 auth → messageOrderNo/messageCheckCode 等），标准结构与矩阵见 15 号 spec §4；直传协议键仍合法。
 
 ## 1. 依据和能力结论
 

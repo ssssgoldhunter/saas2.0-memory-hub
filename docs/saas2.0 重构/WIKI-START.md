@@ -111,10 +111,11 @@ codegraph status               # 索引状态
     请求上下文、MyBatis 或 Feign 能力前先确认公共框架是否已有实现。
 19. [00-任务交接说明](00-任务交接说明.md)：仅在需要追溯历史决策时阅读，不作为当前完成状态。
 20. [14-catering-web-test-使用说明](14-catering-web-test-使用说明.md)：catering-front 接口测试工具的使用与维护文档，修改测试工具前应先阅读。
-21. [15-交易额外数据标准化-spec](15-交易额外数据标准化-spec.md)：specialData 标准账户结构（pay/rec）与
-    (bank × capability) 组装矩阵的契约文档；改动交易请求结构或转换器前必须完整阅读。
-22. [16-交易额外数据标准化-plan](16-交易额外数据标准化-plan.md)：15 号 spec 的分阶段执行计划，
-    供实施方按 Phase 0-7 顺序执行。
+21. [15-交易额外数据标准化-spec](15-交易额外数据标准化-spec.md)：specialData 组装工具类
+    （`FrontSpecialDataAssembler`，api-front 实例工具类、全实例方法零 static）的标准账户结构（pay/rec）与
+    (bank × capability) 组装矩阵契约；改动交易请求结构、组装工具类或 consume 侧组装 check 前必须完整阅读。
+22. [16-交易额外数据标准化-plan](16-交易额外数据标准化-plan.md)：15 号 spec 的执行计划与实施记录
+    （2026-08-17 工具类 + 7 个 check 骨架已落地；余 web-test 两步调用、buildRequest 补实与挂链）。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
