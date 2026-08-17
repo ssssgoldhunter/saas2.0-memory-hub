@@ -330,6 +330,10 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
        （资金经充值接口退回，后续由其他流程处理，用户确认）**；其他/空→null
      - 平安：0 成功→S；1 失败→F；2 待确认/5 待处理/6 处理中→P；其他/空→null
      - 交易接口 `FrontTransactionResult.frontStatus` 的 FrontTransactionStatus 枚举口径不变，两者并存；
+  4. 交易类型区分（用户指出补充，lsym 核对）：中信按 `reserve.TRANS_TYPE`——转账/消费送
+     TRANS_TYPE=01+BUSS_SUB_ID，提现只送 BUSS_ID（**REFUND 沿用 01 为推断值，lsym 无退款查询
+     先例，待协议核对**）；平安按 bizFunc——WITHDRAW→03、转账/消费/退款→02（lsym 另有 04 充值
+     查询，SaaS 首期无充值能力不涉及）；
 - 中信 24/25 当前只做单日分页，不支持跨日；
 - 平安账户状态、账户余额、平台明细、交易明细仍标 `PENDING_INTEGRATION`（交易状态查询已于
   2026-08-17 按 lsym 生产规则实现，联调待验）；
