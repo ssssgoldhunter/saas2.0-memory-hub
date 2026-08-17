@@ -198,7 +198,15 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 | | pay.bankCard.cardHolderName | `userNameEnc`（持卡人户名，与 nameEnc 是两个字段） | 🔒 |
 | REFUND (02) | **无**（平安退款 specialData 为空，Handle 查渠道表补原交易要素；组装器返回空 specialData） | — | — |
 
-### 4.3 矩阵纪律
+### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行）
+
+| 能力 | 中信 | 平安 |
+|---|---|---|
+| TRANSACTION_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号）；`acctNo` 为平台汇总账户，由 Handle 从租户账户配置读取加密上送，不经组装；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
+
+其余查询能力（账户状态/余额/两类明细）待实现时补格。
+
+### 4.4 矩阵纪律
 
 - 输出键名一律用 `*ContractKeys` 常量（`catering-common-core/.../constant/front/`），组装器不得出现
   字符串字面量键；
@@ -298,7 +306,7 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 ## 10. 明确不做（边界）
 
 1. front 服务零改动（无新接口/新节点/新注册表；AuthTransferBusinessData 改名暂缓为独立清理项）；
-2. 查询类 5 能力不涉及；
+2. 查询组装仅交易状态查询落地（§4.3），其余 4 个查询能力暂协议键直传；
 3. certNo/certType 组装上送**激活**（已进 AccountInfo 通用预留字段，需要时在对应银行组装器加
    "有则输出"并补矩阵行）／门店→账户配置解析（二期，另行评审配置结构）；
 4. 平安退款查表字段补齐（TODO-002 范畴）；

@@ -48,6 +48,17 @@
   consume/fund 双 TransSlot 结构为存量代码问题（用户 2026-08-17 知悉，次日安排人纠正）；
 - 新增 check 文件的编译验证随存量修复后补做（定点 javac 曾暴露并已修复 getSlotBean 一处真实缺陷）。
 
+## 交易状态查询三件套（2026-08-17 用户裁决后实施，未提交）
+
+1. api-front：新增 `FrontInternalTransStatus`（S/P/F 常量）；`TransactionStatusResult.frontStatus`
+   改 String 三态（null=未知）；组装工具两银行类加 TRANSACTION_STATUS_QUERY 分支（矩阵 §4.3）；
+2. front：Citic/PingAn QueryHandle 的 mapTransStatus 改内部三态，银行状态码全部提为带注释常量
+   （中信 00~05、平安 0/1/2/5/6），04/05→S、空/未知→null（用户确认）；PingAnQueryHandle
+   .queryTransactionStatus 正式实现（02/03 规则、frontSsn 必填、mchntMbrId←specialData、
+   acctNo←账户配置 SM2，lsym 生产依据，联调待验）；
+3. web-test：交易状态查询 Tab 接组装端点（两步），新增 frontSsn 输入（平安必填），
+   acctNo 输入降级为回退手填。
+
 ## 待办 Phase
 
 ### Phase 3 web-test 两步调用（2026-08-17 已完成，编译/冒烟待用户授权后补）

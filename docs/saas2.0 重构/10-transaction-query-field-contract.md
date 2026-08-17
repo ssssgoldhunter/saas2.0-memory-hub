@@ -314,7 +314,21 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
 - 中信 35/36/46 账户余额查询已按 Word v4.7 + lsym UAT 实测核对：46/36 的
   `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
+- **交易状态查询三件套（2026-08-17 用户裁决后落地）**：
+  1. 组装：TRANSACTION_STATUS_QUERY 纳入组装工具（中信 `pay.bankEAccountId→acctNo`；平安
+     `pay.bankEMemberCode→mchntMbrId`，acctNo=平台汇总账户走账户配置，见 15 号 §4.3）；
+  2. 平安查询 Handle 已实现（去掉 PENDING_INTEGRATION）：bizFunc 按被查原交易能力选择
+     （WITHDRAW→03，转账/消费/退款→02，lsym 生产规则）；`frontSsn` 平安必填（平安按原交易银行
+     流水号 oriTransSsn 定位，中信按日期+订单号定位不需要）；`oriTransDate` 有值即上送；
+     acctNo←账户配置 stlAcctNo SM2；联调待验；
+  3. 状态映射改内部三态：`TransactionStatusResult.frontStatus` → String，常量
+     `FrontInternalTransStatus`（S 成功/P 处理中/F 失败），银行状态码在各 QueryHandle 内以
+     带注释常量维护，未知/空码返回 null。映射表：
+     - 中信：00 受理→P；01 成功→S；02 失败→F；03 处理中→P；**04 已退款/05 已退汇→S
+       （资金经充值接口退回，后续由其他流程处理，用户确认）**；其他/空→null
+     - 平安：0 成功→S；1 失败→F；2 待确认/5 待处理/6 处理中→P；其他/空→null
+     - 交易接口 `FrontTransactionResult.frontStatus` 的 FrontTransactionStatus 枚举口径不变，两者并存；
 - 中信 24/25 当前只做单日分页，不支持跨日；
-- 平安账户状态、账户余额、交易状态、平台明细、交易明细全部先标
-  `PENDING_INTEGRATION`；现有代码仅作为分析草稿，不得进入真实路由；
+- 平安账户状态、账户余额、平台明细、交易明细仍标 `PENDING_INTEGRATION`（交易状态查询已于
+  2026-08-17 按 lsym 生产规则实现，联调待验）；
 - 平安查询字段、多个 bizFunc 聚合和不同返回数组结构由人工逐接口核对后再更新本文档。
