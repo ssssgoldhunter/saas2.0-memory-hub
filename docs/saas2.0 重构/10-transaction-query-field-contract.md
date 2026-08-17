@@ -50,6 +50,10 @@ BankRequestContext
 
 ## 3. 单笔交易状态查询
 
+> 2026-08-17 用户裁决：baseData 字段去 original 前缀（capability/transactionDate）——
+> 本对象本身就是状态查询请求；与查询入口的 API capability（TRANSACTION_STATUS_QUERY，路由用）
+> 不得混用的原则不变。
+
 ### 3.1 Front 基础对象
 
 `TransactionStatusQueryData` 固定包含：
@@ -57,14 +61,14 @@ BankRequestContext
 | 字段 | 说明 |
 |---|---|
 | `tenantId/storeId/platformCode` | 租户、门店和银行路由字段 |
-| `originalCapability` | 被查询原交易能力，只允许 `TRANSFER/CONSUME/REFUND/WITHDRAW` |
-| `originalTransactionDate` | 原交易日期，格式 `yyyyMMdd` |
+| `capability` | 被查询原交易能力，只允许 `TRANSFER/CONSUME/REFUND/WITHDRAW` |
+| `transactionDate` | 原交易日期，格式 `yyyyMMdd` |
 | `frontSsn` | 原 Front 渠道流水号（交易响应 `FrontTransactionResult.frontSsn` 回传、渠道表 `front_ssn` 落库）；**平安必填**（按其定位原交易，映射 `oriTransSsn`），中信可选（仅结果回显）（2026-08-17 修订） |
 | `bizOrderNo` | 原交易业务主流水，四类查询均必填 |
 | `bizSubOrderNo` | 原交易业务子流水；转账、消费、退款必填，提现不向银行上送 |
 
 当前 API capability 仍由交易状态查询入口固定为 `TRANSACTION_STATUS_QUERY`，用于定位当前查询 Handle；
-`originalCapability` 只描述被查询原交易类型，用于该 Handle 选择银行查询字段，两者不得混用。
+`capability` 只描述被查询原交易类型，用于该 Handle 选择银行查询字段，两者不得混用。
 Front 只完成银行报文装配，不校验 `frontSsn` 与业务流水在上游业务系统中是否属于同一笔交易。
 
 ### 3.2 中信请求映射
@@ -85,7 +89,7 @@ chnlNo  = 0010
 
 | 中信字段 | Front 数据来源 | 约束 |
 |---|---|---|
-| `oriTransDate` | `baseData.originalTransactionDate` | 必填，格式 `yyyyMMdd` |
+| `oriTransDate` | `baseData.transactionDate` | 必填，格式 `yyyyMMdd` |
 | `BUSS_ID` | `baseData.bizOrderNo` | 四类原交易能力均必填 |
 | `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | `TRANSFER/CONSUME/REFUND` 必填；`WITHDRAW` 不上送 |
 | `acctNo` | `specialData.acctNo` | 必填；协议原始 key，由中信 Handle 加密后上送 |
@@ -345,8 +349,8 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
      - 交易接口 `FrontTransactionResult.frontStatus` 的 FrontTransactionStatus 枚举口径不变，两者并存；
   4. 交易类型区分（用户指出补充，lsym 核对；2026-08-17 晚按用户裁决接入充值）：
      - `FrontCapability` 新增 `RECHARGE`（充值，不带 org 前缀——充值本身是交易能力，
-       状态查询经 `originalCapability=RECHARGE` 直接路由，不另设查询能力）；
-     - **RECHARGE 当前仅平安状态查询使用（bizFunc=04）**；中信不接入，`originalCapability=
+       状态查询经 `capability=RECHARGE` 直接路由，不另设查询能力）；
+     - **RECHARGE 当前仅平安状态查询使用（bizFunc=04）**；中信不接入，`capability=
        RECHARGE` 在中信走 default 分支返回"不支持原交易能力"（用户确认 2026-08-17）；
      - 中信按 `reserve.TRANS_TYPE` 两模式：转账/消费送 TRANS_TYPE=01+BUSS_SUB_ID；
        提现只送 BUSS_ID（lsym 生产规则）；REFUND 沿用 01 为推断值，lsym 无退款查询先例，

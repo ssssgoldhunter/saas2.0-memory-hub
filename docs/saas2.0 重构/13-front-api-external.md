@@ -471,8 +471,8 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `originalCapability` | String | 是 | 原交易能力枚举名（如 `TRANSFER`、`CONSUME`） |
-| `originalTransactionDate` | String | 是 | 原交易日期 yyyyMMdd |
+| `capability` | String | 是 | 原交易能力枚举名（如 `TRANSFER`、`CONSUME`） |
+| `transactionDate` | String | 是 | 原交易日期 yyyyMMdd |
 | `frontSsn` | String | 否 | 前端流水号（用于回显） |
 | `bizOrderNo` | String | 是 | 业务主订单号（转账/消费/退款必带子订单号） |
 | `bizSubOrderNo` | String | 否 | 业务子订单号 |
@@ -480,7 +480,7 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 | 约束：
 | - 转账、消费、退款查询必须同时提供 `bizOrderNo` + `bizSubOrderNo`；
 | - 提现查询只传 `bizOrderNo`；
-| - `originalCapability` 用于确定银行查询的 `bizFunc`，不参与当前 API 路由。
+| - `capability` 用于确定银行查询的 `bizFunc`，不参与当前 API 路由。
 
 **中信 specialData 字段：**
 

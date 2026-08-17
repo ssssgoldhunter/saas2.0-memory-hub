@@ -655,8 +655,8 @@ JSON 顶层固定为：
 `amount/fee` 均使用 `Long` 保存人民币分，`amount` 必须大于 0，`fee` 不能小于 0；禁止使用浮点数
 或在 Handle 内擅自转换为元。transfer/consume 的双方账户、会员编号和姓名必须通过
 `specialData` 提供，由具体银行 Handle 按常量白名单读取和映射。
-单笔状态查询基础对象必须包含 `originalCapability/originalTransactionDate/bizOrderNo/bizSubOrderNo`，并可携带
-`frontSsn` 供结果回显；其中 `originalCapability` 描述被查询的原交易能力，不是当前 API 路由 capability。
+单笔状态查询基础对象必须包含 `capability/transactionDate/bizOrderNo/bizSubOrderNo`，并可携带
+`frontSsn` 供结果回显；其中 `capability` 描述被查询的原交易能力，不是当前 API 路由 capability。
 `bizOrderNo` 是业务主流水；转账、消费、退款查询必须同时提供 `bizSubOrderNo`，提现查询只向银行上送
 `bizOrderNo`。中信查询所需用户编号使用协议原始 key `specialData.acctNo` 提供，不放入公共基础对象。
 交易明细查询基础对象只保存 `pageNo/pageSize` 统一分页字段；待查询账户、
@@ -759,11 +759,11 @@ Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `TOD
 明细固定使用 `/query-trans-details + bizFunc=25 + chnlNo=0010`，登记簿交易明细固定使用同一路径的
 `bizFunc=24 + chnlNo=0010`。两个 Front 方法都不得继续按提现、手续费、来账等类型拆分 Handle 方法。
 
-中信交易状态查询固定按请求 `baseData.originalCapability` 选择银行字段：转账、消费、退款上送
-`BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`，提现只上送 `BUSS_ID`；`originalTransactionDate` 映射
+中信交易状态查询固定按请求 `baseData.capability` 选择银行字段：转账、消费、退款上送
+`BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`，提现只上送 `BUSS_ID`；`transactionDate` 映射
 `oriTransDate`，`specialData.acctNo` 加密后映射顶层 `acctNo`。状态查询不接受
 `specialData.transactionType`，不得扫描 Front 本地渠道表补账户号或银行流水。当前 API capability 仍由
-查询入口固定为 `TRANSACTION_STATUS_QUERY`，不得拿它代替 `originalCapability`。
+查询入口固定为 `TRANSACTION_STATUS_QUERY`，不得拿它代替 `capability`。
 
 中信明细查询的 `transactionDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
 `specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
