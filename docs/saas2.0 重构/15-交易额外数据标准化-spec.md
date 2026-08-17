@@ -202,7 +202,7 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 
 | 能力 | 中信 | 平安 |
 |---|---|---|
-| TRANSACTION_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号）；`acctNo` 为平台汇总账户，由 Handle 从租户账户配置读取加密上送，不经组装；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
+| TRANSACTION_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号，1 个要素） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号）+ `pay.bankEAccountId` → `cardNoEnc`（被查银行账号明文，Handle 内 SM2 加密），共 2 个要素；**acctNo 不上送**（仅验证码类查询使用，lsym 生产规则）；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
 
 其余查询能力（账户状态/余额/两类明细）待实现时补格。
 

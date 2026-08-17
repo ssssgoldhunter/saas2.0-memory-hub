@@ -315,12 +315,14 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
   `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
 - **交易状态查询三件套（2026-08-17 用户裁决后落地）**：
-  1. 组装：TRANSACTION_STATUS_QUERY 纳入组装工具（中信 `pay.bankEAccountId→acctNo`；平安
-     `pay.bankEMemberCode→mchntMbrId`，acctNo=平台汇总账户走账户配置，见 15 号 §4.3）；
+  1. 组装：TRANSACTION_STATUS_QUERY 纳入组装工具（中信 `pay.bankEAccountId→acctNo` 1 要素；
+     平安 `pay.bankEMemberCode→mchntMbrId` + `pay.bankEAccountId→cardNoEnc` 共 2 要素，
+     Handle 内 SM2；**acctNo 不上送**——经 lsym 02/03 生产代码核对修正，见 15 号 §4.3）；
   2. 平安查询 Handle 已实现（去掉 PENDING_INTEGRATION）：bizFunc 按被查原交易能力选择
      （WITHDRAW→03，转账/消费/退款→02，lsym 生产规则）；`frontSsn` 平安必填（平安按原交易银行
      流水号 oriTransSsn 定位，中信按日期+订单号定位不需要）；`oriTransDate` 有值即上送；
-     acctNo←账户配置 stlAcctNo SM2；联调待验；
+     `cardNoEnc`←specialData（被查银行账号）SM2；reserve 仅 mrchCode/txnClientNo 走账户配置；
+     联调待验；
   3. 状态映射改内部三态：`TransactionStatusResult.frontStatus` → String，常量
      `FrontInternalTransStatus`（S 成功/P 处理中/F 失败），银行状态码在各 QueryHandle 内以
      带注释常量维护，未知/空码返回 null。映射表：
