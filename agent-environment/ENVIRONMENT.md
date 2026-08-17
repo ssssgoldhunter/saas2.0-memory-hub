@@ -66,6 +66,12 @@ bundles:
 > 背景：桌面内置 `@oh-dsh/vision` 会给 deepseek-v4 强行声明 image 输入
 > （`installDeepSeekV4ImageAdmission`），导致变体 resolve 判定"已是视觉模型"而失败。
 > 禁用后 deepseek-v4 恢复 text-only，变体正常注册；图片识别改由插件提供。
+>
+> ⚠️ 该条目**易缺失**（2026-08-17 曾回归：仅剩 `dsh-obsidian-assistant` 条目）。
+> 缺失症状：模型选择器切「DeepSeek-V4-Flash (modlens vision)」报
+> `model "deepseek-v4-flash" is outside the modlens vision wrap scope`
+> （modlens `shouldWrap` 见 `inputModalities` 含 `image` 拒绝包装）。
+> 核对方式：`grep -A2 "oh-vision" ~/.ohdsh/profiles/desktop/cordis.patch.yml` 应含 `disabled: true`。
 
 ---
 
