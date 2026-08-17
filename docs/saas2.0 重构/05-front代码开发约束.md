@@ -75,7 +75,7 @@
 - 银行编码、能力、交易状态等契约枚举；
 - Bean Validation 和 OpenAPI 契约注解；
 - specialData 组装工具类 `FrontSpecialDataAssembler`（纯静态映射、全实例方法零 static，
-  银行路由用私有内部类写死，契约见 15 号 spec §5）。
+  银行路由为工厂模式：同包独立银行组装类实现 `BankSpecialDataAssembler` 接口，契约见 15 号 spec §5）。
 
 禁止保存：
 

@@ -50,9 +50,12 @@ front 交易链路（validate → route → contextPrepare → dispatch → Hand
 - 工具类**全实例方法、零 static**：每次组装 `new FrontSpecialDataAssembler()` 用完即弃，禁止单例复用
   （多线程安全靠请求内生命周期，不靠共享）；小对象通过 `newPay()/newRec()/newOriPay()/newOriRec()/newAuth()`
   工厂方法创建并挂到当前实例；嵌套数据类（AccountInfo/BankCard/Auth）为静态嵌套类型（JSON 反序列化需要）；
-- 银行路由写死：`assemble()` 内 `switch (BankCode.fromCode(platformCode))` 分发到
-  `CiticSpecialDataAssembler` / `PingAnSpecialDataAssembler` 两个**私有内部类**，内部再 switch capability；
-  新增银行 = BankCode 加枚举 + 工具类加一个内部类与 case + api-front 升版本（用户已确认此更新模式）；
+- 银行路由为**工厂模式**（2026-08-17 晚按用户要求从私有内部类重构）：`assemble()` 校验后经
+  `bankAssembler()` 工厂按 `BankCode.fromCode(platformCode)` 创建银行组装类
+  （`CiticSpecialDataAssembler` / `PingAnSpecialDataAssembler`，实现 `BankSpecialDataAssembler`
+  接口，同包 package-private，非 Spring Bean），银行类内部再按 capability 分发到具体组装方法，
+  即 (bank × capability) 两级寻址；新增银行 = BankCode 加枚举 + 新增一个组装类 + 工厂加一个 case +
+  api-front 升版本（用户已确认此更新模式）；
 - 交易 API 请求结构**不变**：baseData 现有字段 + 协议键 specialData。auth/originalBusinessDate/contractId
   **不进**交易 baseData，它们只是组装工具的入参（见 §3.2）；
 - 查询接口（5 个查询能力）不涉及：查询 specialData 仍由调用方按 10 号契约直传。
@@ -101,18 +104,21 @@ public class FrontSpecialDataAssembler extends BaseRequest {
     public AccountInfo newPay();  public AccountInfo newRec();
     public AccountInfo newOriPay();  public AccountInfo newOriRec();  public Auth newAuth();
 
-    // 组装入口：实例方法。校验 capability/platformCode → BankCode.fromCode → 银行内部类
+    // 组装入口：实例方法。校验 capability/platformCode → bankAssembler() 工厂分发
     public JSONObject assemble();
+    private BankSpecialDataAssembler bankAssembler();   // switch (BankCode.fromCode) → 银行组装类
 
     @Data public static class AccountInfo {   // bankEAccountId / bankEMemberCode / bankAccountName / bankCard
         public BankCard newBankCard();
     }
     @Data public static class BankCard { … }   // bankCardNo / cardHolderName（仅平安提现）
     @Data public static class Auth { … }       // authOrderNo / authCode
-
-    private class CiticSpecialDataAssembler { … }   // 矩阵 §4.1，switch capability
-    private class PingAnSpecialDataAssembler { … }  // 矩阵 §4.2，REFUND 返回空对象
 }
+
+// 同包独立银行组装类（package-private，实现 BankSpecialDataAssembler 接口，
+// 构造持有当次组装数据实例，非 Spring Bean，每次组装新建）：
+class CiticSpecialDataAssembler { … }    // 矩阵 §4.1，switch capability → 6 能力
+class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对象
 ```
 
 说明：
@@ -201,7 +207,9 @@ public class FrontSpecialDataAssembler extends BaseRequest {
 
 ## 5. 组装工具类设计（catering-api-front，已实现）
 
-- 位置：`com.chinaums.front.api.assemble.FrontSpecialDataAssembler`（单文件，含嵌套数据类与两个银行内部类）；
+- 位置：`com.chinaums.front.api.assemble` 包共 4 个文件：`FrontSpecialDataAssembler`（公开大对象 +
+  工厂入口）、`BankSpecialDataAssembler`（接口）、`CiticSpecialDataAssembler` / `PingAnSpecialDataAssembler`
+  （同包独立银行组装类，package-private）；
 - 入口 `assemble()` 校验：capability 非空、platformCode 非空且能 `BankCode.fromCode`（不得 valueOf）映射，
   失败抛 `FrontException(INVALID_REQUEST / BANK_NOT_SUPPORTED)`，消息带完整路径（如 `pay.bankEAccountId不能为空`）；
 - 银行内部类按矩阵逐键组装，**能力映射共 12 个：中信 6 + 平安 6（含平安 REFUND 空实现，返回空 JSONObject）**；

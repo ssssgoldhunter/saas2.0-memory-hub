@@ -14,6 +14,11 @@
      工厂方法 + `assemble()` 实例入口 + CiticSpecialDataAssembler/PingAnSpecialDataAssembler 两个私有内部类；
    - 能力映射 12 个（中信 6 + 平安 6 含平安退款空实现），键全走 `*ContractKeys`，
      originalBusinessDate 做 yyyyMMdd 严格校验；全实例方法零 static；
+   - 2026-08-17 晚按用户要求重构为**工厂模式**：银行组装逻辑从主类私有内部类拆为同包独立类
+     （`BankSpecialDataAssembler` 接口 + `CiticSpecialDataAssembler` + `PingAnSpecialDataAssembler`，
+     package-private、非 Spring Bean），主类 `assemble()` → `bankAssembler()` 工厂按
+     platformCode→BankCode 创建银行类、银行类内 switch capability，(bank × capability) 两级寻址；
+     校验辅助方法降为包内可见供银行类复用。web-test/consume 调用方零影响（重编译即可）；
    - `AuthTransferBusinessData` 改名**暂缓**（涉及 front 服务 7 处，违反零改动，独立清理项）。
 
 2. **Phase 2 consume 侧组装 check 骨架（已完成，buildRequest 为 TODO 占位）**
