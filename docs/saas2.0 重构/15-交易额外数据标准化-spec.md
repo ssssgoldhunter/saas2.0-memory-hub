@@ -82,8 +82,10 @@ front 交易链路（validate → route → contextPrepare → dispatch → Hand
 ```
 
 字段名来源：lsym 生产库 `bas_company_info`（bank_e_account_id / bank_e_member_code / account_name）
-+ `bas_bank_info`（卡号 / 持卡人户名）。**certNo（证件号）不进结构**：按生产模式走绑定卡配置推导
-（二期），平安提现协议的 certNoEnc 维持"不传不上送"行为。
++ `bas_bank_info`（卡号 / 持卡人户名）。**certNo/certType 已进 AccountInfo 作为通用预留字段**
+（2026-08-17 用户确认：平安场景可能需要——提现为"会员提现-不验证"模式 6033 故当前非必填；
+目前不组装上送，激活时在对应银行组装器加"有则输出"并补矩阵行）；平安提现协议的
+`certNoEnc` 维持"不传不上送"行为，`certType` 固定 24 仍由 Handle 处理。
 
 ### 3.2 组装工具类结构（唯一新增模型，落 catering-api-front）
 
@@ -108,7 +110,8 @@ public class FrontSpecialDataAssembler extends BaseRequest {
     public JSONObject assemble();
     private BankSpecialDataAssembler bankAssembler();   // switch (BankCode.fromCode) → 银行组装类
 
-    @Data public static class AccountInfo {   // bankEAccountId / bankEMemberCode / bankAccountName / bankCard
+    @Data public static class AccountInfo {   // bankEAccountId / bankEMemberCode / bankAccountName
+                                              // / certNo / certType（通用预留，目前不上送）/ bankCard
         public BankCard newBankCard();
     }
     @Data public static class BankCard { … }   // bankCardNo / cardHolderName（仅平安提现）
