@@ -6,9 +6,9 @@
 
 ## 实施记录（2026-08-17）
 
-### 已完成
+### 已完成（已提交推送 origin/limeng_front：d5dd39ca 工具类 / 32d4b380 consume check / 96fb145b web-test；2026-08-17 用户确认提交）
 
-1. **Phase 1 api-front 组装工具类（已完成，编译验证通过并 install 至 /tmp/mdl-m2）**
+1. **Phase 1 api-front 组装工具类（已完成，编译验证通过并 install 至 /tmp/mdl-m2；后续工厂化重构与证件预留未再编译，待授权随模块编译）**
    - 新增 `com/chinaums/front/api/assemble/FrontSpecialDataAssembler.java`（单文件）：
      大对象 + 嵌套 AccountInfo/BankCard/Auth + newPay/newRec/newOriPay/newOriRec/newAuth/newBankCard
      工厂方法 + `assemble()` 实例入口 + CiticSpecialDataAssembler/PingAnSpecialDataAssembler 两个私有内部类；
