@@ -333,11 +333,13 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
   4. 交易类型区分（用户指出补充，lsym 核对；2026-08-17 晚按用户裁决接入充值）：
      - `FrontCapability` 新增 `RECHARGE`（充值，不带 org 前缀——充值本身是交易能力，
        状态查询经 `originalCapability=RECHARGE` 直接路由，不另设查询能力）；
+     - **RECHARGE 当前仅平安状态查询使用（bizFunc=04）**；中信不接入，`originalCapability=
+       RECHARGE` 在中信走 default 分支返回"不支持原交易能力"（用户确认 2026-08-17）；
      - 中信按 `reserve.TRANS_TYPE` 两模式：转账/消费送 TRANS_TYPE=01+BUSS_SUB_ID；
-       **提现/充值只送 BUSS_ID**（lsym 生产规则，充值不进 01 分支）；
-       REFUND 沿用 01 为推断值，lsym 无退款查询先例，**待协议核对**；
-     - 平安按 bizFunc 三模式：WITHDRAW→03、**RECHARGE→04**、转账/消费/退款→02；
-     - RECHARGE 当前仅状态查询可用，充值交易能力接入时再注册交易侧 Handle；
+       提现只送 BUSS_ID（lsym 生产规则）；REFUND 沿用 01 为推断值，lsym 无退款查询先例，
+       **待协议核对**；
+     - 平安按 bizFunc 三模式：WITHDRAW→03、RECHARGE→04、转账/消费/退款→02；
+     - 充值交易能力接入时再注册交易侧 Handle 并补中信分支；
 - 中信 24/25 当前只做单日分页，不支持跨日；
 - 平安账户状态、账户余额、平台明细、交易明细仍标 `PENDING_INTEGRATION`（交易状态查询已于
   2026-08-17 按 lsym 生产规则实现，联调待验）；
