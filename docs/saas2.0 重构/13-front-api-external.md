@@ -141,7 +141,7 @@ JSONObject specialData = assembler.assemble();                          // → {
 | `frontRespCode` | **"200"** = 业务成功；非 "200" = 银行业务拒绝 |
 | `frontRespDesc` | 业务结果描述 |
 | `frontSsn` | Front 渠道流水号 |
-| `frontStatus` | 交易状态：`SUCCESS` / `FAILED` / `PROCESSING` / `UNKNOWN` |
+| `frontStatus` | 交易接口为枚举 `SUCCESS` / `FAILED` / `PROCESSING` / `UNKNOWN` 等；**交易状态查询为内部三态 `S` / `P` / `F`（无法识别为 null，见 §5.3）** |
 | `frontQueryId` | 查询标识（部分接口使用） |
 | `frontTransDate` | Front 受理日期 yyyyMMdd |
 | `frontTransTime` | Front 受理时间 HHmmss |
