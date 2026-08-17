@@ -1,7 +1,10 @@
 # 交易额外数据（specialData）标准化 Spec
 
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
-> 状态：approved-for-implementation（2026-08-17 用户逐条确认；同日修正组装位置：组装能力以 front API 暴露，由 catering-consume 的 flow 节点调用，**不是** front 交易链上的节点）
+> 状态：approved-for-implementation（2026-08-17 用户逐条确认；同日两次架构修正：
+> ①组装位置改为 catering-consume 的 flow 节点两步调用；②最终形态为 **catering-api-front 实例工具类**
+> `FrontSpecialDataAssembler`（本地调用，不服务化、不 Feign，front 服务零改动），consume 侧 check
+> 按能力维度组织。2026-08-17 晚已实施：工具类 + 7 个 check 骨架落地，见 16 号实施记录）
 > 配套执行计划：[16-交易额外数据标准化-plan.md](16-交易额外数据标准化-plan.md)
 > 基线：cateringsass master 分支，2026-08-17（交易明细 transDate/transTime/transType 缩写已合入）
 
@@ -16,23 +19,20 @@
 3. 必填校验散落在各 Handle 的 `requireSpecialData` 逐键调用里，无单一事实来源（遗留问题 P1-002 的
    根因，P1-002 已 CLOSED，本方案提供系统性解法）。
 
-目标：业务方只向 front 的**组装 API** 提交**银行无关的标准账户结构**；front 按
+目标：业务方只向**组装工具类**提交**银行无关的标准账户结构**；工具类按
 `(platformCode→bankCode, capability)` 组装出**协议键明文 specialData** 返回；业务方
 （catering-consume）把返回值原样放入交易请求。front 的交易 API、LiteFlow 链、Handle
-**全部维持现状**（仍收协议键 + `requireSpecialData` 校验，作为业务方绕过组装 API 直传时的最后防线）。
+**全部维持现状**（仍收协议键 + `requireSpecialData` 校验，作为业务方绕过组装工具直传时的最后防线）。
 
 ## 2. 目标架构
 
 ```
 catering-consume（业务系统，自己的 LiteFlow flow）
-    └─ specialDataAssemble 节点（组装 check：调 front 组装 API → 校验返回 → 注入交易请求）
-          │ Feign: FrontAssembleApi.assembleSpecialData(...)
+    └─ specialData 组装 check（*AssembleCheck：new 工具 → 子类填标准结构 → assemble() → 回填 slot）
+          │ 本地方法调用（同 JVM，无网络）
           ▼
-front 组装 API（Controller → Service → SpecialDataAssemblerRegistry）
-    (BankCode, FrontCapability) → 转换器（13 个绑定）
-          │ 标准账户结构 → 协议键明文 JSONObject
-          ▼
-    返回 R<SpecialDataAssembleResult{ specialData }>
+catering-api-front 组装工具类 FrontSpecialDataAssembler
+    （BankCode, FrontCapability）内部类路由 → 协议键明文 JSONObject
           │
 catering-consume 组交易请求（baseData 业务字段 + specialData=组装结果）
           │ Feign: FrontTransactionApi.*
@@ -42,14 +42,20 @@ front 交易链路（validate → route → contextPrepare → dispatch → Hand
 
 要点：
 
-- 组装发生在**交易调用之前**、**front 之外**（catering-consume flow 节点内），是两步调用；
-- front 交易链 `front-flow.xml` **零改动**（8 交易链 + 5 查询链维持原节点）；
-- Handle **零改动**：仍消费协议键 specialData，`requireSpecialData` 逐键校验保留（组装 API 与交易 API
-  解耦，交易 API 必须能独立校验直传的协议键报文）；
+- 组装是 catering-api-front 中的**实例工具类**（`com.chinaums.front.api.assemble.FrontSpecialDataAssembler`），
+  consume 本地调用，**不服务化、不 Feign**：纯静态映射不查库不调银行，无网络开销与新增失败模式；
+- **front 服务零改动**：无新增 Controller/Service/Registry/接口，front-flow.xml、两个 TransactionHandle、
+  三个交易 baseData 类、BankRequestContext 全部原样；
+- Handle 仍消费协议键 specialData，`requireSpecialData` 逐键校验保留（直传协议键报文的最后防线）；
+- 工具类**全实例方法、零 static**：每次组装 `new FrontSpecialDataAssembler()` 用完即弃，禁止单例复用
+  （多线程安全靠请求内生命周期，不靠共享）；小对象通过 `newPay()/newRec()/newOriPay()/newOriRec()/newAuth()`
+  工厂方法创建并挂到当前实例；嵌套数据类（AccountInfo/BankCard/Auth）为静态嵌套类型（JSON 反序列化需要）；
+- 银行路由写死：`assemble()` 内 `switch (BankCode.fromCode(platformCode))` 分发到
+  `CiticSpecialDataAssembler` / `PingAnSpecialDataAssembler` 两个**私有内部类**，内部再 switch capability；
+  新增银行 = BankCode 加枚举 + 工具类加一个内部类与 case + api-front 升版本（用户已确认此更新模式）；
 - 交易 API 请求结构**不变**：baseData 现有字段 + 协议键 specialData。auth/originalBusinessDate/contractId
-  **不进**交易 baseData，它们只作为组装 API 的入参（见 §3.2）；
-- 查询接口（5 个查询能力）不涉及：查询 specialData 仍由调用方按 10 号契约直传；
-- 组装 API 不进 LiteFlow：无编排需求，Controller → Service → Registry 一层直达。
+  **不进**交易 baseData，它们只是组装工具的入参（见 §3.2）；
+- 查询接口（5 个查询能力）不涉及：查询 specialData 仍由调用方按 10 号契约直传。
 
 ## 3. 数据结构定义
 
@@ -76,39 +82,36 @@ front 交易链路（validate → route → contextPrepare → dispatch → Hand
 + `bas_bank_info`（卡号 / 持卡人户名）。**certNo（证件号）不进结构**：按生产模式走绑定卡配置推导
 （二期），平安提现协议的 certNoEnc 维持"不传不上送"行为。
 
-### 3.2 组装 API 请求/响应对象（全部落 catering-api-front）
+### 3.2 组装工具类结构（唯一新增模型，落 catering-api-front）
 
 ```java
-/** 组装请求：继承 BaseRequest，自动获得 tenantId/clientId/platformCode/dataSourceId 四参数注入 */
-public class AssembleSpecialDataRequest extends BaseRequest {
+// com.chinaums.front.api.assemble.FrontSpecialDataAssembler（@Data，extends BaseRequest，
+// 4 参数注入能力保留；implements Serializable，可直接作 web-test 端点入参反序列化）
+public class FrontSpecialDataAssembler extends BaseRequest {
     private FrontCapability capability;        // 必填，目标交易能力
-    private FrontAccountInfo pay;              // 按能力必填，见 §4 矩阵
-    private FrontAccountInfo rec;
-    private FrontAccountInfo oriPay;           // 仅退款
-    private FrontAccountInfo oriRec;
-    private AuthInfo auth;                     // 仅鉴权转账：{authOrderNo, authCode}
+    private AccountInfo pay;                   // 按能力必填，见 §4 矩阵
+    private AccountInfo rec;
+    private AccountInfo oriPay;                // 仅退款
+    private AccountInfo oriRec;
+    private Auth auth;                         // 仅鉴权转账：{authOrderNo, authCode}
     private String originalBusinessDate;       // 仅退款：原交易日期 yyyyMMdd
     private String contractId;                 // 仅平台收付，选填
-}
 
-public class FrontAccountInfo implements Serializable {
-    private String bankEAccountId;
-    private String bankEMemberCode;
-    private String bankAccountName;
-    private FrontBankCard bankCard;            // 仅提现
-}
-public class FrontBankCard implements Serializable {
-    private String bankCardNo;
-    private String cardHolderName;             // 仅平安提现
-}
-public class AuthInfo implements Serializable {
-    private String authOrderNo;                // 授权订单编号（授权发起时系统签发，如平安短信指令号）
-    private String authCode;                   // 授权验证码（用户实时输入）
-}
+    // 小对象工厂：new 即挂到当前实例，返回后逐字段 set（业务方从 slot 各来源对象赋值）
+    public AccountInfo newPay();  public AccountInfo newRec();
+    public AccountInfo newOriPay();  public AccountInfo newOriRec();  public Auth newAuth();
 
-/** 组装响应：specialData 即业务方要放进交易请求的协议键明文 JSONObject */
-public class SpecialDataAssembleResult implements Serializable {
-    private JSONObject specialData;
+    // 组装入口：实例方法。校验 capability/platformCode → BankCode.fromCode → 银行内部类
+    public JSONObject assemble();
+
+    @Data public static class AccountInfo {   // bankEAccountId / bankEMemberCode / bankAccountName / bankCard
+        public BankCard newBankCard();
+    }
+    @Data public static class BankCard { … }   // bankCardNo / cardHolderName（仅平安提现）
+    @Data public static class Auth { … }       // authOrderNo / authCode
+
+    private class CiticSpecialDataAssembler { … }   // 矩阵 §4.1，switch capability
+    private class PingAnSpecialDataAssembler { … }  // 矩阵 §4.2，REFUND 返回空对象
 }
 ```
 
@@ -116,15 +119,14 @@ public class SpecialDataAssembleResult implements Serializable {
 
 - `auth/originalBusinessDate/contractId` 是**组装时入参**，组装结果已含 messageOrderNo/
   ORI_USER_TRANS_DT/contractId 等协议键，交易请求不再携带这些语义字段；
-- 授权是跨银行通用语义（其他银行也可能有"授权码+授权订单编号"需求），故作为独立 `AuthInfo`
-  对象存在，不绑定平安；
+- 授权是跨银行通用语义，作为独立 `AuthInfo` 语义对象存在，不绑定平安；
 - 交易 API 的 `BaseTransactionBusinessData/RefundBusinessData/PlatformTransferBusinessData`
   **不加任何新字段**。
 
-### 3.3 类改名（保留，独立清理项）
+### 3.3 类改名（暂缓，独立清理项，本次不动）
 
-`AuthTransferBusinessData` → `AuthBusinessData`（授权语义独立，非转账变体；改名后为
-`BaseTransactionBusinessData` 空子类，保留作 API 类型语义位）。
+`AuthTransferBusinessData` → `AuthBusinessData`（授权语义独立，非转账变体）。因涉及 front 服务 7 处
+文件改动，与"front 零改动"原则冲突，本次不执行，留作独立清理项。
 
 ### 3.4 已完成（基线，无需再做）
 
@@ -197,94 +199,76 @@ public class SpecialDataAssembleResult implements Serializable {
 - (中信, TRANSFER_AUTH)/(中信, RESEND)/(平安, PLATFORM_*)/平安 5 个查询能力不在组装范围，
   组装器不存在，请求这些组合返回 `CAPABILITY_NOT_SUPPORTED`。
 
-## 5. front 组装 API 设计
+## 5. 组装工具类设计（catering-api-front，已实现）
 
-### 5.1 API 契约（catering-api-front 新增 Feign 接口）
-
-```java
-@FeignClient(name = "catering-front")
-public interface FrontAssembleApi {
-    @PostMapping("/front/v1/assemble/special-data")
-    R<SpecialDataAssembleResult> assembleSpecialData(@RequestBody AssembleSpecialDataRequest request);
-}
-```
-
-- FrontAssembleController implements FrontAssembleApi → FrontAssembleApplicationService →
-  SpecialDataAssemblerRegistry，三层签名一致（对齐现有 FrontTransactionApi 模式）；
-- `platformCode → BankCode` 用 `BankCode.fromCode()`（不得 valueOf）；
-- 入参校验：capability 非空；platformCode 能映射 BankCode；按矩阵校验角色/字段缺失 →
-  `FrontException(INVALID_REQUEST)`，错误消息带完整路径（如 `pay.bankEAccountId不能为空`）；
+- 位置：`com.chinaums.front.api.assemble.FrontSpecialDataAssembler`（单文件，含嵌套数据类与两个银行内部类）；
+- 入口 `assemble()` 校验：capability 非空、platformCode 非空且能 `BankCode.fromCode`（不得 valueOf）映射，
+  失败抛 `FrontException(INVALID_REQUEST / BANK_NOT_SUPPORTED)`，消息带完整路径（如 `pay.bankEAccountId不能为空`）；
+- 银行内部类按矩阵逐键组装，**能力映射共 12 个：中信 6 + 平安 6（含平安 REFUND 空实现，返回空 JSONObject）**；
+  矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、双方查询能力）抛 `CAPABILITY_NOT_SUPPORTED`；
+  同一物理方法可服务多能力（中信 TRANSFER 与 CONSUME 映射相同，switch 中并列 case）；
+- `originalBusinessDate` 的 yyyyMMdd 严格校验（BASIC_ISO_DATE 解析）在工具类内；
+- 协议键一律取 `*ContractKeys` 常量，工具类内不得出现字符串字面量键；
 - 不查租户配置、不查库、不调银行：纯静态映射，天然幂等。
-
-### 5.2 组装器注册表（catering-front 新增）
-
-```java
-// 新增包 com.chinaums.front.channel.assemble
-public interface SpecialDataAssembler {
-    BankCode bankCode();
-    FrontCapability capability();
-    /** 标准结构 → 明文协议键 JSONObject；缺失必填字段抛 FrontException(INVALID_REQUEST)。 */
-    JSONObject assemble(AssembleSpecialDataRequest request);
-}
-
-@Component
-public class SpecialDataAssemblerRegistry {
-    // 构造期收集全部 SpecialDataAssembler，按 BankCapabilityKey(bankCode, capability) 注册；
-    // 重复注册启动失败（对齐 TransactionHandleRegistry 行为）；
-    // get(bankCode, capability) 未注册抛 CAPABILITY_NOT_SUPPORTED。
-}
-```
-
-- 13 个绑定：中信 6 + 平安 6 + 平安 REFUND 空实现（返回空 JSONObject）；
-- 物理类数可少于 13：中信 TRANSFER 与 CONSUME 映射相同，可共用抽象父类或一类多绑定
-  （对齐 Handle `capabilityDefinitions()` 返回 List 的模式）；
-- 一个节点/一个 API + 注册表分发，**禁止**在单个组装器里按 capability switch。
 
 ## 6. front 交易链路：明确不改动
 
 | 位置 | 处置 |
 |---|---|
-| front-flow.xml | 零改动（不新增节点） |
+| front 服务整体 | 零改动（无新增 Controller/Service/接口/节点） |
 | Handle（中信/平安交易） | 零改动：仍消费协议键 + `requireSpecialData` 逐键校验（直传报文的最后防线） |
 | BaseTransactionBusinessData / RefundBusinessData / PlatformTransferBusinessData | 不加字段 |
 | BankRequestContext | 不加 assembledSpecialData |
 | 查询 5 能力 | 不涉及 |
 
-## 7. catering-consume 侧集成契约（2026-08-17 补充组件设计）
+## 7. catering-consume 侧集成契约（2026-08-17 晚已落地骨架）
 
-组装 check 以**一系列 (银行 × capability) 组件**落地，放
-`consume/flow/component/base/platform/`（与 PlatformInfoCheck 并列；withdraw/deduction 所在的
-fund flow 与 consume 同属一个 Spring 应用，LiteFlow 按 bean 名引用，无包限制）：
+组装 check 以**能力维度**组织（不再按银行 × 能力拆分；标准结构是超集，银行差异全部由工具类内部类消化，
+check 无需按银行分支），落 `consume/flow/component/base/specialdata/`：
 
 ```java
-public abstract class AbstractSpecialDataAssembleCheck extends NodeComponent {
-    // 模板方法 process()：
-    // 1. AssembleSpecialDataRequest req = buildRequest(slot);          ← 变化段，子类实现
-    // 2. req.setCapability(capability());                              ← 子类常量
-    // 3. frontAssembleApi.assembleSpecialData(req)                     ← Feign 调 front 组装 API
-    //    platformCode/tenantId/clientId/dataSourceId 由 Feign 拦截器 + BaseDataRequestBodyAdvice
-    //    从请求上下文自动注入，子类不填
-    // 4. 校验：R.code==200 且 specialData 非 null（平安退款组装结果为空对象，豁免非空校验）
-    // 5. slot.setAssembledSpecialData(result.specialData)              ← 交易组件组 FrontRequest 时取用
-    // 6. 失败抛 BaseException 终止链，禁止降级为自行拼协议键
+public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
+    // 模板方法 process()（不变段）：
+    // 1. S slot = this.getFirstContextBean();                 ← 对齐 ConsumeTrans04 等现有组件取法
+    // 2. FrontSpecialDataAssembler assembler = new FrontSpecialDataAssembler();  ← 每次新建,禁止单例复用
+    // 3. assembler.setCapability(capability()); assembler.setPlatformCode(RequestContext.getPlatformCode());
+    // 4. buildRequest(assembler, slot);                       ← 变化段,子类实现,允许 TODO 占位
+    // 5. JSONObject specialData = assembler.assemble();
+    // 6. writeBack(slot, specialData);                        ← 回填 slot.assembledSpecialData
+    // 7. 失败抛 BaseException 终止链，禁止降级为自行拼协议键
     protected abstract FrontCapability capability();
-    protected abstract AssembleSpecialDataRequest buildRequest(/* 对应 slot */);
+    protected abstract void buildRequest(FrontSpecialDataAssembler assembler, S slot);
+    protected abstract void writeBack(S slot, JSONObject specialData);
 }
 ```
 
-- 子类 11 个（bean 名 `zxTransferAssembleCheck` 等）：中信 6（Transfer/Consume/Withdraw/Refund/
-  PlatformPay/PlatformReceive）+ 平安 5（Transfer/Consume/TransferAuth/AuthCodeResend/Withdraw）；
-- 平安 Refund 免 check：组装结果为空对象，交易组件直接带空 specialData；
-- `buildRequest` 允许暂 TODO（从 slot 收集 pay/rec/oriPay/oriRec/bankCard 的逻辑等账户体系定型），
-  但 `capability()` 与基类调用/校验/回填段必须实现；
+- **7 个子类**（因 consume/fund 两棵树 slot 类型不同，提现与扣款独立成类）：
+
+| check（bean 名） | 能力 | slot 树 | 挂接点（随各链 front 适配时挂入，当前不挂链） |
+|---|---|---|---|
+| consumeAssembleCheck | CONSUME | consume | chainConsume（ConsumeTrans04 前） |
+| refundAssembleCheck | REFUND | consume | chainConsumeRefund（Refund04 前） |
+| transferAssembleCheck | TRANSFER | consume | chainTransfer + chainTransferInner（同一类挂两处） |
+| transferAuthAssembleCheck | TRANSFER_AUTH | consume | chainConsumeAuth |
+| transferAuthCodeResendAssembleCheck | TRANSFER_AUTH_CODE_RESEND | consume | 服务层重发调用点（非独立链） |
+| withdrawAssembleCheck | WITHDRAW | fund | chainWithDraw（WithDrawTrans 前） |
+| deductionAssembleCheck | TRANSFER（扣款走转账，用户确认 2026-08-17） | fund | chainDeduction（DeductionTrans 前） |
+
+- PlatformPay/PlatformReceive 组装映射保留在工具类中，但 **check 第一期不做**（consume 无调用链，等真实调用方出现再加）；
+- `buildRequest` 当前全部 TODO 占位（抛 BaseException，注明计划数据源：pay/rec ← slot.compayInfoMaps、
+  bankCard ← basBankInfoMap、auth ← 授权签发结果+用户输入、originalBusinessDate ← 原交易日期），
+  等账户体系按 storeNo 定型后补齐；骨架（调用/校验/回填/终止）为实实现；
 - `consume/flow/slot/TransSlot` 与 `fund/flow/slot/TransSlot` 各增加
-  `private JSONObject assembledSpecialData;`；
+  `private JSONObject assembledSpecialData;`（已加，双 slot 是存量代码结构，用户知悉）；
+- **当前未挂链**：老树银行组件本就 stub 待适配，fund 树在线走旧 FacadeApi，挂 TODO-抛异常的 check 会中断在线链路；
+  挂接随各链的 front 新 API 适配进行；
 - 组装结果单笔交易单次使用，不缓存跨请求复用（验证码/日期类字段时效性强）。
 
 ## 8. web-test 改造
 
-- 交易 Tab 改为两步模拟 catering-consume：先调组装端点（新增 `POST /api/test/front/assemble/special-data`
-  透传 FrontAssembleApi），把返回 specialData 展示/注入交易请求，再发交易；
+- 新增小端点 `POST /api/test/front/assemble/special-data`：入参直接反序列化为
+  `FrontSpecialDataAssembler`（继承 BaseRequest，4 参数由 RequestBodyAdvice 注入），后端调
+  `assemble()` 返回 specialData，供页面两步展示/注入交易请求；
 - UI 账户下拉产出标准结构（pay/rec/oriPay/oriRec + bankCard），鉴权 Tab 填 auth 对象，退款 Tab 填
   originalBusinessDate，平台收付填 contractId（选填）；
 - 查询 Tab 维持现状（协议键直传）；
@@ -294,28 +278,31 @@ public abstract class AbstractSpecialDataAssembleCheck extends NodeComponent {
 
 | 文档 | 改动 |
 |---|---|
-| 13-front-api-external | 新增组装 API 登记（§：FrontAssembleApi，含请求/响应结构） |
-| 05-front代码开发约束 | 新增组装 API 章节：标准结构入参、矩阵引用、"交易 API 仍收协议键"的双层口径；**"specialData 必须银行协议原始名"条款保留不变**（交易请求仍协议键） |
-| 06/07/08 字段契约 | 头部加注：业务方可经组装 API 获取下述协议键，标准结构与矩阵见 15 号 spec |
+| 13-front-api-external | 登记组装工具类（§：FrontSpecialDataAssembler，含标准结构与矩阵引用） |
+| 05-front代码开发约束 | 新增组装工具类章节：标准结构入参、矩阵引用、"交易 API 仍收协议键"的双层口径；**"specialData 必须银行协议原始名"条款保留不变**（交易请求仍协议键） |
+| 06/07/08 字段契约 | 头部加注：业务方可经组装工具类获取下述协议键，标准结构与矩阵见 15 号 spec |
 | WIKI-START.md | 已注册 15/16 号文档 |
-| 12-issues/P1-002 | 状态已 CLOSED；补充注记：散装校验保留为直传防线，组装 API 提供上游解法 |
+| 12-issues/P1-002 | 状态已 CLOSED；补充注记：散装校验保留为直传防线，组装工具类提供上游解法 |
 
 ## 10. 明确不做（边界）
 
-1. front 交易链路/Handle/baseData 模型零改动；
+1. front 服务零改动（无新接口/新节点/新注册表；AuthTransferBusinessData 改名暂缓为独立清理项）；
 2. 查询类 5 能力不涉及；
 3. certNo / 门店→账户配置解析（二期，另行评审配置结构）；
 4. 平安退款查表字段补齐（TODO-002 范畴）；
-5. 组装结果缓存、组装 API 鉴权特殊化（走现有内部调用认证）；
-6. 不新增 JUnit 测试（编译 + web-test 人工验证为准，如需测试由用户当次授权）。
+5. 组装结果缓存、工具类鉴权特殊化（本地调用，无此面）；
+6. 不新增 JUnit 测试（用户明确：不编译、不跑测试；验证以 web-test 人工两步调用为准）；
+7. check 不挂链（挂接随各链 front 适配进行，避免 TODO 中断在线链路）。
 
 ## 11. 验收标准（执行方自检 + 用户复核）
 
-1. `mvn compile -pl catering-api/catering-api-front,catering-modules/catering-front -am` 与
-   web-test 单独编译均 BUILD SUCCESS；
-2. `git diff --stat` 确认 front-flow.xml、`*TransactionHandle.java`、三个交易 baseData 类零改动；
-3. SpecialDataAssembler 绑定数 = 13（中信 6 + 平安 6 + 平安退款空 1）；
-4. 组装器内无字符串字面量协议键（全部走 ContractKeys 常量）；
-5. `grep -rn "payer\|payee" --include="*.java" catering-api/catering-api-front catering-modules/catering-front` 0 命中；
-6. web-test 交易 Tab 两步调用可用，查询 Tab 行为不变；
-7. §9 文档清单全部更新。
+1. `mvn compile -pl catering-api/catering-api-front -am` BUILD SUCCESS（2026-08-17 已验证并 install）；
+2. `git diff` 确认 front 服务零改动（front-flow.xml、两个 TransactionHandle、三个交易 baseData 类均无变更）；
+3. 工具类能力映射数 = 12（中信 6 + 平安 6 含平安退款空实现），全部走 ContractKeys 常量，无字面量协议键；
+4. 工具类全实例方法零 static，每次组装 new 实例（类注释已声明禁止单例复用）；
+5. `grep -rn "payer\|payee" --include="*.java" catering-api/catering-api-front` 0 命中；
+6. consume 侧 7 个 check 骨架就位（buildRequest TODO 占位、基类模板实装），两个 TransSlot 有
+   assembledSpecialData 字段；consume 全模块编译因存量欠账（report 包缺失、BaseMerchantFacadeApi 缺失、
+   BasTransWithDrawRes 被置空）暂不可用，新增文件的编译验证随存量修复后补做；
+7. web-test 交易 Tab 两步调用可用，查询 Tab 行为不变；
+8. §9 文档清单全部更新。

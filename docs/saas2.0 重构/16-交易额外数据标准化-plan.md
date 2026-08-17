@@ -1,84 +1,68 @@
 # 交易额外数据标准化执行计划
 
 > 前置阅读：[15-交易额外数据标准化-spec.md](15-交易额外数据标准化-spec.md)（契约与矩阵的唯一事实来源，本计划只排顺序，不重复定义）
-> 纪律：每阶段结束跑一次编译，红了先修再进下一阶段；除标注外不新增测试；所有新代码注释密度与现有代码一致
-> 范围提醒：front 交易链（front-flow.xml / 两个 TransactionHandle / 三个交易 baseData 类）**零改动**——见 spec §6
+> 2026-08-17 架构定稿：组装 = catering-api-front 实例工具类（本地调用，front 服务零改动）；consume 侧 check 按能力维度
+> 纪律：用户明确本次**不编译、不跑测试、不新增 JUnit**；验证 = api-front 已编译 install 一次（已做）+ web-test 人工两步调用
 
-## Phase 0 基线确认（只读）
+## 实施记录（2026-08-17）
 
-1. `mvn compile -pl catering-api/catering-api-front,catering-modules/catering-front -am -DskipTests` → BUILD SUCCESS（2026-08-17 已验证）；
-2. `cd catering-modules/catering-web-test && mvn compile -DskipTests` → BUILD SUCCESS；
-3. 通读 spec §3/§4/§5/§6，确认理解：组装是 front 暴露的独立 API，由 catering-consume 调用；pay/rec 命名红线；13 绑定矩阵；交易链零改动。
+### 已完成
 
-## Phase 1 api-front 模型与 API 契约（纯新增 + 一处改名）
+1. **Phase 1 api-front 组装工具类（已完成，编译验证通过并 install 至 /tmp/mdl-m2）**
+   - 新增 `com/chinaums/front/api/assemble/FrontSpecialDataAssembler.java`（单文件）：
+     大对象 + 嵌套 AccountInfo/BankCard/Auth + newPay/newRec/newOriPay/newOriRec/newAuth/newBankCard
+     工厂方法 + `assemble()` 实例入口 + CiticSpecialDataAssembler/PingAnSpecialDataAssembler 两个私有内部类；
+   - 能力映射 12 个（中信 6 + 平安 6 含平安退款空实现），键全走 `*ContractKeys`，
+     originalBusinessDate 做 yyyyMMdd 严格校验；全实例方法零 static；
+   - `AuthTransferBusinessData` 改名**暂缓**（涉及 front 服务 7 处，违反零改动，独立清理项）。
 
-1. 新建模型（`com.chinaums.front.api.model.request` / `.response`）：
-   `FrontAccountInfo`、`FrontBankCard`、`AuthInfo`（字段见 spec §3.2，@Data + @Schema 风格对齐同包）；
-2. 新建 `AssembleSpecialDataRequest extends BaseRequest`（capability/pay/rec/oriPay/oriRec/auth/originalBusinessDate/contractId）与 `SpecialDataAssembleResult{JSONObject specialData}`；
-3. 新建 Feign 接口 `FrontAssembleApi`（`POST /front/v1/assemble/special-data`，spec §5.1）；
-4. `AuthTransferBusinessData` 改名 `AuthBusinessData`：改类名+文件名，全库更新引用（grep 确认：FrontTransactionApi、FrontTransactionController、FrontTransactionApplicationService、BankTransactionHandle、PingAnTransactionHandle、FrontRequestValidateNode、FrontInvocationLogAspect 等）；
-5. 编译。
+2. **Phase 2 consume 侧组装 check 骨架（已完成，buildRequest 为 TODO 占位）**
+   - 新增 `consume/flow/component/base/specialdata/`：基类 `SpecialDataAssembleCheck<S>`（模板：
+     getFirstContextBean 取 slot → new 工具 → set capability/platformCode(RequestContext) →
+     buildRequest → assemble → writeBack → 失败终止）+ 7 个子类：
+     Consume/Refund/Transfer/TransferAuth/TransferAuthCodeResend（consume 树 slot）+
+     Withdraw/Deduction（fund 树 slot，Deduction 能力=TRANSFER）；
+   - 两个 `TransSlot`（consume 树 + fund 树）各加 `assembledSpecialData`（JSONObject）；
+   - **未挂链**：老树银行组件 stub 待适配、fund 树在线走旧 FacadeApi，挂 TODO-抛异常 check 会中断在线链；
+     挂接随各链 front 新 API 适配进行（挂接点表见 15 号 §7）；
+   - 基类取 slot 用 `this.getFirstContextBean()`（对齐 ConsumeTrans04/PlatformInfoCheck 现有写法，
+     LiteFlow 2.12.1 无 getSlotBean(Class) API——已纠正）。
 
-## Phase 2 front 组装器层（纯新增）
+### 存量障碍（非本次范围，已报用户，待另行修复）
 
-1. 新建包 `com.chinaums.front.channel.assemble`：`SpecialDataAssembler` 接口、`SpecialDataAssemblerRegistry`（注册/查找不到行为对齐 `TransactionHandleRegistry`，复用 `BankCapabilityKey`）；
-2. 按 spec §4 矩阵实现 13 个绑定（建议先写中信 TRANSFER 作样板，再横向铺开）：
-   - 中信：Transfer、Consume、Withdraw、Refund、PlatformPay、PlatformReceive；
-   - 平安：Transfer、Consume、TransferAuth、TransferAuthCodeResend、Withdraw、Refund（空实现，返回空 JSONObject）；
-   - 键名全部走 `*ContractKeys` 常量；缺字段抛 `FrontException(INVALID_REQUEST)`，消息如 `pay.bankEAccountId不能为空`；`originalBusinessDate` 的 yyyyMMdd 校验在组装器内；
-   - 中信 TRANSFER/CONSUME 映射相同：共用抽象父类或一类双绑定均可；
-3. 编译。
+- consume 全模块编译不可用：`com.chinaums.report.{api,request,response}.catering` 包缺失、
+  `BaseMerchantFacadeApi`（com.chinaums.base.api）缺失、
+  `catering-api-front/.../BasTransWithDrawRes.java` 被置空（fund TransSlot 引用）；
+  consume/fund 双 TransSlot 结构为存量代码问题（用户 2026-08-17 知悉，次日安排人纠正）；
+- 新增 check 文件的编译验证随存量修复后补做（定点 javac 曾暴露并已修复 getSlotBean 一处真实缺陷）。
 
-## Phase 3 front 组装 API 三层
+## 待办 Phase
 
-1. `FrontAssembleController implements FrontAssembleApi`（@RequestMapping 路径与 API 一致，对齐 FrontTransactionController 的实现方式）；
-2. `FrontAssembleApplicationService`：platformCode→BankCode.fromCode() → registry.get(bankCode, capability).assemble(request) → 包装 `R.ok(SpecialDataAssembleResult)`；不进 LiteFlow、不查配置、不调银行；
-3. 类注释写明：纯静态映射、幂等、交易报文加密仍发生在交易链 Handle；
-4. 编译。
+### Phase 3 web-test 两步调用（未开始）
 
-## Phase 4 交易链零改动确认（只读验证）
+1. `FrontTestController` 新增 `POST /api/test/front/assemble/special-data`：入参反序列化为
+   `FrontSpecialDataAssembler`（BaseRequest 4 参数自动注入），调 `assemble()` 返回 specialData；
+2. `static/js/app.js` + `static/index.html`：账户下拉产出标准结构（accountNo→bankEAccountId、
+   name→bankAccountName、bankCardNo→pay.bankCard.bankCardNo；平台付款只填 rec、平台收款只填 pay、
+   提现填 pay+bankCard、退款填 oriPay/oriRec+originalBusinessDate、鉴权填 auth、平台收付 contractId 选填）；
+   交易 Tab 两步：先组装展示 → 注入交易请求 → 发交易；查询 Tab 不变；
+3. web-test 编译 + 启动冒烟（需用户当次授权编译）。
 
-1. `git status` / `git diff` 确认：front-flow.xml、CiticTransactionHandle、PingAnTransactionHandle、BaseTransactionBusinessData、RefundBusinessData、PlatformTransferBusinessData 均无改动；
-2. `grep -rn "requireSpecialData" *TransactionHandle.java` 应保持原样（这是直传协议键的最后防线，**不得删除**）。
+### Phase 4 buildRequest 补实（依赖账户体系按 storeNo 定型）
 
-## Phase 5 web-test 两步调用改造
+- 7 个 check 的 buildRequest 从 TODO 占位替换为真实收集：
+  pay/rec ← slot.compayInfoMaps、bankCard ← basBankInfoMap、auth ← 授权签发结果+用户输入、
+  originalBusinessDate ← 原交易日期；
+- 同期进行各链 front 新 API 适配时按 15 号 §7 挂接点表挂 check（ConsumeTrans04 等）。
 
-1. `FrontTestController` 新增端点 `POST /assemble/special-data`（透传 FrontAssembleApi，沿用 callFeign 模式与结构化日志）；
-2. `static/js/app.js`：
-   - 账户下拉产出标准结构：accountNo→bankEAccountId、name→bankAccountName、bankCardNo→pay.bankCard.bankCardNo；平台付款只填 rec、平台收款只填 pay；提现填 pay+bankCard；退款填 oriPay/oriRec + originalBusinessDate；鉴权填 auth={authOrderNo,authCode}；平台收付 contractId 选填；
-   - 交易 Tab 提交流程改为两步：先调组装端点展示/取得 specialData → 组装进交易请求 → 调交易端点；查询 Tab 不变；
-3. `static/index.html`：鉴权 Tab 加 authOrderNo/authCode 输入；退款 Tab 加 originalBusinessDate（yyyyMMdd）；平台收付 Tab 加 contractId（选填）；交易 Tab 增加组装结果展示区；
-4. web-test 单独编译 + 启动冒烟（8 个交易 Tab 走两步、5 个查询 Tab 行为不变）。
+### Phase 5 文档同步（按 15 号 §9 清单）
 
-## Phase 6 文档同步（按 spec §9 清单）
+13（工具类登记）、05（组装工具类章节 + 双层口径）、06/07/08（头部加注指向 15 号）、
+14（web-test 两步说明）、WIKI-START（如需微调）。15/16 号本体已于 2026-08-17 更新到位。
 
-13（组装 API 登记）、05（组装 API 章节 + 双层口径，"specialData 协议原始名"条款保留）、
-06/07/08（头部加注指向 15 号）、14（web-test 两步调用说明）、WIKI-START（如条目描述需微调）、
-12-issues P1-002 补充关闭注记。
-
-## Phase 7 终验（spec §11 全量自检）
-
-1. 三模块编译绿；
-2. `git diff` 证明交易链六文件零改动（spec §11.2）；
-3. 组装器绑定数 13、无字面量协议键、payer/payee 零命中；
-4. web-test 两步冒烟通过；
-5. 输出执行报告：每 Phase 实际改动文件清单 + 自检结果，交用户复核。
-
-## Phase C catering-consume 侧组装 check 组件（可与 Phase 1-3 并行启动，联调依赖 Phase 3 完成）
-
-按 spec §7 组件设计执行：
-
-1. `consume/flow/component/base/platform/AbstractSpecialDataAssembleCheck`：模板方法（调
-   FrontAssembleApi → 校验 → 回填 slot → 失败终止）+ 两个抽象方法；注入 FrontAssembleApi Feign；
-2. 11 个子类：中信 6 + 平安 5，bean 名 `zxTransferAssembleCheck` 风格；`capability()` 返回子类常量；
-   `buildRequest` 首版允许 TODO 抛 BaseException("组装请求收集待实现") 占位；
-3. consume 与 fund 两个 `TransSlot` 各加 `assembledSpecialData` 字段（JSONObject，@Data 自动生成访问器）；
-4. 各交易链（transfer/consume/refund/withdraw/deduction）在组交易请求的组件之前引用对应 check
-   （银行渠道分支后，如 ConsumeTrans04 之前挂 paConsumeAssembleCheck）；
-5. catering-consume 当前被注释出 maven reactor（catering-modules/pom.xml），编译验证时单独
-   `cd catering-modules/catering-consume && mvn compile -DskipTests` 或临时恢复模块。
+### Phase 6 终验（15 号 §11 全量自检 + 执行报告）
 
 ## 回滚策略
 
-Phase 1-3 全部纯新增（除 AuthBusinessData 改名），可整体 revert，不影响任何存量行为；
-web-test 改造独立 revert。本方案不存在行为切换点（交易链未动），风险面为历史最低。
+api-front 工具类纯新增可整体 revert；consume 侧为纯新增包 + 2 个 slot 字段，revert 不影响存量行为；
+front 服务零改动，不存在行为切换点。web-test 改造独立 revert。
