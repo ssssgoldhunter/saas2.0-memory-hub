@@ -319,11 +319,18 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
      平安 `pay.bankEMemberCode→mchntMbrId`，各 1 要素，Handle 内 SM2；
      **提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，Handle 从平安提现渠道表
      按 (tenantId, frontSsn) 回查**——lsym 生产规则 + 用户指出修正，见 15 号 §4.3）；
-  1b. **银行请求合并（用户裁决 2026-08-17）**：交易状态查询的银行报文合并为跨银行统一类
-     `channel/protocol/QueryTransStatusRequest`（报文骨架同源、字段并集，fastjson2 不序列化
-     null，各行只填本行字段）；中信 `CiticQueryTransStatusRequest` 删除，平安
-     `PingAnQueryRequest` 移除状态查询专用字段（仅账户状态/余额/明细使用）；差异消化点：
-     账户要素=组装 specialData、类型=capability 常量转译、定位=baseData 映射；
+  1b. **银行请求合并（用户裁决 2026-08-17，同日按用户五点修正定稿）**：
+     - 统一请求 `channel/protocol/QueryTransStatusRequest` **银行无关**，只含
+       ①定位基础参数（originalCapability/originalTransactionDate/bizOrderNo/bizSubOrderNo/
+       frontSsn，原样来自 baseData，全部需要传入）＋②组装 specialData（账户要素协议键原样）；
+       提供 `from(BankRequestContext)` 工厂，两行 Handle 共用；
+     - 报文信封（transSsn/transTime/mchntId/laasSsn/bizFunc/chnlNo 等）**不在请求上**：
+       各 Handle 用自身常量（bizFunc/chnlNo 配置死）、租户账户配置（mchntId/tenantId）与
+       序列生成器生成；wire 直接以 JSONObject 构建，键全部走常量（FrontBankRequestConstants
+       补 ORIGINAL_TRANSACTION_SSN/ORIGINAL_TRANSACTION_DATE/EXTERNAL_PLATFORM_SSN）；
+     - 中信 `CiticQueryTransStatusRequest` 删除，平安 `PingAnQueryRequest` 移除状态查询
+       专用字段（仅账户状态/余额/明细使用）；差异消化点：账户要素=组装 specialData、
+       类型=capability 常量转译、定位=baseData 映射；
   2. 平安查询 Handle 已实现（去掉 PENDING_INTEGRATION）：bizFunc 按被查原交易能力选择
      （WITHDRAW→03，转账/消费/退款→02，lsym 生产规则）；`frontSsn` 平安必填（平安按原交易银行
      流水号 oriTransSsn 定位，中信按日期+订单号定位不需要）；`oriTransDate` 有值即上送；

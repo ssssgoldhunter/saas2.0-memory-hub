@@ -67,7 +67,12 @@
 - **提现卡号渠道表回查（用户指出）**：平安提现状态查询（03）专用 cardNoEnc 从
   `FrontPinganWithdrawTransaction` 按 (tenantId, frontSsn) 回查发起时银行卡号后 SM2 上送，
   不经调用方；组装工具平安查询格回到 1 要素（mchntMbrId）；
-- RECHARGE 仅平安（04）接入，中信 default 拒绝。
+- RECHARGE 仅平安（04）接入，中信 default 拒绝；
+- **统一请求五点修正（用户评审，定稿）**：QueryTransStatusRequest 改为银行无关——只含定位
+  基础参数（capability/日期/主子订单号/frontSsn）+ 组装 specialData（from(context) 工厂）；
+  信封字段全部移出请求，各 Handle 以常量+账户配置+序列生成器直接构建 wire JSONObject
+  （键走 FrontBankRequestConstants，新增 3 个常量）；bizFunc/chnlNo 配置死在 Handle，
+  transSsn/laasSsn 为 Handle 生成能力，tenantId/mchntId 走账户配置。
 
 ## 待办 Phase
 
