@@ -54,6 +54,11 @@ BankRequestContext
 > 本对象本身就是状态查询请求；与查询入口的 API capability（TRANSACTION_STATUS_QUERY，路由用）
 > 不得混用的原则不变。
 
+**查询统一路线（用户裁决 2026-08-17）**：全部查询能力最终统一为"银行无关统一请求 +
+各 Handle 常量构建 wire"模式。交易状态查询已完成（`QueryTransStatusRequest`）；
+账户状态/余额/平台明细/账户明细四个能力后续逐个迁移；`PingAnQueryRequest`
+已加 TODO[QUERY-UNIFY] 过渡标记，**全部迁移完成后删除**。
+
 ### 3.1 Front 基础对象
 
 `TransactionStatusQueryData` 固定包含：
