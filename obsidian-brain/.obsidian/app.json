@@ -3,5 +3,6 @@
   "alwaysUpdateLinks": true,
   "newFileLocation": "folder",
   "newFileFolderPath": "00-Inbox",
-  "attachmentFolderPath": "40-Resources/attachments"
+  "attachmentFolderPath": "40-Resources/attachments",
+  "language": "zh-cn"
 }

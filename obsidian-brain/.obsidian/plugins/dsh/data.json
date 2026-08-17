@@ -1,0 +1,10 @@
+{
+  "dshCommand": "/Applications/Oh-DSH Desktop.app/Contents/Resources/dsh-runtime/lib/bin.js",
+  "nodePath": "/Applications/Oh-DSH Desktop.app/Contents/Resources/node-runtime/bin/node",
+  "dshHome": "",
+  "permissionMode": "workspace-write",
+  "models": "deepseek-v4-flash, deepseek-v4-pro",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultEffort": "high",
+  "timeoutSec": 600
+}
