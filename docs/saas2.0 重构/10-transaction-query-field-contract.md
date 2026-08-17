@@ -321,7 +321,7 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
      按 (tenantId, frontSsn) 回查**——lsym 生产规则 + 用户指出修正，见 15 号 §4.3）；
   1b. **银行请求合并（用户裁决 2026-08-17，同日按用户五点修正定稿）**：
      - 统一请求 `channel/protocol/QueryTransStatusRequest` **银行无关**，只含
-       ①定位基础参数（originalCapability/originalTransactionDate/bizOrderNo/bizSubOrderNo/
+       ①定位基础参数（capability/transactionDate/bizOrderNo/bizSubOrderNo/
        frontSsn，原样来自 baseData，全部需要传入）＋②组装 specialData（账户要素协议键原样）；
        提供 `from(BankRequestContext)` 工厂，两行 Handle 共用；
      - 报文信封（transSsn/transTime/mchntId/laasSsn/bizFunc/chnlNo 等）**不在请求上**：
