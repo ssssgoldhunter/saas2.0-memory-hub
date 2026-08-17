@@ -243,8 +243,13 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
   vault = `~/ObsidianBrain`（已从记忆库 obsidian-brain/ 初始化）。
 - **插件加载错误修复（2026-08-17）**：Desktop 报
   `Failed to load plugins ... dsh-client-ui-obsidian-memory ... loaded without registering`，
-  是 UI 插件 0.2.5 与 HARNESS 加载器不兼容；升级 `dsh-client-ui-obsidian-memory` 到 **0.3.1**
-  后清缓存重启解决。
+  是 UI 插件 0.2.5/0.3.1 均与 HARNESS 加载器不兼容；最终**直接移除该插件**
+  （`pnpm remove dsh-client-ui-obsidian-memory` + 清 patch 中 `ui-obsidian-memory` insert），
+  工具层 `dsh-obsidian-assistant` 不受影响；
+- **界面皮肤移除（2026-08-17）**：Desktop 默认界面被 maid-atelier 深海女仆皮肤
+  （`@dsh-external/dsh-client-ui-skin-maid-atelier`，link 源码）覆盖，用户要求恢复默认；
+  已 `pnpm remove` 依赖 + 清理 `dsh.profile.bundles` 条目 + 删除
+  `~/.ohdsh/profiles/desktop/.oh-dsh/sources/skin-maid-atelier`，清缓存重启恢复默认界面。
 
 ---
 
