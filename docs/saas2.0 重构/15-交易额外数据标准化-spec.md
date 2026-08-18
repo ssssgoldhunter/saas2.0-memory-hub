@@ -198,13 +198,17 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 | | pay.bankCard.cardHolderName | `userNameEnc`（持卡人户名，与 nameEnc 是两个字段） | 🔒 |
 | REFUND (02) | **无**（平安退款 specialData 为空，Handle 查渠道表补原交易要素；组装器返回空 specialData） | — | — |
 
-### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行）
+### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行；2026-08-18 增两类明细）
 
 | 能力 | 中信 | 平安 |
 |---|---|---|
 | TRANSACTION_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号，1 个要素） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号，1 个要素）；**提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，由 Handle 从平安提现渠道表按 (tenantId, frontSsn) 回查后 SM2 上送，不经调用方/组装**；acctNo 不上送（仅验证码类查询使用）；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
+| PLATFORM_TRANSACTION_DETAIL_QUERY（25 平台明细，2026-08-18） | 入参 `transactionDate`（yyyyMMdd）+ `transactionType`（01/02/03/04/99，05 预留值拒绝）→ 输出同键（明细条件为 Front 契约键，Handle 映射 `TRANS_DATE`/`TRANS_TYPE`）；无账户要素 | 不支持（平安明细查询仍在 TODO-001 挡板） |
+| TRANSACTION_DETAIL_QUERY（24 登记簿明细，2026-08-18） | `pay.bankEAccountId` → `acctNo`（SM2 由 Handle）；入参 `transactionDate`（yyyyMMdd）+ `transactionType`（01/02/03/04/05/06/98/99）+ `accountType`（选填 01/12/13/17）→ 输出同键（Handle 映射 `TRANS_DATE`/`TRANS_TYPE`/`registerAttr`） | 不支持（同上） |
 
-其余查询能力（账户状态/余额/两类明细）待实现时补格。
+明细两能力的入参（transactionDate/transactionType/accountType）为 `FrontSpecialDataAssembler` 顶层组装字段；取值枚举在组装器用 ContractKeys 值常量校验（与 Handle 直传防线白名单同源），非法值组装即报错（如 `transactionType取值不支持: 07`）。
+
+其余查询能力（账户状态/余额）待实现时补格。
 
 ### 4.4 矩阵纪律
 
@@ -223,8 +227,10 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
   （同包独立银行组装类，package-private）；
 - 入口 `assemble()` 校验：capability 非空、platformCode 非空且能 `BankCode.fromCode`（不得 valueOf）映射，
   失败抛 `FrontException(INVALID_REQUEST / BANK_NOT_SUPPORTED)`，消息带完整路径（如 `pay.bankEAccountId不能为空`）；
-- 银行内部类按矩阵逐键组装，**能力映射共 12 个：中信 6 + 平安 6（含平安 REFUND 空实现，返回空 JSONObject）**；
-  矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、双方查询能力）抛 `CAPABILITY_NOT_SUPPORTED`；
+- 银行内部类按矩阵逐键组装，**能力映射：中信 6 交易 + 3 查询格（状态/平台明细/登记簿明细）、
+  平安 6 交易 + 1 查询格（状态）（含平安 REFUND 空实现，返回空 JSONObject）**；
+  矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、平安 4 个未启用查询能力）抛
+  `CAPABILITY_NOT_SUPPORTED`；
   同一物理方法可服务多能力（中信 TRANSFER 与 CONSUME 映射相同，switch 中并列 case）；
 - `originalBusinessDate` 的 yyyyMMdd 严格校验（BASIC_ISO_DATE 解析）在工具类内；
 - 协议键一律取 `*ContractKeys` 常量，工具类内不得出现字符串字面量键；

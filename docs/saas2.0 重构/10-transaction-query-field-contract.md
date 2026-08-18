@@ -320,6 +320,11 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
 ## 9. 当前实现状态和 TODO
 
 - 中信 74/24/25 的路径、bizFunc、chnlNo、specialData 白名单和单日规则已确认；
+- **两类明细查询纳入组装工具（2026-08-18）**：PLATFORM_TRANSACTION_DETAIL_QUERY（25）与
+  TRANSACTION_DETAIL_QUERY（24）进入 15 号 spec §4.3 查询格——25 输出
+  {transactionDate, transactionType}，24 输出 {acctNo, transactionDate, transactionType[, accountType]}；
+  明细条件为 Front 契约键（Handle 再映射 TRANS_DATE/TRANS_TYPE/registerAttr），取值枚举在组装器
+  用 ContractKeys 值常量校验（25 的 05 预留值仍拒绝）；平安侧明细查询仍在 TODO-001 挡板、不支持组装；
 - 中信 35/36/46 账户余额查询已按 Word v4.7 + lsym UAT 实测核对：46/36 的
   `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
