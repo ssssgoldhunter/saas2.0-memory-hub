@@ -86,6 +86,18 @@
 - **遗留**：整批代码未编译未提交（用户已知）；中信退款 TRANS_TYPE=01 待协议核对；
   4 个查询能力迁移统一模式待启动；consume 存量修复进行中。
 
+## 划付死链清除 + 钱包网关公共化（2026-08-18 用户裁决，未提交）
+
+- **删除划付迁移死代码 11 文件**（4 个全注释体 SaasZxInterService/SaasTemplateUtils/
+  FileProcessServiceImpl/ZxFileProcessHandle + 5 个空骨架 FileProcessService/Router/
+  BasFileProcessHandle/AbstractFileProcessHandle/FrontFileProcessFacadeController +
+  api-front 的 FrontFileProcessFacadeApi/SaasZxApi；其中 5 个为用户先手暂存删除，6 个补删）；
+  划付/账户接口将来按网关 SOP 重新实现；
+- **钱包发送公共化**：新增 `channel/gateway/`（BankWalletGateway/BankWalletSender/
+  RoutingBankWalletGateway，重复注册启动失败）；两个 HttpClient implements BankWalletSender
+  （bankCode + 从账户配置取连接参数的重载）；四个 Handle 全部切换 `walletGateway.post(bank,…)`，
+  模块内零 httpClient 直连；05 号已写入 SOP 与红线。
+
 ## 待办 Phase
 
 ### Phase 3 web-test 两步调用（2026-08-17 已完成，编译/冒烟待用户授权后补）
