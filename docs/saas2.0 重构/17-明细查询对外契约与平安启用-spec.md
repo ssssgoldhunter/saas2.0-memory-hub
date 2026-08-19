@@ -26,12 +26,26 @@
 
 ## 1. 对外契约（最终形态）
 
-### 1.1 请求（沿用现有，不新增字段）
+### 1.1 请求（2026-08-19 修订：请求对象与查询类型枚举均按 24/25 拆分；specialData 键不变）
 
-| 能力 | specialData（Front 契约键） | baseData |
-|---|---|---|
-| TRANSACTION_DETAIL_QUERY（24） | `acctNo`（必填，用户编号，Handle SM2）、`transactionType`（**对外仅 04**）、`transactionDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17；**仅中信生效**，平安 6073 无登记簿类型概念，忽略该键） | `pageNo` |
-| PLATFORM_TRANSACTION_DETAIL_QUERY（25） | `transactionType`（**对外仅 01/02/03**）、`transactionDate`（必填 yyyyMMdd）；无 acctNo（平台级） | `pageNo` |
+**请求对象拆分**：`TransactionDetailQueryData` 拆为 `AccountDetailQueryData`（24）/`PlatformDetailQueryData`
+（25），字段相同（pageNo/pageSize），仅作 API 类型区分与未来独立演化；`acctNo/transactionType/
+transactionDate/accountType` **仍在 specialData**（不提升为强类型字段），键与取值不变。
+
+**查询类型枚举拆分**（api-front `model/enums`，同码不同义故必须分开；wire 仍是 code 字符串）：
+
+```java
+public enum AccountDetailType { WITHDRAW_FEE("04", "提现手续费"); }        // 24，仅开放此值
+public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RETURN("02","退汇"),
+    CHANNEL_IN("03","支付渠道入金"); }                                     // 25
+```
+
+| 能力 | 请求类型 | specialData（Front 契约键） | baseData |
+|---|---|---|---|
+| TRANSACTION_DETAIL_QUERY（24） | `FrontRequest<AccountDetailQueryData>` | `acctNo`（必填，用户编号，Handle SM2）、`transactionType`（枚举 `AccountDetailType`，对外仅 04）、`transactionDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17；**仅中信生效**，平安 6073 无登记簿类型概念，忽略该键） | `pageNo` |
+| PLATFORM_TRANSACTION_DETAIL_QUERY（25） | `FrontRequest<PlatformDetailQueryData>` | `transactionType`（枚举 `PlatformDetailType`，对外 01/02/03）、`transactionDate`（必填 yyyyMMdd）；无 acctNo（平台级） | `pageNo` |
+
+组装器 `requireIn` 白名单集合改由两个枚举生成（Handle 协议层白名单继续用 ContractKeys 常量、保持全量）。
 
 - 对齐映射表的 `bankMemberCode`（传空占位）**不落地**——请求侧无此键即占位语义本身；
 - `pageSize` 语义不变（仅表达期望，银行固定页大小不可覆盖）。
