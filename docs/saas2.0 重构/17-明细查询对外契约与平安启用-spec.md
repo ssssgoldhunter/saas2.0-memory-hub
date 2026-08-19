@@ -87,9 +87,11 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 | specialData | JSONObject | 其余原样（CUR_AMT/C_D_FLAG/JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/DIGEST/REARK1/REARK3） | 其余原样（ccy/bankName/inAcctType/endFlag/resultNum/startRecordNo/reserve；6048 的 termSsnOut/oriTermSsn/oriPlatSsn/returnReason/bankNo/bankName/termSsn/ssn） | 兜底 |
 
 **TableDataInfo 扩展**：新增 `totalPage`（与既有 `total` 并列；`total` 语义即 totalNum）。
-**传导链**：Handle 内部分页对象 `FrontPageResult` 同步增加 `totalPage` 字段（两行 Handle 赋值），
-`FrontQueryApplicationService` 组装 `TableDataInfo` 时透传 `total`+`totalPage`——三层缺一编译即断，
-执行者不要漏 Service 层。赋值：
+**全链路 TableDataInfo（2026-08-19 用户裁决）**：`FrontPageResult` 中间承接层**废除并删除**——
+两个明细 Handle 方法直接返回 `TableDataInfo<AccountDetailItem>` / `TableDataInfo<PlatformDetailItem>`
+（成功 code=200/msg="查询成功"；业务失败 Handle 内填 code=500/空 rows/安全 msg；total/totalPage/rows
+一并填好），`FrontQueryApplicationService` 分页结果**纯透传**，API/Controller/Service 三层签名一致。
+赋值：
 中信两侧 `totalPage=TOTAL_PAGE` 直传、`total=TOTAL_PAGE×银行页大小` 估算（裁决 §0.7，最后页偏大）；
 平安 6050/6073 `totalPage=ceil(totalNum/银行原生页大小)`、`total=totalNum` 直传；
 6048 无分页壳：totalPage=1、total=List 条数。

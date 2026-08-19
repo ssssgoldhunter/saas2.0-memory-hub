@@ -18,9 +18,11 @@
    - **分页明细查询**：直接返回工程统一的 `TableDataInfo<具体行>`，不用 `R` 包裹；
    - **无返回体操作类**：返回 `R<Void>`。
 5. API、Controller、Application Service 均使用同一个返回签名；Controller 只透传
-   Application Service 返回值。Router 和 Handle 不返回 `R`；分页 Handle 可返回确定类型的内部
-   `FrontPageResult` 承接银行分页结果，但 Application Service 必须
-   转换为 `TableDataInfo`，API、Controller、Application Service 三层对外签名保持一致。
+   Application Service 返回值。Router 和 Handle 不返回 `R`；**分页 Handle 直接返回
+   `TableDataInfo<具体行>`**（含 code/msg/rows/total/totalPage，业务失败 Handle 内填
+   `code=500` + 空 rows + 安全 msg），Application Service 对分页结果**纯透传**，
+   不做二次转换；**禁止引入 `FrontPageResult` 等分页中间承接对象**（2026-08-19 用户裁决，
+   原内部承接层废除）。
 6. LiteFlow 节点遇可预期业务失败时写 Slot 后中断；非 LiteFlow 路径抛 `FrontException`；
    系统异常继续抛出，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
@@ -1327,8 +1329,8 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 - [ ] 单条交易/交易状态/账户查询返回 `R<具体结果>`，分页明细查询直接返回
       `TableDataInfo<具体行>`，无返回体返回 `R<Void>`；
-- [ ] 分页接口不存在 `R<TableDataInfo<...>>`、`R<FrontPageResult<...>>` 或直接对外返回
-      `FrontPageResult<...>`；
+- [ ] 分页接口不存在 `R<TableDataInfo<...>>` 等包裹形式，且全链路（Handle/Service/API）
+      不存在 `FrontPageResult` 分页中间承接对象（2026-08-19 起废除）；
 - [ ] 不存在 `FrontResponse` 中间包装层；
 - [ ] API/Controller/ApplicationService 三层签名一致，Controller 只透传不重复包装；
 - [ ] ApplicationService 不含银行协议细节（无 `instanceof` 判断银行、无 bizFunc 字面量）。
