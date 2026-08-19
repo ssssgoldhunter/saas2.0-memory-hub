@@ -73,8 +73,8 @@ Handle 报文组装和目标 DDL 口径已收口：
 
 | 文件 | 修改内容 |
 |------|----------|
-| `CiticTransactionHandle.java` | `refund()` 完全重写——增加 baseData+specialData 必填校验、只使用 `originalBizOrderNo + originalBizSubOrderNo` 定位原交易、从 specialData 映射 `ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_C_NM/ORI_USER_TRANS_DT`；移除 `fillRefundOriginalLocator`/`loadOriginalRefundFields`/`fillRefundAccountFieldsFromOriginal` 三个旧方法。 |
-| `CiticTransactionHandle.java` | 退款 INIT 写入不再保存旧生命周期和本地原交易字段。 |
+| `CiticTransHandle.java` | `refund()` 完全重写——增加 baseData+specialData 必填校验、只使用 `originalBizOrderNo + originalBizSubOrderNo` 定位原交易、从 specialData 映射 `ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_C_NM/ORI_USER_TRANS_DT`；移除 `fillRefundOriginalLocator`/`loadOriginalRefundFields`/`fillRefundAccountFieldsFromOriginal` 三个旧方法。 |
+| `CiticTransHandle.java` | 退款 INIT 写入不再保存旧生命周期和本地原交易字段。 |
 | `FrontCiticRefundTransaction.java` | 删除 `originalCapability`、`originalChannelTransactionId` 字段。 |
 
 ### 验收标准覆盖

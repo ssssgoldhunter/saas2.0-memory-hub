@@ -172,9 +172,9 @@ com.chinaums.front
 |---|---|---|
 | `ACCOUNT_STATUS_QUERY` | 账户状态查询 | `queryAccountStatus` |
 | `ACCOUNT_BALANCE_QUERY` | 账户余额查询 | `queryAccountBalance` |
-| `TRANSACTION_STATUS_QUERY` | 单笔交易状态查询 | `queryTransactionStatus` |
-| `PLATFORM_TRANSACTION_DETAIL_QUERY` | 平台交易明细查询 | `queryPlatformTransactionDetails` |
-| `TRANSACTION_DETAIL_QUERY` | 子账户/会员交易明细查询 | `queryTransactionDetails` |
+| `TRANS_STATUS_QUERY` | 单笔交易状态查询 | `queryTransactionStatus` |
+| `PLATFORM_TRANS_DETAIL_QUERY` | 平台交易明细查询 | `queryPlatformTransactionDetails` |
+| `TRANS_DETAIL_QUERY` | 子账户/会员交易明细查询 | `queryTransactionDetails` |
 
 账户余额查询通过核心字段 `accountScope` 区分：
 
@@ -315,7 +315,7 @@ catering-modules/
 catering-api/catering-api-front
 └─ com.chinaums.front
    ├─ api
-   │  ├─ FrontTransactionApi
+   │  ├─ FrontTransApi
    │  ├─ FrontQueryApi
    │  └─ model
    │     ├─ request
@@ -330,14 +330,14 @@ catering-api/catering-api-front
    │     │  ├─ PlatformTransferBusinessData
    │     │  ├─ AccountStatusQueryData
    │     │  ├─ AccountBalanceQueryData
-   │     │  ├─ TransactionStatusQueryData
+   │     │  ├─ TransStatusQueryData
    │     │  └─ TransactionDetailQueryData
    │     ├─ response
    │     │  ├─ FrontBaseResult
-   │     │  ├─ FrontTransactionResult
+   │     │  ├─ FrontTransResult
    │     │  ├─ AccountStatusResult
    │     │  ├─ AccountBalanceResult
-   │     │  ├─ TransactionStatusResult
+   │     │  ├─ TransStatusResult
    │     │  ├─ TransactionDetailItem
    │     │  └─ FrontPageResult
    │     └─ enums
@@ -346,7 +346,7 @@ catering-api/catering-api-front
    │        ├─ FrontTransactionStatus
    │        ├─ AccountScope
    │        ├─ AccountStatus
-   │        └─ TransactionDirection
+   │        └─ TransDirection
 catering-common/catering-common-core
 └─ com.chinaums.common.core
    ├─ domain
@@ -360,7 +360,7 @@ catering-modules/catering-front
 └─ com.chinaums.front
    ├─ controller
    ├─ application
-   │  ├─ FrontTransactionApplicationService
+   │  ├─ FrontTransApplicationService
    │  ├─ FrontQueryApplicationService
    │  └─ FrontFlowExecutor
    ├─ flow
@@ -386,7 +386,7 @@ catering-modules/catering-front
    ├─ handle
    │  ├─ BankHandle
    │  ├─ AbstractBankHandle
-   │  ├─ BankTransactionHandle
+   │  ├─ BankTransHandle
    │  ├─ BankQueryHandle
    │  └─ BankExecutionMetadata
    ├─ context
@@ -413,7 +413,7 @@ catering-modules/catering-front
    │  └─ FrontDuplicateTransactionService
    ├─ channel
    │  ├─ citic
-   │  │  ├─ CiticTransactionHandle
+   │  │  ├─ CiticTransHandle
    │  │  ├─ CiticQueryHandle
    │  │  ├─ config（待接入）
    │  │  ├─ client（待接入）
@@ -422,7 +422,7 @@ catering-modules/catering-front
    │  │  ├─ mapper（待接入）
    │  │  └─ crypto（待接入）
    │  └─ pingan
-   │     ├─ PingAnTransactionHandle
+   │     ├─ PingAnTransHandle
    │     ├─ PingAnQueryHandle
    │     ├─ config（待接入）
    │     ├─ client（待接入）
@@ -514,7 +514,7 @@ POST /front/v1/transactions/platform-receive
 普通交易统一返回：
 
 ```java
-R<FrontTransactionResult>
+R<FrontTransResult>
 ```
 
 授权码发送或重发返回：
@@ -580,7 +580,7 @@ public class FrontBaseResult {
 交易结果保留已确认字段：
 
 ```java
-public class FrontTransactionResult extends FrontBaseResult {
+public class FrontTransResult extends FrontBaseResult {
     private String frontSsn;
     private FrontTransactionStatus frontStatus;
     private String frontQueryId;
@@ -667,7 +667,7 @@ specialData：交易明细账户标识（非平台明细时必填）及银行专
 `specialData`。中信字段规则以 [10-transaction-query-field-contract](10-transaction-query-field-contract.md)
 为准。中信协议没有请求方向筛选字段，`direction` 当前不进入明细请求对象，避免分页后再过滤导致结果错误。
 
-单笔交易状态查询返回一个 `TransactionStatusResult.specialData`；两个明细查询除分页结果自身继承的
+单笔交易状态查询返回一个 `TransStatusResult.specialData`；两个明细查询除分页结果自身继承的
 查询级 `specialData` 外，每条 `TransactionDetailItem` 还必须包含独立 `specialData`，用于承载该笔银行返回的
 `reserveMap` 映射结果。
 
@@ -862,7 +862,7 @@ commit: 3dff8255d6
 
 #### 11.6.2 交易方法
 
-| 当前 `BankTransactionHandle` | 旧 Front Handle 方法 | 映射说明 |
+| 当前 `BankTransHandle` | 旧 Front Handle 方法 | 映射说明 |
 |---|---|---|
 | `transfer()` | `BasTransTransferHandle.transTransfer()` | 一对一，普通转账 |
 | `transferAuth()` | `BasTransTransferHandle.transTransferAuth()` | 一对一；仅平安为真实短信鉴权转账，中信旧实现只是挡板成功 |
@@ -904,8 +904,8 @@ commit: 3dff8255d6
 
 | 当前实现类 | 业务方法来源 | 当前职责 |
 |---|---|---|
-| `CiticTransactionHandle` | `AbstractBankHandle` + `BankTransactionHandle` 的 8 个交易方法 | 复用配置装配并覆盖中信支持的交易方法，未覆盖方法返回能力不支持 |
-| `PingAnTransactionHandle` | `AbstractBankHandle` + `BankTransactionHandle` 的 8 个交易方法 | 复用配置装配并覆盖平安支持的交易方法，未覆盖方法返回能力不支持 |
+| `CiticTransHandle` | `AbstractBankHandle` + `BankTransHandle` 的 8 个交易方法 | 复用配置装配并覆盖中信支持的交易方法，未覆盖方法返回能力不支持 |
+| `PingAnTransHandle` | `AbstractBankHandle` + `BankTransHandle` 的 8 个交易方法 | 复用配置装配并覆盖平安支持的交易方法，未覆盖方法返回能力不支持 |
 | `CiticQueryHandle` | `AbstractBankHandle` + `BankQueryHandle` 的 5 个查询方法 | 复用配置装配并覆盖中信查询方法 |
 | `PingAnQueryHandle` | `AbstractBankHandle` + `BankQueryHandle` 的 5 个查询方法 | 保留待核对草稿，公开方法当前直接报待接入 |
 
@@ -922,7 +922,7 @@ com.chinaums.front
 ├─ handle
 │  ├─ BankHandle.java
 │  ├─ AbstractBankHandle.java
-│  ├─ BankTransactionHandle.java
+│  ├─ BankTransHandle.java
 │  └─ BankQueryHandle.java
 ├─ context
 │  └─ BankRequestContext.java
@@ -937,10 +937,10 @@ com.chinaums.front
 │     └─ PingAnBankAccountConfigAssembler.java
 └─ channel
    ├─ citic
-   │  ├─ CiticTransactionHandle.java
+   │  ├─ CiticTransHandle.java
    │  └─ CiticQueryHandle.java
    └─ pingan
-      ├─ PingAnTransactionHandle.java
+      ├─ PingAnTransHandle.java
       └─ PingAnQueryHandle.java
 ```
 
@@ -968,14 +968,14 @@ fund-catering-front-service/src/main/java/com/chinaums/erp/slhy/catering/front
 新 Front 按银行聚合参考项目的细粒度实现：
 
 ```text
-CiticTransactionHandle
+CiticTransHandle
   ← ZxTransTransferHandle
   ← ZxTransSendVerificationHandle
   ← ZxTransConsumeHandle
   ← ZxTransConsumeCancelHandle
   ← ZxTransWithDrawHandle
 
-PingAnTransactionHandle
+PingAnTransHandle
   ← PaTransTransferHandle
   ← PaTransSendVerificationHandle
   ← PaTransConsumeHandle
@@ -993,7 +993,7 @@ PingAnQueryHandle
 
 ##### 11.6.7.1 交易方法关联
 
-| 新 `BankTransactionHandle` | 参考 API / Service | 参考 Handle 方法 | 中信参考类 | 平安参考类 | 实现状态 |
+| 新 `BankTransHandle` | 参考 API / Service | 参考 Handle 方法 | 中信参考类 | 平安参考类 | 实现状态 |
 |---|---|---|---|---|---|
 | `transfer()` | `FrontTransConsumeFacadeApi.transTransfer()` → `TransConsumeServiceImpl.transTransfer()` | `BasTransTransferHandle.transTransfer()` | `ZxTransTransferHandle` | `PaTransTransferHandle` | 两家均有真实实现 |
 | `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` 只构造本地挡板成功，不调用中信 | `PaTransTransferHandle.transTransferAuth()` 真实调用 `/transfer` | 仅平安真实支持；中信必须 `UNSUPPORTED` |
@@ -1022,7 +1022,7 @@ PingAnQueryHandle
 | `queryReceiptVerify()` | `ZxTransQueryHandle` 返回 `null` | `PaTransQueryHandle` 有真实实现 | 仅平安真实支持，后续如纳入应作为平安特有“明细单验证码查询”能力设计 |
 
 上述类只作为银行功能码、请求组装、调用和响应映射的参考。迁移到新 Front 时必须进入
-`CiticTransactionHandle/CiticQueryHandle/PingAnTransactionHandle/PingAnQueryHandle` 的明确方法，
+`CiticTransHandle/CiticQueryHandle/PingAnTransHandle/PingAnQueryHandle` 的明确方法，
 并改用新的 `BankRequestContext`、`TenantBankAccountConfig` 和确定类型 `FrontBaseResult` 子类；不得复制 mdl
 混入账户类型/bizFunc 的旧复合路由键、任意 `<T> T`、配置定位方式或返回 `null` 行为。本项目规定的
 类型安全 `(BankCode, FrontCapability)` 领域 Registry key 必须保留。
@@ -1397,7 +1397,7 @@ INIT
 CiticTransferHandler              → (CITIC, TRANSFER)
 CiticRefundHandler                → (CITIC, REFUND)
 PingAnTransferHandler             → (PING_AN, TRANSFER)
-PingAnTransactionStatusQueryHandler → (PING_AN, TRANSACTION_STATUS_QUERY)
+PingAnTransactionStatusQueryHandler → (PING_AN, TRANS_STATUS_QUERY)
 ```
 
 ### 17.1 能力处理

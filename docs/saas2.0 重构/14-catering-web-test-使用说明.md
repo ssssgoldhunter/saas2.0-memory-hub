@@ -67,8 +67,8 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
    修改后点确认发送（未修改原样发送；报文非合法 JSON 或缺少 baseData 时回退原参数并提示）。
    resendAuth 与其他交易 Tab 一致走确认弹窗
 6. 查询类 Tab 两步组装覆盖三个：**交易状态查询**（账户下拉→组装端点→{acctNo}/{mchntMbrId} 注入查询请求，
-   frontSsn 输入平安必填、capability/transactionDate 字段已去 original 前缀）、**平台明细/登记簿明细**
-   （2026-08-18 起：transactionDate/transactionType/accountType 经组装端点校验枚举后注入，
+   frontSsn 输入平安必填、capability/transDate 字段已去 original 前缀）、**平台明细/登记簿明细**
+   （2026-08-18 起：transDate/transType/accountType 经组装端点校验枚举后注入，
    登记簿明细账户下拉→pay.bankEAccountId→acctNo；平台明细无账户要素）；其余查询 Tab 暂协议键直传
 
 ### 4.2 租户与账户选择
@@ -227,7 +227,7 @@ catering-front (实际业务服务)
 
 ## 7. 后台实现
 
-- `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi` 和 `FrontTransactionApi`，透传请求
+- `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi` 和 `FrontTransApi`，透传请求
 - `TenantTestProperties.java`：`@ConfigurationProperties` 绑定 YAML 测试数据
 - `CateringWebTestApplication.java`：入口，`@EnableFeignClients` 扫描 `catering-api-front`
 

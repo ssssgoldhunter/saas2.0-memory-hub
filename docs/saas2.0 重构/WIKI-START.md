@@ -117,7 +117,7 @@ codegraph status               # 索引状态
 22. [16-交易额外数据标准化-plan](16-交易额外数据标准化-plan.md)：15 号 spec 的执行计划与实施记录
     （2026-08-17 工具类 + 7 个 check 骨架已落地；余 web-test 两步调用、buildRequest 补实与挂链）。
 23. [17-明细查询对外契约与平安启用-spec](17-明细查询对外契约与平安启用-spec.md)：24/25 明细查询
-    对外契约重构（AccountDetailItem/PlatformDetailItem 两套独立 DTO + TableDataInfo.totalPage + §1.3
+    对外契约重构（AccountTransDetailItem/PlatformTransDetailItem 两套独立 DTO + TableDataInfo.totalPage + §1.3
     原对象迁移对照）与平安明细启用（6048/6050/6073）的契约，含用户八条裁决；实施前必须完整阅读。
 24. [18-明细查询对外契约与平安启用-plan](18-明细查询对外契约与平安启用-plan.md)：17 号 spec 的
     分阶段执行计划与任务清单（T1-T11）。
@@ -197,7 +197,7 @@ codegraph status               # 索引状态
 - `CLOSED`：用户已确认，不得根据历史文档重新实现；
 - `DEFERRED`：安全或外部治理事项，必须另行授权。
 
-当前 P0/P1/P2 Issue 已全部关闭。平安五个查询接口、平安退款边界确认属于普通后续待办；
+当前 P0/P1/P2 Issue 已全部关闭。平安账户状态/余额 2 个查询（TODO-001 尾巴）、平安退款边界确认属于普通后续待办；
 明文凭据轮换和 Git 历史清理由独立安全事项跟踪。
 任何历史文档中的“未实现”“待改”“编译通过”均不是当前状态证据。
 

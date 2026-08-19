@@ -17,7 +17,7 @@
 - 删除统一 `FrontRouteAndCapabilityCheckNode`，新增 `frontTransactionRoute` 与 `frontQueryRoute`；
   交易、查询链只引用自己的 Router，后续账户链可独立新增，不修改现有分流代码。
 - 删除 `IntegrationStatus`、`capabilityStatus/requireCapability/checkCapability`。
-- `BankTransactionHandle/BankQueryHandle` 未被具体银行覆盖的方法直接返回
+- `BankTransHandle/BankQueryHandle` 未被具体银行覆盖的方法直接返回
   `CAPABILITY_NOT_SUPPORTED`。
 - 平安五个待人工核对的查询方法在 Handle 入口直接抛 `ADAPTER_NOT_READY`，由查询分派节点写 Slot
   后中断；保留现有草稿，不调用银行。
@@ -35,7 +35,7 @@
 - `catering-front/flow/component/AbstractFrontNode.java`
 - `catering-front/flow/component/FrontRouteAndCapabilityCheckNode.java`（删除）
 - `catering-front/handle/BankHandle.java`
-- `catering-front/handle/BankTransactionHandle.java`
+- `catering-front/handle/BankTransHandle.java`
 - `catering-front/handle/BankQueryHandle.java`
 - 中信、平安四个具体 Handle
 - `catering-front/resources/liteflow/front-flow.xml`

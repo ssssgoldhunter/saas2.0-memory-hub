@@ -14,7 +14,7 @@
 2. `catering-front` 保存全部功能实现，不再建立 `api/common/service` 子模块。
 3. 跨模块公共返回、Front 错误码和 Front 公共异常统一放在 `catering-common-core`。
 4. 所有 Front API 的返回结构遵守以下固定规范，禁止增加 `FrontResponse` 中间包装层：
-   - **单条交易、交易状态和账户查询**：返回 `R<具体结果>`（如 `R<FrontTransactionResult>`）；
+   - **单条交易、交易状态和账户查询**：返回 `R<具体结果>`（如 `R<FrontTransResult>`）；
    - **分页明细查询**：直接返回工程统一的 `TableDataInfo<具体行>`，不用 `R` 包裹；
    - **无返回体操作类**：返回 `R<Void>`。
 5. API、Controller、Application Service 均使用同一个返回签名；Controller 只透传
@@ -448,7 +448,7 @@ channel/pingan
 交易发送前执行的是“重复交易校验”，不是请求幂等：在当前银行、当前业务物理表内按
 `tenant_id + biz_order_no + biz_sub_order_no` 查询；存在记录即返回“交易已存在”，不重复调用银行，
 也不根据请求内容比较 Hash、不返回或重放旧交易结果。
-统一使用 `FrontErrorCode.TRANSACTION_ALREADY_EXISTS`，错误码固定为 `F300001`、说明固定为
+统一使用 `FrontErrorCode.TRANS_ALREADY_EXISTS`，错误码固定为 `F300001`、说明固定为
 “交易已存在”；不得继续使用 `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义。
 
 其他约束：
@@ -769,7 +769,7 @@ Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `TOD
 `BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`，提现只上送 `BUSS_ID`；`transactionDate` 映射
 `oriTransDate`，`specialData.acctNo` 加密后映射顶层 `acctNo`。状态查询不接受
 `specialData.transactionType`，不得扫描 Front 本地渠道表补账户号或银行流水。当前 API capability 仍由
-查询入口固定为 `TRANSACTION_STATUS_QUERY`，不得拿它代替 `capability`。
+查询入口固定为 `TRANS_STATUS_QUERY`，不得拿它代替 `capability`。
 
 中信明细查询的 `transactionDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
 `specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
@@ -837,9 +837,9 @@ R<具体结果>
 例如：
 
 ```java
-R<FrontTransactionResult>
+R<FrontTransResult>
 R<FrontTransferAuthCodeResult>
-R<TransactionStatusResult>
+R<TransStatusResult>
 R<AccountBalanceResult>
 ```
 
@@ -1136,6 +1136,11 @@ Handle 侧也不重复记录请求报文日志。查询渠道侧唯一强制的�
 
 ## 8.5 字段命名规范
 
+**trans 缩写铁律（2026-08-19 用户定名规则，强制）**：字段名/JSON 键名/specialData 契约键一律用缩写
+`trans`，**禁止完全体 `transaction`**——`transDate`/`transTime`/`transType`/`transAmt`/`transSsn` 等
+（请求字段、返回字段、组装入参同规）；银行协议原始键按银行原文除外（如 `TRANS_DATE`/`oriTransDate`/
+`transactionSsn` 按协议不改）；Java 类名（如 `TransStatusQueryData`）不受本条约束。
+
 收付款方向统一使用以下前缀，**禁止混用 payer/payee 或其他变体**：
 
 | 方向 | 前缀 | 示例 |
@@ -1213,7 +1218,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 字段和协议未确认时，只允许创建 `PENDING_INTEGRATION` 骨架，不允许伪造银行请求或成功响应。
 
-平安五个查询当前统一由 `PingAnQueryHandle.pendingIntegration()` 返回 `ADAPTER_NOT_READY`，对应
+平安账户状态/余额两个查询当前由 `PingAnQueryHandle.pendingIntegration()` 返回 `ADAPTER_NOT_READY`（交易状态与两类明细已实现，2026-08-19），对应
 `TODO-001`。后续必须一次只领取并核对一个接口；不得因为整理本地固定参数而移除挡板、创建
 未经确认的字段 ContractKeys，或继续补写下方分析草稿。
 
@@ -1392,7 +1397,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
       四个实例数据到统一交易表后，保持当前银行/能力范围并按相同三字段追加一次查询，执行顺序为
       “当前业务表 → report 当前银行/能力范围 → 插入 INIT”；
 - [ ] 不存在 `frontIdempotencyCheck`、`FrontIdempotencyCheckNode` 或其他无法确定固定业务表的公共检查节点；
-- [ ] 重复交易统一返回 `TRANSACTION_ALREADY_EXISTS(F300001, "交易已存在")`，不存在旧的
+- [ ] 重复交易统一返回 `TRANS_ALREADY_EXISTS(F300001, "交易已存在")`，不存在旧的
       `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义；
 - [ ] 中信退款不存在 `loadOriginalRefundFields` / `fillRefundAccountFieldsFromOriginal` 等本地原交易查询；
       平安退款是否关联原交易按 `TODO-002` 单独确认；

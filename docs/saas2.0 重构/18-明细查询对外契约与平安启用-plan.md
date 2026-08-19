@@ -7,18 +7,18 @@
 
 ## 任务清单（执行 AI 按序领取，完成后打勾并在 16 号风格记录实际改动）
 
-- [ ] T1 Phase 1：AccountDetailItem / PlatformDetailItem 新建 + **AccountDetailQueryData / PlatformDetailQueryData 拆分（替代 TransactionDetailQueryData，specialData 键不变）+ AccountDetailType / PlatformDetailType 两枚举** + TableDataInfo.totalPage + **BankQueryHandle 两个明细方法签名改 `TableDataInfo<新行类型>`（default unsupported 兜底同步改），两个 QueryHandle 直接构建 TableDataInfo（成功 200/业务失败 500+空 rows），FrontQueryApplicationService 分页改纯透传，删除 FrontPageResult.java** + API 三层泛型替换 + TransactionDetailItem/TransactionDetailQueryData 删除（按 17 号 §1.1/§1.2/§1.3）
+- [x] T1 Phase 1：AccountTransDetailItem / PlatformTransDetailItem 新建 + **AccountDetailQueryData / PlatformDetailQueryData 拆分（替代 TransactionDetailQueryData，specialData 键不变）+ AccountDetailType / PlatformDetailType 两枚举** + TableDataInfo.totalPage + **BankQueryHandle 两个明细方法签名改 `TableDataInfo<新行类型>`（default unsupported 兜底同步改），两个 QueryHandle 直接构建 TableDataInfo（成功 200/业务失败 500+空 rows），FrontQueryApplicationService 分页改纯透传，删除 FrontPageResult.java** + API 三层泛型替换 + TransactionDetailItem/TransactionDetailQueryData 删除（按 17 号 §1.1/§1.2/§1.3）
       **返回红线（2026-08-19 用户裁决）**：返回的都是 TableDataInfo，不再用 FrontPageResult；单笔查询维持 R<具体结果> 不变。
-- [ ] T2 Phase 2：组装器 24/25 枚举白名单改由 AccountDetailType/PlatformDetailType 生成（{04} / {01,02,03}），Handle 白名单不动
-- [ ] T3 Phase 3：中信 queryTransactionDetails 改产 AccountDetailItem（fee×100、查表无关、specialData 兜底）
-- [ ] T4 Phase 3：中信 queryPlatformTransactionDetails 改产 PlatformDetailItem（02/03 中信侧字段自然空）
-- [ ] T5 Phase 3：中信 TableDataInfo 赋值（TOTAL_PAGE 直传 + total=页大小估算）
-- [ ] T6 Phase 4：平安 queryTransactionDetails 实现（6073：functionFlag/subAcctNo/queryFlag=2/tranStatus 过滤/commission→fee=0 不过滤/frontSeqNo 查表补订单号）
-- [ ] T7 Phase 4：平安 queryPlatformTransactionDetails 实现（6050/6048 类型分流 + SM2 解密三连 + inAcctType 过滤回填 + termSsn + 分页三态）
-- [ ] T8 Phase 4：移除两个明细方法 pendingIntegration（账户状态/余额保留挡板）
-- [ ] T9 Phase 5：web-test 两明细 Tab 类型下拉收窄 + 返回文案
-- [ ] T10 Phase 6：文档同步（10/13/15/16/05/TODO-001/WIKI-START）
-- [ ] T11 Phase 7：17 号 §8 七条自检 + 执行报告（含编译证据）
+- [x] T2 Phase 2：组装器 24/25 枚举白名单改由 AccountDetailType/PlatformDetailType 生成（{04} / {01,02,03}），Handle 白名单不动
+- [x] T3 Phase 3：中信 queryTransactionDetails 改产 AccountTransDetailItem（fee×100、查表无关、specialData 兜底）
+- [x] T4 Phase 3：中信 queryPlatformTransactionDetails 改产 PlatformTransDetailItem（02/03 中信侧字段自然空）
+- [x] T5 Phase 3：中信 TableDataInfo 赋值（TOTAL_PAGE 直传 + total=页大小估算）
+- [x] T6 Phase 4：平安 queryTransactionDetails 实现（6073：functionFlag/subAcctNo/queryFlag=2/tranStatus 过滤/commission→fee=0 不过滤/frontSeqNo 查表补订单号）
+- [x] T7 Phase 4：平安 queryPlatformTransactionDetails 实现（6050/6048 类型分流 + SM2 解密三连 + inAcctType 过滤回填 + termSsn + 分页三态）
+- [x] T8 Phase 4：移除两个明细方法 pendingIntegration（账户状态/余额保留挡板）
+- [x] T9 Phase 5：web-test 两明细 Tab 类型下拉收窄 + 返回文案
+- [x] T10 Phase 6：文档同步（10/13/15/16/05/TODO-001/WIKI-START）
+- [x] T11 Phase 7：17 号 §8 七条自检 + 执行报告（含编译证据）
 
 ## Phase 0 基线（只读）
 
@@ -27,11 +27,11 @@
 
 ## Phase 1 api-front 契约层
 
-1. 新建 `model/response/AccountDetailItem.java`（11 主字段 + specialData，字段表 17 号 §1.2；fee 为 Long 分）；
-2. 新建 `model/response/PlatformDetailItem.java`（12 主字段 + specialData，transAmt 为 Long 分）；
+1. 新建 `model/response/AccountTransDetailItem.java`（11 主字段 + specialData，字段表 17 号 §1.2；fee 为 Long 分）；
+2. 新建 `model/response/PlatformTransDetailItem.java`（12 主字段 + specialData，transAmt 为 Long 分）；
 3. `TableDataInfo` 增加 `totalPage` 字段（保持既有 total 语义不变，补 javadoc）；
 4. `FrontQueryApi`/Controller/ApplicationService 两个明细方法泛型改为新 DTO
-   （`TableDataInfo<AccountDetailItem>` / `TableDataInfo<PlatformDetailItem>`），javadoc 同步；
+   （`TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`），javadoc 同步；
 5. `TransactionDetailItem` 确认无其他引用后删除（编译器兜底）；
 6. 编译。
 
@@ -44,10 +44,10 @@
 
 ## Phase 3 中信 Handle 改造
 
-1. `queryTransactionDetails`（24）：parse 产出 `AccountDetailItem`（USER_ID/USER_NAME/REQ_JRN/
+1. `queryTransactionDetails`（24）：parse 产出 `AccountTransDetailItem`（USER_ID/USER_NAME/REQ_JRN/
    TRANS_AMT×100→fee/TRANS_DT/TRANS_TM/MCHNT_ORDER_ID/SUB_ID + specialData 兜底：MCHNT_ID/C_D_FLAG/
    CUR_AMT/GOAC/OANM/DIGEST/REGISTER_SSN 等）；
-2. `queryPlatformTransactionDetails`（25）：parse 产出 `PlatformDetailItem`（含 02/03 类型中信侧
+2. `queryPlatformTransactionDetails`（25）：parse 产出 `PlatformTransDetailItem`（含 02/03 类型中信侧
    USER_NM/USER_ID/REARK2 自然为空）；transType 回填 01/02/03；
 3. TableDataInfo 赋值：TOTAL_PAGE 直传 + total=TOTAL_PAGE×页大小估算（24×50、25×20）；
 4. 分页透传：不做任何对齐（17 号 §0.8）；
@@ -87,3 +87,17 @@
 
 Phase 1-2 为契约/白名单变更（有外部影响但当前无业务方，窗口期安全）；Phase 3-4 为 Handle 行为切换，
 按能力小步提交可独立 revert；平安侧新增协议类纯增量。
+
+## T11 执行报告（2026-08-19，主对话接手收尾后全量完成）
+
+| 任务 | 实际改动文件 |
+|---|---|
+| T1 | api-front：AccountTransDetailItem/PlatformTransDetailItem/AccountDetailQueryData/PlatformDetailQueryData/AccountDetailType/PlatformDetailType 新建；TransactionDetailItem/TransactionDetailQueryData/FrontPageResult 删除；TableDataInfo.totalPage；FrontQueryApi/Controller/Service/BankQueryHandle 签名替换 |
+| T2 | CiticSpecialDataAssembler/PingAnSpecialDataAssembler 白名单接枚举 allowedCodes()；平安补 24/25 两分支（含 mchntMbrId 要素保留） |
+| T3-T5 | CiticQueryHandle：queryDetails 拆 typed queryPlatformDetails/queryAccountDetails、壳字段 MCHNT_ID/USER_ID 从应答壳读取（v5.3 壳3+行14）、remark 改 REMARK、CUR_AMT 原值+currentAmountCent 双保留、GOAC/OANM 常量化、totalPage/total 赋值 |
+| T6-T8 | PingAnQueryHandle：6073/6050/6048 三模板 + PingAnDetailQueryContractKeys 新建、明细两挡板移除、6050 补 reserve、6048 补 termSsn 原值；PingAnTransHandle updateResponse 补写 bank_user_ssn（USER_SSN） |
+| T9 | web-test：明细 Tab 下拉收窄 + Controller 新类型 + RECHARGE 选项 + label 更正 |
+| T10 | 10/13/15/16/05/WIKI-START/TODO-001/P1-002/P1-004 文档联动 |
+| T11 | 四模块编译 BUILD SUCCESS（common-core+api-front install → front → web-test → consume）；trans 缩写全链路（字段/常量/类名/枚举/链名）；验收三 P1 修复（壳层级/bank_user_ssn 回写/rows 默认空集合） |
+
+编译证据：api-front/front/web-test/consume 全绿（2026-08-19，本地 m2saas install 后）。

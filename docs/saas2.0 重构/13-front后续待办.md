@@ -3,9 +3,9 @@
 本文只记录已明确延后、需要后续人工确认或逐项接入的工作，不属于
 `12-front-implementation-issues` 缺陷清单，也不计入 P0/P1/P2 Issue 完成度。
 
-## TODO-001 平安五个查询 Handle 逐接口核对和接入
+## TODO-001 平安查询 Handle 逐接口核对和接入（2026-08-19 更新：已启用 3/5）
 
-- 状态：待办
+- 状态：部分完成——交易状态查询（2026-08-17）与两类明细查询（2026-08-19，17 号 spec）已实现；剩账户状态/余额 2 项待办
 - 代码入口：`PingAnQueryHandle`
 - 当前行为：五个公开查询方法在任何银行调用前统一抛出 `ADAPTER_NOT_READY`
 
@@ -21,9 +21,9 @@
 |---|---|---|
 | `queryAccountStatus` | 待办 / `ADAPTER_NOT_READY` | 平安是否存在等价能力、请求字段和状态映射 |
 | `queryAccountBalance` | 待办 / `ADAPTER_NOT_READY` | `63/64/01/02/03` 的能力边界、账户范围及返回结构 |
-| `queryTransactionStatus` | 待办 / `ADAPTER_NOT_READY` | 普通交易与提现的 `02/03` 选择、原渠道记录定位及状态映射 |
-| `queryPlatformTransactionDetails` | 待办 / `ADAPTER_NOT_READY` | 是否需要聚合多个 `bizFunc`、分页字段和数组节点 |
-| `queryTransactionDetails` | 待办 / `ADAPTER_NOT_READY` | 子账户类型、日期范围、分页字段和数组节点 |
+| `queryTransactionStatus` | ✅ 已实现（2026-08-17） | bizFunc 02/03/04 按 capability 转译；提现 cardNoEnc 渠道表回查；S/P/F 三态 |
+| `queryPlatformTransactionDetails` | ✅ 已实现（2026-08-19，17 号 spec） | 25-01/03→6050（inAcctType 过滤回填）、25-02→6048（termSsn） |
+| `queryTransactionDetails` | ✅ 已实现（2026-08-19，17 号 spec） | 24-04→6073（queryFlag=2 + commission 作 fee + 订单号查渠道表） |
 
 ### 后续领取前必读
 
@@ -50,7 +50,7 @@
 
 - 不根据现有草稿猜测或补齐平安查询协议。
 - 不为了统一参数而创建未经银行文档确认的正式字段契约。
-- 不移除五个入口的待接入挡板。
+- 不移除账户状态/余额两个入口的待接入挡板（明细两项与交易状态已于 2026-08-17/19 启用）。
 - 不将本待办计为当前 P0/P1/P2 未修复缺陷。
 
 ## TODO-002 平安退款边界与协议字段人工确认

@@ -39,11 +39,11 @@
 ### 2.1 `transferAuth`
 
 ```text
-新 FrontTransactionApi.transferAuth
-→ FrontTransactionController.transferAuth
-→ FrontTransactionApplicationService.transferAuth
-→ BankTransactionHandle.transferAuth
-→ PingAnTransactionHandle.transferAuth（后续真实实现位置）
+新 FrontTransApi.transferAuth
+→ FrontTransController.transferAuth
+→ FrontTransApplicationService.transferAuth
+→ BankTransHandle.transferAuth
+→ PingAnTransHandle.transferAuth（后续真实实现位置）
 
 旧 FrontTransConsumeFacadeApi.transTransferAuth
 → TransConsumeServiceImpl.transTransferAuth
@@ -56,11 +56,11 @@
 ### 2.2 `resendTransferAuthCode`
 
 ```text
-新 FrontTransactionApi.resendTransferAuthCode
-→ FrontTransactionController.resendTransferAuthCode
-→ FrontTransactionApplicationService.resendTransferAuthCode
-→ BankTransactionHandle.resendTransferAuthCode
-→ PingAnTransactionHandle.resendTransferAuthCode（后续真实实现位置）
+新 FrontTransApi.resendTransferAuthCode
+→ FrontTransController.resendTransferAuthCode
+→ FrontTransApplicationService.resendTransferAuthCode
+→ BankTransHandle.resendTransferAuthCode
+→ PingAnTransHandle.resendTransferAuthCode（后续真实实现位置）
 
 旧 FrontTransVerificationFacadeApi.sendSmsVerification
 → TransVerificationServiceImpl.sendSmsVerification
@@ -340,7 +340,7 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 └─ PingAnTransferAuthCodeContractKeys.java
 ```
 
-- `bizFunc=45/26` 由 `PingAnTransactionHandle` 的带注释本地常量确定；
+- `bizFunc=45/26` 由 `PingAnTransHandle` 的带注释本地常量确定；
 - `PingAnTransferAuthContractKeys`、`PingAnTransferAuthCodeContractKeys` 只保存当前支付分支实际使用的
   银行原始字段 key、协议枚举固定值和响应白名单；
 - Word 有定义但当前 Handle 不使用的字段只留在本文说明，不提前搬进 Java 常量；
@@ -351,7 +351,7 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 
 后续 AI 实现这两个方法时必须：
 
-1. 只覆盖 `PingAnTransactionHandle` 的目标方法，中信保持 `UNSUPPORTED`；
+1. 只覆盖 `PingAnTransHandle` 的目标方法，中信保持 `UNSUPPORTED`；
 2. 从现有 `BankRequestContext` 读取 `baseData/specialData/accountConfig`，不得重新查询账户配置；
 3. 逐字段组装钱包基础字段和 `reserve`，禁止 `putAll`；
 4. `transSsn/transTime` 每次由平安 Handle 生成，`bizFunc/chnlNo/functionFlag/tranType` 使用常量；

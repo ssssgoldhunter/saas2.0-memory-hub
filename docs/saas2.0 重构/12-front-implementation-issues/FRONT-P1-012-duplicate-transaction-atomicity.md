@@ -18,7 +18,7 @@
 
 - 两家 Transaction Handle 均使用 `ConcurrentHashMap + synchronized` 包住本 JVM 内的“查询 + 插入 INIT”窗口。
 - 查询使用当前业务方法已确定的 Mapper，只检查当前物理业务表。
-- 查询条件使用 `tenantId + bizOrderNo + bizSubOrderNo`，命中后返回 `TRANSACTION_ALREADY_EXISTS`，不调用银行。
+- 查询条件使用 `tenantId + bizOrderNo + bizSubOrderNo`，命中后返回 `TRANS_ALREADY_EXISTS`，不调用银行。
 - 中信、平安两个公共 `checkDuplicateTransaction()` 已在本地查询之后登记 `TODO[REPORT]`；两个入口覆盖当前
   全部交易能力，report 接入时在此追加第二次查询。
 - 不使用 requestHash、configVersion、快照或公共幂等节点。
@@ -27,7 +27,7 @@
 
 1. 当前银行、当前能力对应业务表内按 `tenantId + bizOrderNo + bizSubOrderNo` 精确检查。
 2. 命中重复后不调用银行、不重放旧结果。
-3. 系统故障不能被伪装成 `TRANSACTION_ALREADY_EXISTS`。
+3. 系统故障不能被伪装成 `TRANS_ALREADY_EXISTS`。
 4. 当前部署边界不增加跨实例分布式锁或改造业务库全局唯一方案。
 5. report 尚未接入时保留明确 TODO；接入后执行“当前业务表查询 → report 当前银行/能力范围查询 → 插入 INIT”。
 6. 不恢复 requestHash、configVersion、快照或公共幂等节点。

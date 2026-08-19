@@ -425,7 +425,7 @@ Map<BankCapabilityKey, QueryCapabilityHandler> queryHandlerMap;
 ```text
 TransactionRegistry + (PING_AN, TRANSFER) → PingAnTransferHandler
 TransactionRegistry + (CITIC, REFUND)     → CiticRefundHandler
-QueryRegistry + (CITIC, TRANSACTION_STATUS_QUERY) → CiticTransactionStatusQueryHandler
+QueryRegistry + (CITIC, TRANS_STATUS_QUERY) → CiticTransactionStatusQueryHandler
 ```
 
 领域由 API/应用服务直接确定，不放进同一个统一复合键，也不根据 capability 名称反推。`bizFunc`、
@@ -739,7 +739,7 @@ reserve1 / reserve2 / reserve3
 ## 15. 统一响应
 
 ```java
-R<FrontTransactionResult>
+R<FrontTransResult>
 
 public class FrontBaseResult {
     private String frontRespCode;
@@ -748,7 +748,7 @@ public class FrontBaseResult {
 }
 ```
 
-单条交易、交易状态和账户查询由公共 `R` 包装确定类型结果，例如 `R<FrontTransactionResult>`；
+单条交易、交易状态和账户查询由公共 `R` 包装确定类型结果，例如 `R<FrontTransResult>`；
 分页明细查询直接返回工程统一的 `TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包装。
 `FrontBaseResult.specialData` 保存当前银行和接口的特殊响应字段。Handle 内部直接返回确定的
 `FrontBaseResult` 子类，禁止 `FrontResponse` 中间层和无法约束的 `<T> T` 返回。
@@ -758,7 +758,7 @@ public class FrontBaseResult {
 只用于 Handle 判定及渠道流水审计，不得直接成为 `frontRespCode/frontRespDesc`。
 
 ```java
-public class FrontTransactionResult extends FrontBaseResult {
+public class FrontTransResult extends FrontBaseResult {
     private String frontSsn;
 
     private FrontTransactionStatus frontStatus;

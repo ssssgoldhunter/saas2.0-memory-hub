@@ -14,8 +14,8 @@
 
 ## 修改范围
 
-- `CiticTransactionHandle`
-- `PingAnTransactionHandle`
+- `CiticTransHandle`
+- `PingAnTransHandle`
 - 如实际常量或注释不一致，同步 common-core 常量及 06/07 契约。
 
 ## 验收标准

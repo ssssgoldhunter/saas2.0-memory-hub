@@ -6,7 +6,7 @@
 
 ## 最新边界（2026-08-09 用户确认）
 
-- 当前 API capability 固定为 `TRANSACTION_STATUS_QUERY`，只负责路由当前查询能力。
+- 当前 API capability 固定为 `TRANS_STATUS_QUERY`，只负责路由当前查询能力。
 - 请求 `baseData.originalCapability` 描述被查询原交易的 Front 业务能力，不参与当前 API 路由：
   - `TRANSFER/CONSUME/REFUND`：上送 `BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`；
   - `WITHDRAW`：只上送 `BUSS_ID`，不送 `BUSS_SUB_ID/TRANS_TYPE`。
@@ -37,7 +37,7 @@
 2. 转账、消费、退款必须同时上送 `BUSS_ID/BUSS_SUB_ID` 和 Handle 本地固定值 `TRANS_TYPE=01`；提现只上送
    `BUSS_ID`。
 3. `originalTransactionDate` 映射 `oriTransDate`；`specialData.acctNo` 按中信协议加密后映射顶层 `acctNo`。
-4. 银行字段 key 保留在 `CiticTransactionStatusQueryContractKeys`；接口固定 value 保留在具体 Handle。
+4. 银行字段 key 保留在 `CiticTransStatusQueryContractKeys`；接口固定 value 保留在具体 Handle。
 5. 不扫描本地渠道表，不校验 `frontSsn` 与业务流水是否指向同一记录。
 6. 不支持的原交易能力、双流水缺失、日期或账户号缺失时，在调用银行前返回明确业务异常；系统异常继续抛出。
 
@@ -45,7 +45,7 @@
 
 已完成静态修改：
 
-1. `TransactionStatusQueryData` 新增强类型 `originalCapability` 和 `originalTransactionDate`。
+1. `TransStatusQueryData` 新增强类型 `originalCapability` 和 `originalTransactionDate`。
 2. `CiticQueryTransStatusRequest` 已新增银行顶层 `oriTransDate`，并删除当前不使用的 `oriTransSsn` 字段。
 3. `CiticQueryHandle.queryTransactionStatus()` 已按四类原交易能力直接组装银行字段，并校验原交易日期格式。
 4. 已删除查询 Handle 对转账、消费、提现 Mapper 的依赖，以及按流水扫描本地渠道表补账户号的逻辑。
@@ -62,3 +62,9 @@
   `BUSS_SUB_ID + TRANS_TYPE=01`，并由调用方提供 `oriTransDate/acctNo`；
 - 当前 Front 已按确认后的四类原交易能力直接组装，不再扫描本地渠道表，本问题关闭；
 - 后续联调若出现相反银行报文证据，作为新的协议修正单独处理，不回退本问题边界。
+
+
+## 字段更正注（2026-08-19）
+
+本文 `originalCapability`/`originalTransactionDate` 已随交易状态查询统一改造更名为
+`capability`/`transDate`（2026-08-17 执行、2026-08-19 trans 缩写定名），语义不变。

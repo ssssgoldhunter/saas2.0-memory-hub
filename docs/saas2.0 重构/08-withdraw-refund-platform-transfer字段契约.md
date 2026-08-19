@@ -39,8 +39,8 @@
 中信真退款协议链路应关联为：
 
 ```text
-BankTransactionHandle.refund
-→ CiticTransactionHandle.refund
+BankTransHandle.refund
+→ CiticTransHandle.refund
 → ZxRefundRequest 等价的新协议 DTO
 → SaasZxInterService.zxRefund 等价客户端
 → POST /cwap/account/send/refund
@@ -292,7 +292,7 @@ ccy = CNY
 所有 API 直接返回：
 
 ```text
-R<FrontTransactionResult>
+R<FrontTransResult>
 ```
 
 不得再包 `FrontResponse`。只有 Front 业务成功时顶层使用 `R.code=200/R.msg=操作成功`；银行业务

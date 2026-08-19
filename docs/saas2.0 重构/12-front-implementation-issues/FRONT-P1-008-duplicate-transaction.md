@@ -15,7 +15,7 @@
 ## 验收标准
 
 1. 统一改为“重复交易检查”，不称为结果重放幂等。
-2. 错误码为 `TRANSACTION_ALREADY_EXISTS(F300001, 交易已存在)`。
+2. 错误码为 `TRANS_ALREADY_EXISTS(F300001, 交易已存在)`。
 3. 在当前银行、当前业务表按 tenantId + bizOrderNo + bizSubOrderNo 精确查询。
 4. 子流水为空时按约定的标准化空值精确匹配。
 5. 命中后不调用银行、不返回旧交易结果。
@@ -29,7 +29,7 @@
 
 ## 当前修复证据（2026-08-09 静态审查）
 
-- Handle 方法已改为 `checkDuplicateTransaction`，错误码为 `TRANSACTION_ALREADY_EXISTS(F300001)`。
+- Handle 方法已改为 `checkDuplicateTransaction`，错误码为 `TRANS_ALREADY_EXISTS(F300001)`。
 - 当前银行、当前业务表使用 `tenantId + bizOrderNo + bizSubOrderNo` 查询；子流水为空时使用 `IS NULL`。
 - 命中后直接抛业务异常，不调用银行，也不返回或重放旧交易结果。
 - 当前实例的并发窗口及后续 report 跨实例补查边界已由已关闭的 `FRONT-P1-012` 收口；report 尚未接入时

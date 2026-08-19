@@ -43,7 +43,7 @@
 4. `BasePageQuery`、`RequestContext` 已明确请求 `dataSourceId` 只用于上下文传递和记录；SQL 分片键是
    `tenant_id`，实际 `ds_x` 来自租户配置 `data_source_id`。
 5. 中信、平安提现 ContractKeys 的账户、卡号、姓名注释已统一为 `specialData` 原始 key 来源。
-6. `BankTransactionHandle.refund` 已删除“由 Front 渠道流水补全原交易字段”的公共错误描述，明确中信与平安边界分开。
+6. `BankTransHandle.refund` 已删除“由 Front 渠道流水补全原交易字段”的公共错误描述，明确中信与平安边界分开。
 7. 10 个渠道交易 ServiceImpl 已删除不存在的“4 个加密快照 text 字段/专用快照组件”注释。
 8. `FrontExecutionInfo.capability` 注释已改为 Registry 复合路由键和交易渠道流水记录，不再描述公共 Dispatch 选方法。
 
@@ -57,7 +57,7 @@
 3. WIKI 曾按错误的“全部已完成”状态收缩处理顺序；当时重新核验确认 P1-004/006/011/013 仍需处理。
    当前 P1-004/006/011/013 均已由用户确认关闭；具体状态只引用 Issue README，避免再次产生双份状态。
 4. 修正 `BasePageQuery`、`RequestContext`、`FrontExecutionInfo`、两家提现 ContractKeys 和
-   `BankTransactionHandle` 的过时注释；清理 10 个 ServiceImpl 的快照遗留描述。
+   `BankTransHandle` 的过时注释；清理 10 个 ServiceImpl 的快照遗留描述。
 5. 为 `00` 和 `04` 增加历史文档标识，旧阶段状态不再作为当前开发入口。
 
 ## 用户确认（2026-08-09）

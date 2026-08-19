@@ -50,8 +50,8 @@
 
 ## 交易状态查询三件套（2026-08-17 用户裁决后实施，未提交）
 
-1. api-front：新增 `FrontInternalTransStatus`（S/P/F 常量）；`TransactionStatusResult.frontStatus`
-   改 String 三态（null=未知）；组装工具两银行类加 TRANSACTION_STATUS_QUERY 分支（矩阵 §4.3）；
+1. api-front：新增 `FrontInternalTransStatus`（S/P/F 常量）；`TransStatusResult.frontStatus`
+   改 String 三态（null=未知）；组装工具两银行类加 TRANS_STATUS_QUERY 分支（矩阵 §4.3）；
 2. front：Citic/PingAn QueryHandle 的 mapTransStatus 改内部三态，银行状态码全部提为带注释常量
    （中信 00~05、平安 0/1/2/5/6），04/05→S、空/未知→null（用户确认）；PingAnQueryHandle
    .queryTransactionStatus 正式实现（02/03 规则、frontSsn 必填、mchntMbrId←specialData、
@@ -69,16 +69,16 @@
   不经调用方；组装工具平安查询格回到 1 要素（mchntMbrId）；
 - RECHARGE 仅平安（04）接入，中信 default 拒绝；
 - **统一请求五点修正（用户评审，定稿）**：QueryTransStatusRequest 改为银行无关——只含定位
-  基础参数（capability/transactionDate/主子订单号/frontSsn，不带 original 前缀——用户要求）+ 组装 specialData（from(context) 工厂）；
+  基础参数（capability/transDate/主子订单号/frontSsn，不带 original 前缀——用户要求）+ 组装 specialData（from(context) 工厂）；
   信封字段全部移出请求，各 Handle 以常量+账户配置+序列生成器直接构建 wire JSONObject
   （键走 FrontBankRequestConstants，新增 3 个常量）；bizFunc/chnlNo 配置死在 Handle，
   transSsn/laasSsn 为 Handle 生成能力，tenantId/mchntId 走账户配置。
 
-## 交易状态查询收盘状态（2026-08-18；代码已提交推送：b41d885e/da4e833c/3260241a/a58c33d8，仍未编译）
+## 交易状态查询收盘状态（2026-08-18；代码已提交推送：b41d885e/da4e833c/3260241a/a58c33d8；编译已于 2026-08-19 验证通过，当时失败仅为本地仓库旧 jar，install 后四模块绿）
 
-- 统一请求最终形态：`QueryTransStatusRequest(context)` 实例构造，字段 capability/transactionDate/
+- 统一请求最终形态：`QueryTransStatusRequest(context)` 实例构造，字段 capability/transDate/
   bizOrderNo/bizSubOrderNo/frontSsn/specialData（无 original 前缀、无 static）；
-- 对外契约同步去前缀（TransactionStatusQueryData + FrontQueryApi + 两 Handle 报错 + web-test + 05/10/13）；
+- 对外契约同步去前缀（TransStatusQueryData + FrontQueryApi + 两 Handle 报错 + web-test + 05/10/13）；
 - PingAnQueryRequest 加 TODO[QUERY-UNIFY] 过渡标记（查询统一路线，迁完删除）；
 - 修复 buildTransStatusWire 泛型通配符编译错误（context 参数改为具体类型）；
 - `bankEAccountId→cardNoEnc` 疑问结案（用户裁决）：系 lsym 99 验证码路径填法，交易状态查询用不到，
@@ -134,3 +134,11 @@
 
 api-front 工具类纯新增可整体 revert；consume 侧为纯新增包 + 2 个 slot 字段，revert 不影响存量行为；
 front 服务零改动，不存在行为切换点。web-test 改造独立 revert。
+
+## 收盘记录（2026-08-19，明细契约重构与平安启用，17/18 号 spec/plan 执行完毕）
+
+- 执行路径：执行 AI 完成 T1 主体（新 DTO/枚举/QueryData 拆分/TableDataInfo+FrontPageResult 处置/
+  三层签名）后由主对话接手收尾：中信拆强转桥+remark 来源修正+GOAC/OANM 常量化、平安 6073/6050/6048
+  三模板实现（PingAnDetailQueryContractKeys 新建）、移除明细两挡板、web-test 下拉收窄、文档联动；
+- 遗留（联调项）：6073 frontSeqNo 与渠道表 bank_user_ssn 对应关系待联调验证；25 userName（6048）
+  查表补全为后续增强；中信 totalNum=TOTAL_PAGE×页大小估算联调后可改置空。

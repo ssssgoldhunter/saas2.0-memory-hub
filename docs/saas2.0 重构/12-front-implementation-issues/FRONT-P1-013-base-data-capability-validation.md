@@ -23,8 +23,8 @@
 
 ## 建议修改范围
 
-- `CiticTransactionHandle`：仅补已启用交易能力的 baseData 请求有效性校验；
-- `PingAnTransactionHandle`：仅补已启用且协议已确认能力的 baseData 请求有效性校验；
+- `CiticTransHandle`：仅补已启用交易能力的 baseData 请求有效性校验；
+- `PingAnTransHandle`：仅补已启用且协议已确认能力的 baseData 请求有效性校验；
 - 06、07、08 字段契约：只在现有口径不明确时同步必填、格式和长度；
 - 不修改 Router、Registry、Dispatch、Mapper、DDL 或查询 TODO。
 

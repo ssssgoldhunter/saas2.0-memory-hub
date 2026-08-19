@@ -35,7 +35,7 @@ catering-api-front 组装工具类 FrontSpecialDataAssembler
     （BankCode, FrontCapability）内部类路由 → 协议键明文 JSONObject
           │
 catering-consume 组交易请求（baseData 业务字段 + specialData=组装结果）
-          │ Feign: FrontTransactionApi.*
+          │ Feign: FrontTransApi.*
           ▼
 front 交易链路（validate → route → contextPrepare → dispatch → Handle）——不改动
 ```
@@ -202,11 +202,11 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 
 | 能力 | 中信 | 平安 |
 |---|---|---|
-| TRANSACTION_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号，1 个要素） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号，1 个要素）；**提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，由 Handle 从平安提现渠道表按 (tenantId, frontSsn) 回查后 SM2 上送，不经调用方/组装**；acctNo 不上送（仅验证码类查询使用）；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
-| PLATFORM_TRANSACTION_DETAIL_QUERY（25 平台明细，2026-08-18） | 入参 `transactionDate`（yyyyMMdd）+ `transactionType`（01/02/03/04/99，05 预留值拒绝）→ 输出同键（明细条件为 Front 契约键，Handle 映射 `TRANS_DATE`/`TRANS_TYPE`）；无账户要素 | 不支持（平安明细查询仍在 TODO-001 挡板） |
-| TRANSACTION_DETAIL_QUERY（24 登记簿明细，2026-08-18） | `pay.bankEAccountId` → `acctNo`（SM2 由 Handle）；入参 `transactionDate`（yyyyMMdd）+ `transactionType`（01/02/03/04/05/06/98/99）+ `accountType`（选填 01/12/13/17）→ 输出同键（Handle 映射 `TRANS_DATE`/`TRANS_TYPE`/`registerAttr`） | 不支持（同上） |
+| TRANS_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号，1 个要素） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号，1 个要素）；**提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，由 Handle 从平安提现渠道表按 (tenantId, frontSsn) 回查后 SM2 上送，不经调用方/组装**；acctNo 不上送（仅验证码类查询使用）；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
+| PLATFORM_TRANS_DETAIL_QUERY（25 平台明细，2026-08-18） | 入参 `transDate`（yyyyMMdd）+ `transType`（01/02/03/04/99，05 预留值拒绝）→ 输出同键（明细条件为 Front 契约键，Handle 映射 `TRANS_DATE`/`TRANS_TYPE`）；无账户要素 | 已实现（2026-08-19，6050/6048 类型分流，17 号 spec §3.1） |
+| TRANS_DETAIL_QUERY（24 登记簿明细，2026-08-18） | `pay.bankEAccountId` → `acctNo`（SM2 由 Handle）；入参 `transDate`（yyyyMMdd）+ `transType`（01/02/03/04/05/06/98/99）+ `accountType`（选填 01/12/13/17）→ 输出同键（Handle 映射 `TRANS_DATE`/`TRANS_TYPE`/`registerAttr`） | 已实现（2026-08-19，6073）：`pay.bankEAccountId`→`acctNo` + `pay.bankEMemberCode`→`mchntMbrId`（**要素保留，6073 当前不消费**，用户要求 2026-08-19 与状态查询格同构不缺位）+ transDate + transType{04} |
 
-明细两能力的入参（transactionDate/transactionType/accountType）为 `FrontSpecialDataAssembler` 顶层组装字段；取值枚举在组装器用 ContractKeys 值常量校验（与 Handle 直传防线白名单同源），非法值组装即报错（如 `transactionType取值不支持: 07`）。
+明细两能力的入参（transDate/transType/accountType）为 `FrontSpecialDataAssembler` 顶层组装字段；取值枚举在组装器用 ContractKeys 值常量校验（与 Handle 直传防线白名单同源），非法值组装即报错（如 `transType取值不支持: 07`）。
 
 其余查询能力（账户状态/余额）待实现时补格。
 
@@ -217,7 +217,7 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 - 同一协议键在不同能力下名字不同（outAcctId/outMemberCode、outAcctName/outSubAcctName、
   inAcctNo/acctNo/intAcctNo），必须严格按本矩阵，不得"统一"；
 - 平台收付款只取对手方一侧（平台侧由商户配置隐式定位）；
-- (中信, TRANSFER_AUTH)/(中信, RESEND)/(平安, PLATFORM_*)/平安 5 个查询能力不在组装范围，
+- (中信, TRANSFER_AUTH)/(中信, RESEND)/(平安, PLATFORM_*)/平安账户状态与余额 2 个查询不在组装范围，
   组装器不存在，请求这些组合返回 `CAPABILITY_NOT_SUPPORTED`。
 
 ## 5. 组装工具类设计（catering-api-front，已实现）
@@ -296,7 +296,7 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
   `assemble()` 返回 specialData，供页面两步展示/注入交易请求；
 - UI 账户下拉产出标准结构（pay/rec/oriPay/oriRec + bankCard），鉴权 Tab 填 auth 对象，退款 Tab 填
   originalBusinessDate，平台收付填 contractId（选填）；
-- 查询 Tab 维持现状（协议键直传）；
+- 查询 Tab 两步组装覆盖三个（交易状态查询/平台明细/登记簿明细，2026-08-18 起），其余查询 Tab 协议键直传；
 - `14-catering-web-test-使用说明.md` 增补两步调用说明。
 
 ## 9. 文档联动清单
@@ -330,5 +330,5 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 6. consume 侧 7 个 check 骨架就位（buildRequest TODO 占位、基类模板实装），两个 TransSlot 有
    assembledSpecialData 字段；consume 全模块编译因存量欠账（report 包缺失、BaseMerchantFacadeApi 缺失、
    BasTransWithDrawRes 被置空）暂不可用，新增文件的编译验证随存量修复后补做；
-7. web-test 交易 Tab 两步调用可用，查询 Tab 行为不变；
+7. web-test 交易 Tab 两步调用可用；查询 Tab 中三个（transStatus/platDetail/transDetail）两步组装，其余协议键直传；
 8. §9 文档清单全部更新。

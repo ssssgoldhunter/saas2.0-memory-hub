@@ -9,8 +9,8 @@
 ## 0. 用户四点裁决（2026-08-18，本 spec 的最高约束）
 
 1. **24/25 是两个独立接口，请求/返回分开两套**；各自内部中信/平安是同一套请求返回。
-   请求侧维持现有键：`specialData.acctNo/transactionType/transactionDate(/accountType)` + `baseData.pageNo`
-   （对齐映射表的 pageNum 统一写为 pageNo；transType/transDate 即 transactionType/transactionDate）；
+   请求侧维持现有键：`specialData.acctNo/transType/transDate(/accountType)` + `baseData.pageNo`
+   （对齐映射表的 pageNum 统一写为 pageNo；transType/transDate 即 transType/transDate）；
    **bankAccountCode 与 acctNo 是两个东西**——acctNo 是请求键（用户编号），bankAccountCode 只作返回字段。
 2. **24 的 fee 单位 = 分**（对齐映射表 v6.6 写"元"不采纳；全局铁律金额统一分）。
 3. **totalPage/totalNum 放 TableDataInfo**（分页壳），不放行级。
@@ -29,8 +29,8 @@
 ### 1.1 请求（2026-08-19 修订：请求对象与查询类型枚举均按 24/25 拆分；specialData 键不变）
 
 **请求对象拆分**：`TransactionDetailQueryData` 拆为 `AccountDetailQueryData`（24）/`PlatformDetailQueryData`
-（25），字段相同（pageNo/pageSize），仅作 API 类型区分与未来独立演化；`acctNo/transactionType/
-transactionDate/accountType` **仍在 specialData**（不提升为强类型字段），键与取值不变。
+（25），字段相同（pageNo/pageSize），仅作 API 类型区分与未来独立演化；`acctNo/transType/
+transDate/accountType` **仍在 specialData**（不提升为强类型字段），键与取值不变。
 
 **查询类型枚举拆分**（api-front `model/enums`，同码不同义故必须分开；wire 仍是 code 字符串）：
 
@@ -42,8 +42,8 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 
 | 能力 | 请求类型 | specialData（Front 契约键） | baseData |
 |---|---|---|---|
-| TRANSACTION_DETAIL_QUERY（24） | `FrontRequest<AccountDetailQueryData>` | `acctNo`（必填，用户编号，Handle SM2）、`transactionType`（枚举 `AccountDetailType`，对外仅 04）、`transactionDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17；**仅中信生效**，平安 6073 无登记簿类型概念，忽略该键） | `pageNo` |
-| PLATFORM_TRANSACTION_DETAIL_QUERY（25） | `FrontRequest<PlatformDetailQueryData>` | `transactionType`（枚举 `PlatformDetailType`，对外 01/02/03）、`transactionDate`（必填 yyyyMMdd）；无 acctNo（平台级） | `pageNo` |
+| TRANS_DETAIL_QUERY（24） | `FrontRequest<AccountDetailQueryData>` | `acctNo`（必填，用户编号，Handle SM2）、`transType`（枚举 `AccountDetailType`，对外仅 04）、`transDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17；**仅中信生效**，平安 6073 无登记簿类型概念，忽略该键） | `pageNo` |
+| PLATFORM_TRANS_DETAIL_QUERY（25） | `FrontRequest<PlatformDetailQueryData>` | `transType`（枚举 `PlatformDetailType`，对外 01/02/03）、`transDate`（必填 yyyyMMdd）；无 acctNo（平台级） | `pageNo` |
 
 组装器 `requireIn` 白名单集合改由两个枚举生成（Handle 协议层白名单继续用 ContractKeys 常量、保持全量）。
 
@@ -52,7 +52,7 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 
 ### 1.2 返回——两套独立行对象 + 分页壳扩展
 
-**24 账户明细 → 新 `AccountDetailItem`（11 行级主字段 + specialData）**
+**24 账户明细 → 新 `AccountTransDetailItem`（11 行级主字段 + specialData）**
 
 | 字段 | 类型 | 中信 24 来源 | 平安 6073 来源 | 转译 |
 |---|---|---|---|---|
@@ -68,7 +68,7 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 | transTime | String | TRANS_TM | tranTime | 对齐表 transTm 即本字段 |
 | specialData | JSONObject | 其余字段原样（MCHNT_ID/C_D_FLAG/CUR_AMT/GOAC/OANM/DIGEST/REGISTER_SSN 等） | 其余原样（tranStatus/tranAmt/bookingFlag/bookingMsg/remark/resultNum/startRecordNo 等，解密后放） | 兜底 |
 
-**25 平台明细 → 新 `PlatformDetailItem`（12 行级主字段 + specialData，三类型字段集统一）**
+**25 平台明细 → 新 `PlatformTransDetailItem`（12 行级主字段 + specialData，三类型字段集统一）**
 
 | 字段 | 类型 | 中信 25 来源 | 平安 6050（01/03）/ 6048（02）来源 | 转译 |
 |---|---|---|---|---|
@@ -88,7 +88,7 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 
 **TableDataInfo 扩展**：新增 `totalPage`（与既有 `total` 并列；`total` 语义即 totalNum）。
 **全链路 TableDataInfo（2026-08-19 用户裁决）**：`FrontPageResult` 中间承接层**废除并删除**——
-两个明细 Handle 方法直接返回 `TableDataInfo<AccountDetailItem>` / `TableDataInfo<PlatformDetailItem>`
+两个明细 Handle 方法直接返回 `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`
 （成功 code=200/msg="查询成功"；业务失败 Handle 内填 code=500/空 rows/安全 msg；total/totalPage/rows
 一并填好），`FrontQueryApplicationService` 分页结果**纯透传**，API/Controller/Service 三层签名一致。
 赋值：
@@ -108,11 +108,11 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 | 项 | 原状 | 改造后 |
 |---|---|---|
 | `TransactionDetailQueryData`（24/25 共用） | pageNo/pageSize | **字段不变**（pageSize 注释补"仅期望，银行原生页大小透传：24 中信 50/平安 20、25 统一 20"） |
-| specialData 键 | acctNo/transactionType/transactionDate/accountType | **键不变**；transactionType 取值收窄：24 → {04}、25 → {01,02,03}（组装器白名单承担） |
+| specialData 键 | acctNo/transType/transDate/accountType | **键不变**；transType 取值收窄：24 → {04}、25 → {01,02,03}（组装器白名单承担） |
 
 **返回侧：`TransactionDetailItem`（旧，9 字段）拆解迁移**
 
-| 旧字段 | → AccountDetailItem（24） | → PlatformDetailItem（25） | 说明 |
+| 旧字段 | → AccountTransDetailItem（24） | → PlatformTransDetailItem（25） | 说明 |
 |---|---|---|---|
 | transDate | transDate ✅ | transDate ✅ | 保留 |
 | transTime | transTime ✅ | transTime ✅（平安置空） | 保留；对齐表 transTm 即本字段 |
@@ -131,14 +131,14 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 
 | 层 | 原签名 | 新签名 |
 |---|---|---|
-| FrontQueryApi / Controller / ApplicationService | `TableDataInfo<TransactionDetailItem> queryPlatformTransactionDetails(...)` | `TableDataInfo<PlatformDetailItem> ...` |
-| 同上 | `TableDataInfo<TransactionDetailItem> queryTransactionDetails(...)` | `TableDataInfo<AccountDetailItem> ...` |
+| FrontQueryApi / Controller / ApplicationService | `TableDataInfo<TransactionDetailItem> queryPlatformTransactionDetails(...)` | `TableDataInfo<PlatformTransDetailItem> ...` |
+| 同上 | `TableDataInfo<TransactionDetailItem> queryTransactionDetails(...)` | `TableDataInfo<AccountTransDetailItem> ...` |
 
 **平安接口路由对照（新增实现）**
 
 | 对外调用 | 平安接口 | 备注 |
 |---|---|---|
-| 24 + transactionType=04 | 6073（bizFunc=08, queryFlag=2） | 唯一 24 通道 |
+| 24 + transType=04 | 6073（bizFunc=08, queryFlag=2） | 唯一 24 通道 |
 | 25 + 01 / 25 + 03 | 6050（bizFunc=04，共用请求） | 返回按 inAcctType 过滤回填 |
 | 25 + 02 | 6048（bizFunc=02） | 无日期无分页一次全返；frontSeqNo=termSsn |
 
@@ -153,9 +153,9 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 
 ### 3.1 接口路由（bizFunc 三态 + 类型分流）
 
-| 对外能力 + transactionType | 平安接口 | 关键请求差异 |
+| 对外能力 + transType | 平安接口 | 关键请求差异 |
 |---|---|---|
-| 24 + 04 | **6073** bizFunc=08 | functionFlag（当日=1 不传 begin/end；历史=2 + begin=end=transactionDate）、subAcctNo=acctNo（SM2，必传）、queryFlag=2、pageNum |
+| 24 + 04 | **6073** bizFunc=08 | functionFlag（当日=1 不传 begin/end；历史=2 + begin=end=transDate）、subAcctNo=acctNo（SM2，必传）、queryFlag=2、pageNum |
 | 25 + 01 / 25 + 03 | **6050** bizFunc=04（共用同一请求，业务体无 inAcctType） | functionFlag（1当日/2历史，**业务体无 begin/end**）、page |
 | 25 + 02 | **6048** bizFunc=02 | 仅 stlAcctNo/mrchCode/txnClientNo（租户配置），**无日期、无分页、一次全返** |
 
@@ -179,14 +179,14 @@ mrchCode/txnClientNo/stlAcctNo 全部走 accountSpecialData（现有 fillAccount
 
 | 能力 | 枚举白名单修订 |
 |---|---|
-| TRANSACTION_DETAIL_QUERY | {04}（原八值收窄；98/99 等随业务放开） |
-| PLATFORM_TRANSACTION_DETAIL_QUERY | {01, 02, 03}（原五值收窄） |
+| TRANS_DETAIL_QUERY | {04}（原八值收窄；98/99 等随业务放开） |
+| PLATFORM_TRANS_DETAIL_QUERY | {01, 02, 03}（原五值收窄） |
 
 Handle 层白名单不动（双层：组装器对外口径、Handle 协议口径）。
 
 ## 5. web-test
 
-两个明细 Tab：transactionType 下拉收窄为对外口径（24：04；25：01/02/03）；两步组装不变；
+两个明细 Tab：transType 下拉收窄为对外口径（24：04；25：01/02/03）；两步组装不变；
 返回展示新 DTO 字段。
 
 ## 6. 文档联动
@@ -208,6 +208,6 @@ Handle 层白名单不动（双层：组装器对外口径、Handle 协议口径
 2. 中信 Handle 协议白名单仍为全量（grep Set.of 常量数不变）；
 3. 组装器两格枚举 = {04} / {01,02,03}；
 4. 平安明细两方法无 pendingIntegration，账户状态/余额仍有；
-5. AccountDetailItem/PlatformDetailItem 落地、TransactionDetailItem 无引用残留；
+5. AccountTransDetailItem/PlatformTransDetailItem 落地、TransactionDetailItem 无引用残留；
 6. TableDataInfo 含 totalPage；fee/transAmt 均为分（Long）；
 7. §6 文档全部更新。

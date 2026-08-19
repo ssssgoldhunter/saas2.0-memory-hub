@@ -33,9 +33,9 @@
 
 - `bizFunc/chnlNo/API path` 保持在具体 Handle 本地；
 - 中信转账/消费的币种、自有资金标志/金额和默认备注，中信退款的自有资金标志/金额，中信提现的
-  提现类型/手续费承担方，均已改用 `CiticTransactionHandle` 本地带语义常量；
+  提现类型/手续费承担方，均已改用 `CiticTransHandle` 本地带语义常量；
 - 平安转账/消费、鉴权转账、授权码重发和提现的固定 functionFlag/tranType/交易网/证件类型值，均已
-  改用 `PingAnTransactionHandle` 本地带语义常量；平安查询草稿中的固定值保留在
+  改用 `PingAnTransHandle` 本地带语义常量；平安查询草稿中的固定值保留在
   `PingAnQueryHandle` 本地并继续受 `TODO-001` 约束；
 - 已删除 common-core 中上述确认无其他调用方的公共 value 常量；协议字段 key 和业务方选择的
   `dealType` 等枚举值保持不变；

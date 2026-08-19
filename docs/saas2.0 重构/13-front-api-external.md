@@ -54,7 +54,7 @@ assembler.newPay().setBankEAccountId("…").setBankAccountName("…");       // 
 JSONObject specialData = assembler.assemble();                          // → {"outAcctNo":…,"USER_D_NM":…,…}
 ```
 
-查询能力已支持交易状态查询的组装（`capability=TRANSACTION_STATUS_QUERY`，矩阵见 15 号 spec §4.3），
+查询能力已支持交易状态查询的组装（`capability=TRANS_STATUS_QUERY`，矩阵见 15 号 spec §4.3），
 其余查询能力暂协议键直传、逐个迁移中（查询统一路线见 10 号）。
 注意：交易/查询 API 的 wire 契约不变，specialData 仍收协议键原文；直传协议键仍合法
 （Handle `requireSpecialData` 逐键校验保留），工具类只是协议键的推荐产生方式。
@@ -178,7 +178,7 @@ JSONObject specialData = assembler.assemble();                          // → {
 
 ## 4. 交易接口（8 个）
 
-Feign 接口：`FrontTransactionApi`，服务名 `catering-front`，前缀 `/front/v1/transactions`
+Feign 接口：`FrontTransApi`，服务名 `catering-front`，前缀 `/front/v1/transactions`
 
 ### 4.1 普通转账
 
@@ -469,12 +469,12 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 **`POST /front/v1/queries/transactions/status`**
 
-**baseData 类型：** `TransactionStatusQueryData`（字段不带 original 前缀，用户裁决 2026-08-17）
+**baseData 类型：** `TransStatusQueryData`（字段不带 original 前缀，用户裁决 2026-08-17）
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `capability` | String | 是 | 被查交易能力枚举名：`TRANSFER` / `CONSUME` / `REFUND` / `WITHDRAW` / `RECHARGE`（充值仅平安支持 04；中信返回不支持） |
-| `transactionDate` | String | 中信必填 | 交易日期 yyyyMMdd（中信必填并强校验；平安查三天前记录时上送，可选） |
+| `transDate` | String | 中信必填 | 交易日期 yyyyMMdd（中信必填并强校验；平安查三天前记录时上送，可选） |
 | `frontSsn` | String | **平安必填** | 原 Front 渠道流水号（交易响应 `frontSsn` 回传、渠道表 `front_ssn` 落库）：平安按其定位原交易；中信仅结果回显可选 |
 | `bizOrderNo` | String | 是 | 业务主订单号 |
 | `bizSubOrderNo` | String | 条件 | 转账/消费/退款查询必填；提现/充值查询不传 |
@@ -483,9 +483,9 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 - 转账、消费、退款查询必须同时提供 `bizOrderNo` + `bizSubOrderNo`；
 - 提现/充值查询只按 `bizOrderNo`（中信）/ `frontSsn`（平安）定位；
 - `capability` 用于银行侧类型转译（中信 reserve.TRANS_TYPE 模式 / 平安 bizFunc 02/03/04），
-  不参与当前 API 路由（路由 capability 固定为 TRANSACTION_STATUS_QUERY）。
+  不参与当前 API 路由（路由 capability 固定为 TRANS_STATUS_QUERY）。
 
-**中信 specialData 字段**（可经组装工具生成：`capability=TRANSACTION_STATUS_QUERY` + `pay.bankEAccountId`）：
+**中信 specialData 字段**（可经组装工具生成：`capability=TRANS_STATUS_QUERY` + `pay.bankEAccountId`）：
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -510,9 +510,10 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 **`POST /front/v1/queries/transactions/platform-details`**
 
-> 返回 `TableDataInfo<TransactionDetailItem>`，不包 `R`。
+> 返回 `TableDataInfo<PlatformTransDetailItem>`（12 主字段 + specialData，2026-08-19 契约重构，17 号 spec），
+> 不包 `R`；`TableDataInfo` 含 `totalPage`。
 
-**baseData 类型：** `TransactionDetailQueryData`
+**baseData 类型：** `PlatformDetailQueryData`（对外类型枚举 `PlatformDetailType`：01/02/03）
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -523,8 +524,8 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `transactionDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
-| `transactionType` | String | 是 | 交易类型：`01` 转账入金 / `02` 退汇 / `03` 支付渠道入金 / `04` 提现 / `05` 退款(预留) / `99` 所有 |
+| `transDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
+| `transType` | String | 是 | 交易类型：`01` 转账入金 / `02` 退汇 / `03` 支付渠道入金 / `04` 提现 / `05` 退款(预留) / `99` 所有 |
 
 | 注意：
 | - 中信 `bizFunc=25` 不支持跨日查询，业务系统需按日期多次调用；
@@ -536,9 +537,10 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 **`POST /front/v1/queries/transactions/details`**
 
-> 返回 `TableDataInfo<TransactionDetailItem>`，不包 `R`。
+> 返回 `TableDataInfo<AccountTransDetailItem>`（11 主字段 + specialData，2026-08-19 契约重构，17 号 spec），
+> 不包 `R`；`TableDataInfo` 含 `totalPage`。
 
-**baseData 类型：** `TransactionDetailQueryData`
+**baseData 类型：** `AccountDetailQueryData`（对外类型枚举 `AccountDetailType`：仅 04 提现手续费）
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
@@ -550,8 +552,8 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `acctNo` | String | 是 | 用户编号 |
-| `transactionDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
-| `transactionType` | String | 是 | 交易类型：`01` 入金分账 / `02` 交易划转 / `03` 提现 / `04` 提现手续费 / `05` 提现退汇 / `06` 渠道来账 / `98` 所有明细 / `99` 所有汇总 |
+| `transDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
+| `transType` | String | 是 | 交易类型：`01` 入金分账 / `02` 交易划转 / `03` 提现 / `04` 提现手续费 / `05` 提现退汇 / `06` 渠道来账 / `98` 所有明细 / `99` 所有汇总 |
 | `accountType` | String | 是 | 登记簿/账户类型：`01` 公共调账登记簿 / `12` 平台自有资金登记簿 / `13` 担保登记簿 / `17` 待结算手续费登记簿 |
 
 ---
@@ -560,10 +562,10 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 ```json
 {
-  "transactionDate": "20260810",
+  "transDate": "20260810",
   "transactionTime": "123456",
-  "transactionType": "01",
-  "transactionTypeName": "转账入金",
+  "transType": "01",
+  "transTypeName": "转账入金",
   "amount": 10000,
   "fee": 0,
   "currency": "CNY",
@@ -621,7 +623,7 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 ```java
 @FeignClient(contextId = "frontTransactionApi", value = "catering-front")
-public interface FrontTransactionApi {
+public interface FrontTransApi {
     // ...
 }
 ```
@@ -645,8 +647,8 @@ Front 自动从请求头读取以下参数并注入 `FrontRequest.baseData`：
 
 ## 9. 当前限制
 
-1. 平安 5 个查询接口（状态/余额/明细等）当前返回 `ADAPTER_NOT_READY`，
-   待后续逐接口确认后启用；
+1. 平安查询：交易状态与两类明细已实现（2026-08-19，17 号 spec）；账户状态/余额 2 个仍返回
+   `ADAPTER_NOT_READY`，待后续逐接口确认后启用；
 2. 中信明细查询 `bizFunc=24/25` **不支持跨日**查询，业务系统按日期多次调用；
 3. 退款关联原交易使用 `orgBizOrderNo + orgBizSubOrderNo` 逻辑关联，
    Front **不查询**本地原交易记录补字段；

@@ -7,12 +7,12 @@
 
 ## 修复前证据
 
-- `FrontTransactionApplicationService` 与 `FrontQueryApplicationService` 的每个 API 入口会在服务内部传入
+- `FrontTransApplicationService` 与 `FrontQueryApplicationService` 的每个 API 入口会在服务内部传入
   固定 `FrontCapability`；请求对象没有 capability 字段，这部分边界正确。
 - 13 条 LiteFlow 具名链已经按交易和查询分开，但同一领域内仍复用公共
   `frontTransactionDispatch/frontQueryDispatch`。
 - `TransactionHandleRegistry/QueryHandleRegistry` 当前只按 `BankCode` 返回
-  `Citic/PingAnTransactionHandle` 或 `Citic/PingAnQueryHandle`。
+  `Citic/PingAnTransHandle` 或 `Citic/PingAnQueryHandle`。
 - `FrontTransactionDispatchNode` 再按 capability 选择 8 个方法，`FrontQueryDispatchNode` 再选择 5 个方法。
 - 这使“API 固定 capability”和“公共 Dispatch switch”同时成为流程事实来源；新增枚举后还必须修改公共
   Dispatch，遗漏时只能到运行期暴露。
@@ -37,7 +37,7 @@
 - `handle/BankCapabilityDefinition.java`
 - `handle/BankCapabilityHandle.java`
 - `route/BankCapabilityKey.java`
-- `handle/BankTransactionHandle.java`
+- `handle/BankTransHandle.java`
 - `handle/BankQueryHandle.java`
 - `route/TransactionHandleRegistry.java`
 - `route/QueryHandleRegistry.java`
@@ -49,9 +49,9 @@
 - `flow/component/BankHandleContextPrepareNode.java`
 - `flow/component/FrontTransactionDispatchNode.java`
 - `flow/component/FrontQueryDispatchNode.java`
-- `channel/citic/CiticTransactionHandle.java`
+- `channel/citic/CiticTransHandle.java`
 - `channel/citic/CiticQueryHandle.java`
-- `channel/pingan/PingAnTransactionHandle.java`
+- `channel/pingan/PingAnTransHandle.java`
 - `channel/pingan/PingAnQueryHandle.java`
 - `resources/liteflow/front-flow.xml`
 - `catering-front/README.md`
