@@ -30,7 +30,7 @@
 
 | 能力 | specialData（Front 契约键） | baseData |
 |---|---|---|
-| TRANSACTION_DETAIL_QUERY（24） | `acctNo`（必填，用户编号，Handle SM2）、`transactionType`（**对外仅 04**）、`transactionDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17） | `pageNo` |
+| TRANSACTION_DETAIL_QUERY（24） | `acctNo`（必填，用户编号，Handle SM2）、`transactionType`（**对外仅 04**）、`transactionDate`（必填 yyyyMMdd）、`accountType`（选填 01/12/13/17；**仅中信生效**，平安 6073 无登记簿类型概念，忽略该键） | `pageNo` |
 | PLATFORM_TRANSACTION_DETAIL_QUERY（25） | `transactionType`（**对外仅 01/02/03**）、`transactionDate`（必填 yyyyMMdd）；无 acctNo（平台级） | `pageNo` |
 
 - 对齐映射表的 `bankMemberCode`（传空占位）**不落地**——请求侧无此键即占位语义本身；
@@ -72,7 +72,10 @@
 | bankMemberCode | String | —（空） | 6050 tranNetMemberCode / 6048 空 | |
 | specialData | JSONObject | 其余原样（CUR_AMT/C_D_FLAG/JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/DIGEST/REARK1/REARK3） | 其余原样（ccy/bankName/inAcctType/endFlag/resultNum/startRecordNo/reserve；6048 的 termSsnOut/oriTermSsn/oriPlatSsn/returnReason/bankNo/bankName/termSsn/ssn） | 兜底 |
 
-**TableDataInfo 扩展**：新增 `totalPage`（与既有 `total` 并列；`total` 语义即 totalNum）。赋值：
+**TableDataInfo 扩展**：新增 `totalPage`（与既有 `total` 并列；`total` 语义即 totalNum）。
+**传导链**：Handle 内部分页对象 `FrontPageResult` 同步增加 `totalPage` 字段（两行 Handle 赋值），
+`FrontQueryApplicationService` 组装 `TableDataInfo` 时透传 `total`+`totalPage`——三层缺一编译即断，
+执行者不要漏 Service 层。赋值：
 中信两侧 `totalPage=TOTAL_PAGE` 直传、`total=TOTAL_PAGE×银行页大小` 估算（裁决 §0.7，最后页偏大）；
 平安 6050/6073 `totalPage=ceil(totalNum/银行原生页大小)`、`total=totalNum` 直传；
 6048 无分页壳：totalPage=1、total=List 条数。
