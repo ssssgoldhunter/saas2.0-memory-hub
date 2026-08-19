@@ -5,7 +5,8 @@
 > 最近确认日期：2026-08-09
 > 范围：中信、平安提现；内部系统长短款真退款；中信平台付款、平台收款
 > 组装注记（2026-08-17）：业务方可经 `FrontSpecialDataAssembler` 组装工具类获取下述协议键
-> （提现含 bankCard 卡要素；平安退款组装结果为空对象），标准结构与矩阵见 15 号 spec §4；直传协议键仍合法。
+> （提现含 bankCard 卡要素；平安退款的原流水、日期和原收付款账户要素由 Front 查原渠道表），
+> 标准结构与矩阵见 15 号 spec §4；直传协议键仍合法，但不得由业务系统伪造平安原渠道字段。
 
 ## 1. 先给结论
 
@@ -84,12 +85,13 @@ BankRequestContext<T>
 | `bizOrderNo/bizSubOrderNo` | 本次退款业务主/子流水号 | 继承公共交易对象 |
 | `amount` | 本次退款金额 | 人民币分 |
 | `fee` | 本次退款手续费 | 人民币分；无手续费传 0 |
-| `refundReason` | 退款原因 | 中信映射 `MEMO`，平安映射 `reserve.remark` |
+| `refundReason` | 退款业务原因 | 中信映射 `MEMO`；平安银行备注由 `specialData.remark` 提供 |
 
 中信退款不使用 `orgFrontSsn/originalFrontSsn` 定位，也不把 Front `transSsn` 映射为银行
 `ORI_USER_SSN`。原付款方、原收款方和原交易日期属于中信动态协议数据，由调用方使用请求
 `specialData` 的银行原始 key 提供；Front 只做协议必填、格式、加密及报文组装校验，不查询本地原交易，
-不校验原交易状态、原金额、累计退款金额或退款资格。平安退款边界尚未确认，不得从本节中信结论推导。
+不校验原交易状态、原金额、累计退款金额或退款资格。平安退款采用不同边界：业务系统不知道渠道字段，
+只提供原业务主子流水；Front 查询同银行原转账/消费渠道表补齐银行原交易字段，具体见 §5.2。
 
 ### 3.2 `WithdrawBusinessData`
 
@@ -106,8 +108,10 @@ BankRequestContext<T>
 | `userNameEnc` | 平安银行卡持卡人姓名原始输入 | 平安 `reserve.userNameEnc`，按协议加密 |
 | `certNo` | 平安证件号码 | 平安 `reserve.certNoEnc`，按协议加密 |
 
-`amount/fee/remark` 仍属于内部业务公共数据，保留在 `baseData`。上述 specialData 值可以按明确字段
-保存到内部渠道表，本期不要求数据库字段加密；进入银行请求时仍必须按协议加密，且不得记录日志。
+`amount/fee` 仍属于内部业务公共数据，保留在 `baseData`；普通交易备注仍按各能力的 baseData 契约处理。
+平安退款是明确例外：`refundReason` 只作内部业务原因，银行 `reserve.remark` 由可选
+`specialData.remark` 提供。上述 specialData 值可以按明确字段保存到内部渠道表，本期不要求数据库字段
+加密；进入银行请求时仍必须按协议加密，且不得记录日志。
 
 ### 3.3 `PlatformTransferBusinessData`
 
@@ -244,16 +248,16 @@ chnlNo  = 0001
 |---|---|---|
 | `transSsn/transTime` | 平安 Handle 每次生成 | 保存本次退款渠道流水 |
 | `mchntId/mchntMbrId` | 租户银行通用账户配置 | 调用方不可覆盖 |
-| `oriTransSsn` | 原渠道交易记录 | 原银行交易流水 |
-| `oriTransDate` | 原渠道交易记录 | 按银行时限规则条件传入 |
+| `oriTransSsn` | 原平安渠道记录 `frontSsn` | 顶层必填；按原业务主子流水查表，不得取 `bankUserSsn` |
+| `oriTransDate` | 原平安渠道记录交易日期 | 顶层必填，格式 `yyyyMMdd`；优先使用已保存的明确交易日期，缺失时按原记录 `createTime` 生成 |
 | `transAmt` | `baseData.amount` | 人民币分，包含退款手续费 |
-| `fee` | `baseData.fee` | 人民币分 |
+| `fee` | `baseData.fee` | 人民币分；null 时顶层发送 `0` |
 | `reserve.stlAcctNo` | 平安账户配置 | 加密 |
-| `reserve.outAcctNo/outAcctId` | 原渠道交易记录 | 原付款账户/会员，账户号加密 |
-| `reserve.inAcctNo/inAcctId` | 原渠道交易记录 | 原收款账户/会员，账户号加密 |
-| `reserve.oriOrderId` | 原渠道交易记录 | 原订单号 |
+| `reserve.outAcctNo/outAcctId` | 原平安渠道记录付款账户/会员 | 账户号加密 |
+| `reserve.inAcctNo/inAcctId` | 原平安渠道记录收款账户/会员 | 账户号加密 |
+| `reserve.oriOrderId` | 原渠道记录中已明确保存的对应银行订单字段 | 可选；没有专用且已确认的映射列时不发送，禁止拿 `bankQueryId` 猜测 |
 | `reserve.mrchCode/txnClientNo` | 平安账户配置 | 调用方不可覆盖 |
-| `reserve.remark` | `baseData.refundReason` | 退款原因 |
+| `reserve.remark` | `specialData.remark` | 可选银行退款备注；由组装器入参 `refundRemark` 生成 |
 
 lsym 当前长短款代码通过 `transConsumeCancel` 调用平安真实 `/refund`，生产 Handle 固定
 `bizFunc=02`，退款请求没有 `functionFlag`。当前范围不激活 `bizFunc=06`，也不扩展普通业务退款；
@@ -336,8 +340,8 @@ com/chinaums/common/core/constant/front/
 ## 9. 实现和日志约束
 
 1. `bizFunc/chnlNo/path/transSsn/transTime` 只能由具体银行 Handle 决定；
-2. 中信退款只检查本次退款流水是否重复，并校验能否组装有效银行报文；不加载或锁定原渠道交易，
-   不计算累计退款金额；平安退款边界仍按 `TODO-002` 等待确认；
+2. 两家退款都只检查本次退款流水是否重复，并校验能否组装有效银行报文；中信不查原渠道表；
+   平安按 TODO-002 只读原 transfer/consume 渠道表补协议字段，但不锁定、不更新原表，也不计算累计退款金额；
 3. `specialData` 和 `accountSpecialData` 分开读取，禁止整体 `putAll`；
 4. 每个字段显式映射、显式校验、显式加密；
 5. 平安平台付款、平台收款直接返回 `CAPABILITY_NOT_SUPPORTED`；
@@ -362,7 +366,9 @@ com/chinaums/common/core/constant/front/
 ```
 
 中信退款表只保存本次退款、原业务主子流水和银行请求/响应所需明确字段，不保存原渠道记录主键、
-原能力或累计退款金额，也不更新中信转账、消费原表。平安退款持久化边界按 `TODO-002` 等待确认。
+原能力或累计退款金额，也不更新中信转账、消费原表。平安退款必须查询原转账/消费渠道表获取协议数据，
+并在退款表回填 `originalCapability/originalChannelTransactionId/originalFrontSsn` 及原账户关联字段；
+本次范围只读原表，不更新原表累计退款金额或业务状态。
 平安平台收付款不支持，不得落入其他表。详细 DDL 见
 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
 

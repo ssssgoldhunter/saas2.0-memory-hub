@@ -121,13 +121,13 @@ public class FrontSpecialDataAssembler extends BaseRequest {
 // 同包独立银行组装类（package-private，实现 BankSpecialDataAssembler 接口，
 // 构造持有当次组装数据实例，非 Spring Bean，每次组装新建）：
 class CiticSpecialDataAssembler { … }    // 矩阵 §4.1，switch capability → 6 能力
-class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对象
+class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2；REFUND 原渠道要素由 Front Handle 查表，不要求业务组装
 ```
 
 说明：
 
-- `auth/originalBusinessDate/contractId` 是**组装时入参**，组装结果已含 messageOrderNo/
-  ORI_USER_TRANS_DT/contractId 等协议键，交易请求不再携带这些语义字段；
+- `auth/originalBusinessDate/refundRemark/contractId` 是**组装时入参**，
+  组装结果已含对应协议键，交易请求不再携带这些语义字段；
 - 授权是跨银行通用语义，作为独立 `AuthInfo` 语义对象存在，不绑定平安；
 - 交易 API 的 `BaseTransactionBusinessData/RefundBusinessData/PlatformTransferBusinessData`
   **不加任何新字段**。
@@ -139,7 +139,7 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 
 ### 3.4 已完成（基线，无需再做）
 
-`TransactionDetailItem` 明细字段已缩写：`transDate / transTime / transType`（查询返回模型），
+明细返回模型已拆为 `AccountTransDetailItem`（24）+ `PlatformTransDetailItem`（25）两套（17 号 spec），
 中信/平安 QueryHandle setter 已同步，10 号契约已更新。
 
 ## 4. (bank × capability) 组装矩阵 —— 转换器的唯一事实来源
@@ -196,19 +196,20 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 | | pay.bankAccountName | `nameEnc`（客户户名） | 🔒 |
 | | pay.bankCard.bankCardNo | `cardNoEnc` | 🔒 |
 | | pay.bankCard.cardHolderName | `userNameEnc`（持卡人户名，与 nameEnc 是两个字段） | 🔒 |
-| REFUND (02) | **无**（平安退款 specialData 为空，Handle 查渠道表补原交易要素；组装器返回空 specialData） | — | — |
+| REFUND (02) | refundRemark（选填） | `remark`（reserve） | 明文；原流水/日期/账户/会员由 Front Handle 查原渠道表，不由业务组装 |
 
 ### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行；2026-08-18 增两类明细）
 
 | 能力 | 中信 | 平安 |
 |---|---|---|
 | TRANS_STATUS_QUERY | `pay.bankEAccountId` → `acctNo`（被查用户编号，1 个要素） | `pay.bankEMemberCode` → `mchntMbrId`（被查会员编号，1 个要素）；**提现查询（03）专用的 cardNoEnc 为原提现发起时的银行卡号，由 Handle 从平安提现渠道表按 (tenantId, frontSsn) 回查后 SM2 上送，不经调用方/组装**；acctNo 不上送（仅验证码类查询使用）；原交易定位走 `baseData.frontSsn`（平安必填），不走 specialData |
-| PLATFORM_TRANS_DETAIL_QUERY（25 平台明细，2026-08-18） | 入参 `transDate`（yyyyMMdd）+ `transType`（01/02/03/04/99，05 预留值拒绝）→ 输出同键（明细条件为 Front 契约键，Handle 映射 `TRANS_DATE`/`TRANS_TYPE`）；无账户要素 | 已实现（2026-08-19，6050/6048 类型分流，17 号 spec §3.1） |
-| TRANS_DETAIL_QUERY（24 登记簿明细，2026-08-18） | `pay.bankEAccountId` → `acctNo`（SM2 由 Handle）；入参 `transDate`（yyyyMMdd）+ `transType`（01/02/03/04/05/06/98/99）+ `accountType`（选填 01/12/13/17）→ 输出同键（Handle 映射 `TRANS_DATE`/`TRANS_TYPE`/`registerAttr`） | 已实现（2026-08-19，6073）：`pay.bankEAccountId`→`acctNo` + `pay.bankEMemberCode`→`mchntMbrId`（**要素保留，6073 当前不消费**，用户要求 2026-08-19 与状态查询格同构不缺位）+ transDate + transType{04} |
+| PLATFORM_TRANS_DETAIL_QUERY（25 平台明细，2026-08-18） | 入参 `transDate`（yyyyMMdd）+ `transType`（对外仅 `PlatformDetailType` 01/02/03）→ 输出同键（明细条件为 Front 契约键，Handle 映射 `TRANS_DATE`/`TRANS_TYPE`）；无账户要素 | 已实现（2026-08-19，6050/6048 类型分流，17 号 spec §3.1） |
+| TRANS_DETAIL_QUERY（24 登记簿明细，2026-08-18） | `pay.bankEAccountId` → `acctNo`（SM2 由 Handle）；入参 `transDate`（yyyyMMdd）+ `transType`（对外仅 `AccountDetailType` 04）+ `accountType`（选填 01/12/13/17）→ 输出同键（Handle 映射 `TRANS_DATE`/`TRANS_TYPE`/`registerAttr`） | 已实现（2026-08-19，6073）：`pay.bankEAccountId`→`acctNo` + `pay.bankEMemberCode`→`mchntMbrId`（**要素保留，6073 当前不消费**，用户要求 2026-08-19 与状态查询格同构不缺位）+ transDate + transType{04} |
 
 明细两能力的入参（transDate/transType/accountType）为 `FrontSpecialDataAssembler` 顶层组装字段；取值枚举在组装器用 ContractKeys 值常量校验（与 Handle 直传防线白名单同源），非法值组装即报错（如 `transType取值不支持: 07`）。
 
-其余查询能力（账户状态/余额）待实现时补格。
+账户状态/余额按用户裁决固定保留 `ADAPTER_NOT_READY` 挡板，不补组装格；
+只有用户未来重新打开时才增加。
 
 ### 4.4 矩阵纪律
 
@@ -228,8 +229,8 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2，REFUND 返回空对
 - 入口 `assemble()` 校验：capability 非空、platformCode 非空且能 `BankCode.fromCode`（不得 valueOf）映射，
   失败抛 `FrontException(INVALID_REQUEST / BANK_NOT_SUPPORTED)`，消息带完整路径（如 `pay.bankEAccountId不能为空`）；
 - 银行内部类按矩阵逐键组装，**能力映射：中信 6 交易 + 3 查询格（状态/平台明细/登记簿明细）、
-  平安 6 交易 + 1 查询格（状态）（含平安 REFUND 空实现，返回空 JSONObject）**；
-  矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、平安 4 个未启用查询能力）抛
+  平安 6 交易 + 3 查询格（状态/24明细/25明细）（平安 REFUND 空实现仅生成可选 remark）**；
+  矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、平安账户状态/余额 2 个查询（固定挡板，非组装范围））抛
   `CAPABILITY_NOT_SUPPORTED`；
   同一物理方法可服务多能力（中信 TRANSFER 与 CONSUME 映射相同，switch 中并列 case）；
 - `originalBusinessDate` 的 yyyyMMdd 严格校验（BASIC_ISO_DATE 解析）在工具类内；
@@ -312,10 +313,12 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 ## 10. 明确不做（边界）
 
 1. front 服务零改动（无新接口/新节点/新注册表；AuthTransferBusinessData 改名暂缓为独立清理项）；
-2. 查询组装仅交易状态查询落地（§4.3），其余 4 个查询能力暂协议键直传；
+2. 查询组装已完成：交易状态查询（§4.3）+ 24 明细（6073 格）+ 25 明细（6050/6048 格）三个；
+   账户状态/余额 2 个查询固定保留挡板，不做协议键直传或组装；
 3. certNo/certType 组装上送**激活**（已进 AccountInfo 通用预留字段，需要时在对应银行组装器加
    "有则输出"并补矩阵行）／门店→账户配置解析（二期，另行评审配置结构）；
-4. 平安退款查表字段补齐（TODO-002 范畴）；
+4. 平安退款原流水、日期和原收付款账户要素不属于业务组装范围；Front Handle 按 TODO-002
+   查询原渠道表补齐，组装器只允许生成业务可知的可选 `remark`；
 5. 组装结果缓存、工具类鉴权特殊化（本地调用，无此面）；
 6. 不新增 JUnit 测试（用户明确：不编译、不跑测试；验证以 web-test 人工两步调用为准）；
 7. check 不挂链（挂接随各链 front 适配进行，避免 TODO 中断在线链路）。
@@ -324,7 +327,8 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 
 1. `mvn compile -pl catering-api/catering-api-front -am` BUILD SUCCESS（2026-08-17 已验证并 install）；
 2. `git diff` 确认 front 服务零改动（front-flow.xml、两个 TransactionHandle、三个交易 baseData 类均无变更）；
-3. 工具类能力映射数 = 12（中信 6 + 平安 6 含平安退款空实现），全部走 ContractKeys 常量，无字面量协议键；
+3. 工具类能力映射数 = 12（中信 6 + 平安 6；平安退款仅组装可选 `remark`，原渠道字段不在工具类生成），
+   全部走 ContractKeys 常量，无字面量协议键；
 4. 工具类全实例方法零 static，每次组装 new 实例（类注释已声明禁止单例复用）；
 5. `grep -rn "payer\|payee" --include="*.java" catering-api/catering-api-front` 0 命中；
 6. consume 侧 7 个 check 骨架就位（buildRequest TODO 占位、基类模板实装），两个 TransSlot 有

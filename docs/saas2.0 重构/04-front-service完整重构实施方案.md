@@ -331,15 +331,16 @@ catering-api/catering-api-front
    │     │  ├─ AccountStatusQueryData
    │     │  ├─ AccountBalanceQueryData
    │     │  ├─ TransStatusQueryData
-   │     │  └─ TransactionDetailQueryData
+   │     │  ├─ AccountDetailQueryData
+   │     │  └─ PlatformDetailQueryData
    │     ├─ response
    │     │  ├─ FrontBaseResult
    │     │  ├─ FrontTransResult
    │     │  ├─ AccountStatusResult
    │     │  ├─ AccountBalanceResult
    │     │  ├─ TransStatusResult
-   │     │  ├─ TransactionDetailItem
-   │     │  └─ FrontPageResult
+   │     │  ├─ AccountTransDetailItem
+   │     │  └─ PlatformTransDetailItem
    │     └─ enums
    │        ├─ BankCode
    │        ├─ FrontCapability
@@ -557,7 +558,8 @@ public class FrontBaseResult {
 ```
 
 响应 `data` 的强类型字段保存跨银行统一结果及 Front 响应码，`data.specialData` 保存当前银行和接口的特殊返回。
-分页明细查询直接返回工程统一的 `TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包装。
+分页明细查询分别返回 `TableDataInfo<AccountTransDetailItem>` 和
+`TableDataInfo<PlatformTransDetailItem>`，禁止再使用 `R` 包装。
 每个 API 方法必须固定具体结果类型；禁止增加 `FrontResponse` 中间层，也禁止复用旧 Handle 的任意 `<T> T`。
 
 未接入能力的响应示例：
@@ -667,9 +669,9 @@ specialData：交易明细账户标识（非平台明细时必填）及银行专
 `specialData`。中信字段规则以 [10-transaction-query-field-contract](10-transaction-query-field-contract.md)
 为准。中信协议没有请求方向筛选字段，`direction` 当前不进入明细请求对象，避免分页后再过滤导致结果错误。
 
-单笔交易状态查询返回一个 `TransStatusResult.specialData`；两个明细查询除分页结果自身继承的
-查询级 `specialData` 外，每条 `TransactionDetailItem` 还必须包含独立 `specialData`，用于承载该笔银行返回的
-`reserveMap` 映射结果。
+单笔交易状态查询返回一个 `TransStatusResult.specialData`；账户明细的每条
+`AccountTransDetailItem` 和平台明细的每条 `PlatformTransDetailItem` 都必须包含独立 `specialData`，
+用于承载该笔银行返回的 `reserveMap` 映射结果。
 
 ---
 
@@ -999,7 +1001,7 @@ PingAnQueryHandle
 | `transferAuth()` | `FrontTransConsumeFacadeApi.transTransferAuth()` → `TransConsumeServiceImpl.transTransferAuth()` | `BasTransTransferHandle.transTransferAuth()` | `ZxTransTransferHandle` 只构造本地挡板成功，不调用中信 | `PaTransTransferHandle.transTransferAuth()` 真实调用 `/transfer` | 仅平安真实支持；中信必须 `UNSUPPORTED` |
 | `resendTransferAuthCode()` | `FrontTransVerificationFacadeApi.sendSmsVerification()` → `TransVerificationServiceImpl.sendSmsVerification()` | `BasTransSendVerificationHandle.sendSmsVerification()` | `ZxTransSendVerificationHandle` 只构造模拟手机号和验证码 | `PaTransSendVerificationHandle.sendSmsVerification()` 真实调用 `/gen-auth-code` | 仅平安真实支持；重发与首次发送使用同一银行接口 |
 | `consume()` | `FrontTransConsumeFacadeApi.transConsume()` → `TransConsumeServiceImpl.transConsume()` | `BasTransConsumeHandle.transConsume()` | `ZxTransConsumeHandle` | `PaTransConsumeHandle` | 两家均有真实实现 |
-| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 旧 mdl 使用 `zxTransfer/bizFunc=27`；最新 lsym UAT `ZxTransConsumeCancelHandle` 已使用 `ZxRefundRequest + zxRefund/bizFunc=23` | `PaTransConsumeCancelHandle` 调用 `/refund/bizFunc=02` | 两家均有真退款参考；中信以最新 lsym UAT 字段为准，原业务主子流水在 baseData 提供，其他原交易协议字段由请求 specialData 显式提供，Front 不查询原渠道表补齐 |
+| `refund()` | `FrontTransConsumeFacadeApi.transConsumeCancel()` → `TransConsumeServiceImpl.transConsumeCancel()` | `BasTransConsumeCancelHandle.transConsumeCancel()` | 旧 mdl 使用 `zxTransfer/bizFunc=27`；最新 lsym UAT `ZxTransConsumeCancelHandle` 已使用 `ZxRefundRequest + zxRefund/bizFunc=23` | `PaTransConsumeCancelHandle` 调用 `/refund/bizFunc=02` | 两家均有真退款参考；中信以最新 lsym UAT 字段为准，原业务主子流水在 baseData、其他原交易协议字段在请求 specialData，Front 不查原渠道表；平安仅收原业务主子流水，由 Front 精确查原平安转账/消费渠道表取得原流水、日期和账户字段 |
 | `withdraw()` | `FrontTransConsumeFacadeApi.transWithDraw()` → `TransConsumeServiceImpl.transWithDraw()` | `BasTransWithDrawHandle.transWithDraw()` | `ZxTransWithDrawHandle` | `PaTransWithDrawHandle` | 两家均有真实实现 |
 | `platformPay()` | `FrontTransConsumeFacadeApi.platformPay()` → `TransConsumeServiceImpl.platformPay()` | `BasTransTransferHandle.platformPay()` | `ZxTransTransferHandle`，`bizFunc=2041` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |
 | `platformReceive()` | `FrontTransConsumeFacadeApi.platformReceive()` → `TransConsumeServiceImpl.platformReceive()` | `BasTransTransferHandle.platformReceive()` | `ZxTransTransferHandle`，`bizFunc=2042` | `PaTransTransferHandle` 继承 `AbstractTransTransferHandle` | 中信真实实现；平安父类返回 `null` 证明无实现，新 Front 固定 `UNSUPPORTED` |
@@ -1321,7 +1323,8 @@ biz_sub_order_no
 并保存金额、手续费、币种、收付款门店及账户/会员/姓名/卡号等明确字段，不保存整段
 `baseData/specialData` 或银行报文快照。每张表统一包含 `reserve1/reserve2/reserve3` 三个 `VARCHAR(1024)` 临时扩展
 字段。中信退款表只保存本次退款及银行请求、响应所需明确字段，不关联本地原转账或消费记录，
-中信转账、消费表不维护累计退款金额；平安退款持久化边界仍按 `TODO-002` 等待确认。
+中信转账、消费表不维护累计退款金额。平安退款表必须保存唯一命中的原能力、原渠道记录 ID、
+原 `frontSsn` 及原收付款字段；原平安转账/消费记录只读，不维护累计退款金额。
 
 不保存来源业务物理表名，不建立跨服务数据库外键。不保存密钥、验证码、支付密码和完整租户银行配置。
 内部渠道表的账户、会员、姓名和卡号字段本期不要求数据库加密，但禁止输出到日志、异常消息和普通接口响应。
@@ -1342,7 +1345,8 @@ tenantId + bizOrderNo + bizSubOrderNo
 4. 业务系统主动重做必须更换 `bizOrderNo` 或 `bizSubOrderNo`；
 5. 该规则在目标银行、目标业务物理表内检查；`frontSsn` 由生成器保证跨表不重复；
 6. 中信退款不查询或校验本地原交易及累计退款金额，只校验本次中信退款请求能否组装有效银行报文；
-   平安退款边界仍按 `TODO-002` 等待确认。
+7. 平安退款只为银行报文和退款渠道关联查询一次原平安转账/消费记录；不校验原交易业务资格或累计
+   退款金额，不更新原交易表。
 
 ### 15.4 状态机
 
@@ -1418,15 +1422,15 @@ PingAnTransactionStatusQueryHandler → (PING_AN, TRANS_STATUS_QUERY)
 | 授权转账 | `UNSUPPORTED` | `SUPPORTED` |
 | 授权码重发 | `UNSUPPORTED` | `SUPPORTED` |
 | 消费 | `SUPPORTED` | `SUPPORTED` |
-| 退款 | `SUPPORTED`，请求字段契约按 `FRONT-P1-005` 收口中 | `SUPPORTED`，原交易字段及持久化边界按 `TODO-002` 待确认 |
+| 退款 | `SUPPORTED`，请求字段契约按 `FRONT-P1-005` | `SUPPORTED`，`bizFunc=02`；边界已按 `TODO-002` 裁决，运行代码待修复 |
 | 提现 | `SUPPORTED` | `SUPPORTED` |
 | 平台付款 | `SUPPORTED` | `UNSUPPORTED` |
 | 平台收款 | `SUPPORTED` | `UNSUPPORTED` |
 | 账户状态 | `SUPPORTED` | `PENDING_INTEGRATION`，待人工核对 |
 | 账户余额 | `SUPPORTED` | `PENDING_INTEGRATION`，待人工核对 |
-| 交易状态 | `SUPPORTED`，原渠道字段待持久层补齐 | `PENDING_INTEGRATION`，待人工核对 |
-| 平台交易明细 | `SUPPORTED`，中信只支持单日 | `PENDING_INTEGRATION`，待人工核对 |
-| 交易明细 | `SUPPORTED`，中信只支持单日 | `PENDING_INTEGRATION`，待人工核对 |
+| 交易状态 | `SUPPORTED` | `SUPPORTED` |
+| 平台交易明细 | `SUPPORTED`，中信只支持单日 | `SUPPORTED`，25-01/03→6050、25-02→6048 |
+| 交易明细 | `SUPPORTED`，中信只支持单日 | `SUPPORTED`，24-04→6073 |
 
 实际银行能力和 `bizFunc` 以本目录的中信、平安能力汇总及后续逐接口文档为准。
 

@@ -1,12 +1,14 @@
 # 明细查询对外契约重构与平安启用 Spec（17 号）
 
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
-> 状态：approved-for-implementation（2026-08-18 用户四点裁决）
+> 状态：implementation-review-pending（2026-08-19，FRONT-P1-014/FRONT-P2-009 已关闭；
+> FRONT-P1-015 与 FRONT-P2-008 已静态修复，状态为 FIXED_PENDING_REVIEW，等待用户确认）
 > 来源依据：`/Users/limeng/WorkBuddy/钱包功能/文档/中信24_25明细查询_平安对齐映射表.md`（v6.10，24 章，
-> 本 spec 将其结论固化并按用户裁决修正四处；执行者以本 spec 为准，原始文档用于字段级溯源）
+> 本 spec 将其结论固化并按用户裁决修正；执行者以本 spec 为准，原始文档用于字段级溯源）
+> 平安原始协议依据：`docs/客户钱包应用平台_接口文档-平安项目(总)v5.5.doc`（提现用途 36 与 6073）
 > 配套执行计划：[18-明细查询对外契约与平安启用-plan.md](18-明细查询对外契约与平安启用-plan.md)
 
-## 0. 用户四点裁决（2026-08-18，本 spec 的最高约束）
+## 0. 用户九点裁决（2026-08-18～2026-08-19，本 spec 的最高约束）
 
 1. **24/25 是两个独立接口，请求/返回分开两套**；各自内部中信/平安是同一套请求返回。
    请求侧维持现有键：`specialData.acctNo/transType/transDate(/accountType)` + `baseData.pageNo`
@@ -23,6 +25,15 @@
    联调后可改置空）；平安 totalNum 直传。
 8. **24 分页不做任何对齐**：不考虑每页几行，pageNo 透传、行集与 totalPage 直接按银行原生返回
    （中信 50/页、平安 20/页，调用方自知；不凑页、不聚合）。
+9. **平安流水字段分离保存、按协议语义关联**：请求 `transSsn` 保存到渠道表 `front_ssn`；
+   应答 `queryId` 保存到 `bank_query_id`（并作为对外 `frontQueryId`）；只有实际应答明确存在
+   `USER_SSN/ssn` 时才保存到 `bank_user_ssn`。平安提现用途 36 的应答字段名为 `queryId`，
+   但原始文档明确标注其业务含义为 `FrontSeqNo（见证系统流水号）`；6073 明细的
+   `frontSeqNo` 与该 `queryId` 是同一银行流水。因此 6073 补业务订单号必须按
+   `tenant_id + bank_query_id = frontSeqNo` 查原提现渠道表，不得改查 `bank_user_ssn`，也不得将
+   `queryId` 全局重命名为 `ssn`。此处 `FrontSeqNo` 是应答 `queryId` 的业务说明，**不等于**
+   原提现请求 `transSsn/front_ssn`；平安单笔状态查询才使用原请求 `frontSsn → oriTransSsn`，
+   6073 不得改查 `front_ssn`。
 
 ## 1. 对外契约（最终形态）
 
@@ -60,7 +71,7 @@ public enum PlatformDetailType { TRANSFER_IN("01","转账入金"), REMITTANCE_RE
 | bankAccountCode | String | USER_ID | subAcctNo（SM2 解密） | 账户 id |
 | userName | String | USER_NAME | subAcctName（SM2 解密） | |
 | transType | String | TRANS_TYPE=04/JJ08 | bookingFlag=01 | 统一回填 04 |
-| bizOrderNo / bizSubOrderNo | String | MCHNT_ORDER_ID / SUB_ID | 无 → frontSeqNo 查 front 渠道表 | 见 §3.5 |
+| bizOrderNo / bizSubOrderNo | String | MCHNT_ORDER_ID / SUB_ID | 无 → frontSeqNo 按 `tenant_id + bank_query_id` 查原提现渠道表 | 见 §0.9/§3.2 |
 | bankMemberCode | String | —（空） | tranNetMemberCode | |
 | frontTransSsn | String | REQ_JRN | frontSeqNo | REGISTER_SSN 进 specialData |
 | fee | **Long（分）** | TRANS_AMT（元 ×100） | commission（分直传） | 取 commission 非 tranAmt |
@@ -166,14 +177,19 @@ mrchCode/txnClientNo/stlAcctNo 全部走 accountSpecialData（现有 fillAccount
 - **SM2 解密**：6073（subAcctNo/subAcctName）；6050（subAcctNo/inAcctNo/inAcctName）；6048（acctNo/cardNoEnc/nameEnc）；
 - **过滤**：6073 仅保留 tranStatus=0（成功）；**commission 空/0 不过滤，fee 原样返回 0**（裁决 §0.5）；
   6050 按 inAcctType 过滤（01→02、03→03）后回填 transType；
-- **查表补全（仅 24）**：bizOrderNo/bizSubOrderNo 以 frontSeqNo 匹配 front 渠道表（tenantId + 银行流水号字段，回查模式同平安退款/提现卡号），查不到置空；
+- **查表补全（仅 24）**：bizOrderNo/bizSubOrderNo 以 6073 `frontSeqNo` 匹配原提现渠道表
+  `tenant_id + bank_query_id`，查不到置空。溯源关系为“原提现应答 `queryId`（文档语义
+  `FrontSeqNo`）= 6073 行 `frontSeqNo`”；`bank_user_ssn` 仅承接明确返回的 `USER_SSN/ssn`，
+  不是本关联的查询列；原提现请求 `transSsn/front_ssn` 只用于单笔状态查询，也不是 6073
+  订单补全的查询列；
 - **分页三态**：见 §1.2 TableDataInfo；
 - frontStatus 判定沿用 PingAnBankResponseChecker。
 
 ### 3.3 挡板状态变化
 
 `queryTransactionDetails` / `queryPlatformTransactionDetails` 移除 `pendingIntegration()`；
-`queryAccountStatus` / `queryAccountBalance` 继续挡板（TODO-001 剩余两项）。
+`queryAccountStatus` / `queryAccountBalance` 按用户裁决继续保留挡板，
+`TODO-001` 按此关闭，不再作为待实现项。
 
 ## 4. 组装矩阵同步（15 号 spec §4.3 修订）
 
@@ -192,8 +208,8 @@ Handle 层白名单不动（双层：组装器对外口径、Handle 协议口径
 ## 6. 文档联动
 
 10 号（§4/§5 重写为新契约 + 平安侧）、13 号（§5.4/§5.5 返回对象与平安状态）、15 号 §4.3（白名单修订）、
-16 号（收盘记录）、13-front后续待办 TODO-001（明细两项转已启用，剩账户状态/余额）、05 号（如涉及
-平安查询挡板表述，同步为"4 个→2 个"）。
+16 号（收盘记录）、13-front后续待办 TODO-001（明细两项转已启用，账户状态/余额保留挡板后关闭）、
+05 号（如涉及平安查询挡板表述，同步为"4 个→2 个并固定保留"）。
 
 ## 7. 明确不做
 
@@ -211,3 +227,5 @@ Handle 层白名单不动（双层：组装器对外口径、Handle 协议口径
 5. AccountTransDetailItem/PlatformTransDetailItem 落地、TransactionDetailItem 无引用残留；
 6. TableDataInfo 含 totalPage；fee/transAmt 均为分（Long）；
 7. §6 文档全部更新。
+8. 平安 6073 订单补全固定使用 `tenant_id + bank_query_id = frontSeqNo`；
+   `PingAnQueryHandle` 不得使用 `bank_user_ssn` 承担该关联。

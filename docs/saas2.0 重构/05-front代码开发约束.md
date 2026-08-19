@@ -426,7 +426,7 @@ channel/pingan
 | 业务关联 | biz_system_code, biz_transaction_type, biz_transaction_id, biz_sub_transaction_id, biz_request_no, biz_order_no, biz_sub_order_no | |
 | 收付款门店 | pay_store_no, pay_store_id, rec_store_no, rec_store_id | |
 | 收付款账户 | pay_account_id, pay_name, rec_account_id, rec_name（平安加 pay_member_id, rec_member_id） | |
-| 金额 | amount, fee, currency | 中信不维护 `refunded_amount`；平安退款边界待确认 |
+| 金额 | amount, fee, currency | 中信不维护 `refunded_amount`；平安原交易表的兼容字段也不参与退款资格或累计金额校验 |
 | 银行请求字段 | bank_channel_no, bank_biz_func, external_platform_ssn | |
 | 银行返回字段 | bank_query_id, bank_user_ssn, bank_trans_date, bank_trans_time, wallet_resp_code, wallet_resp_desc, bank_resp_code, bank_resp_desc, bank_status | 每个字段单独成列 |
 | 3 个时间 | create_time, update_time, bank_responded_at | |
@@ -661,12 +661,12 @@ JSON 顶层固定为：
 `amount/fee` 均使用 `Long` 保存人民币分，`amount` 必须大于 0，`fee` 不能小于 0；禁止使用浮点数
 或在 Handle 内擅自转换为元。transfer/consume 的双方账户、会员编号和姓名必须通过
 `specialData` 提供，由具体银行 Handle 按常量白名单读取和映射。
-单笔状态查询基础对象必须包含 `capability/transactionDate/bizOrderNo/bizSubOrderNo`，并可携带
+单笔状态查询基础对象必须包含 `capability/transDate/bizOrderNo/bizSubOrderNo`，并可携带
 `frontSsn` 供结果回显；其中 `capability` 描述被查询的原交易能力，不是当前 API 路由 capability。
 `bizOrderNo` 是业务主流水；转账、消费、退款查询必须同时提供 `bizSubOrderNo`，提现查询只向银行上送
 `bizOrderNo`。中信查询所需用户编号使用协议原始 key `specialData.acctNo` 提供，不放入公共基础对象。
 交易明细查询基础对象只保存 `pageNo/pageSize` 统一分页字段；待查询账户、
-银行交易类型、日期和登记簿/账户类型放入 `specialData`，不得在 `TransactionDetailQueryData` 重复定义。
+银行交易类型、日期和登记簿/账户类型放入 `specialData`，不得在 `PlatformDetailQueryData`/`AccountDetailQueryData` 重复定义。
 
 ### 4.2 统一业务 Slot
 
@@ -738,7 +738,10 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 `/refund + bizFunc=02`；禁止反向转账模拟退款。`platformPay/platformReceive` 仅中信支持，平安必须
 返回 `UNSUPPORTED`。中信退款固定使用 `orgBizOrderNo + orgBizSubOrderNo` 组装
 `ORI_BUSS_ID + ORI_BUSS_SUB_ID`；其他动态银行字段由请求 `specialData` 使用银行协议原始 key 提供，
-Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `TODO-002` 等待确认，不得套用中信结论。
+Front 不查询本地原渠道流水补齐。平安退款采用不同边界：原流水、原日期和原账户属于 Front 渠道数据，
+业务系统只提供 `originalBizOrderNo + originalBizSubOrderNo`；Handle 按租户和原业务主子流水精确查询
+平安原转账/消费渠道表补齐。`oriTransSsn = 原记录.frontSsn`，严禁取 `bankUserSsn`；
+具体定位、顶层/reserve、加密和退款表关联列以 TODO-002 为准。
 中信 2041/2042 的平台侧由商户自有资金登记簿隐式确定，不传平台银行账号，业务系统也不得伪造该账号。
 
 中信退款的最新代码参考为 `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy` 分支
@@ -766,14 +769,14 @@ Front 不查询本地原渠道流水补齐。平安退款字段来源仍按 `TOD
 `bizFunc=24 + chnlNo=0010`。两个 Front 方法都不得继续按提现、手续费、来账等类型拆分 Handle 方法。
 
 中信交易状态查询固定按请求 `baseData.capability` 选择银行字段：转账、消费、退款上送
-`BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`，提现只上送 `BUSS_ID`；`transactionDate` 映射
+`BUSS_ID + BUSS_SUB_ID + TRANS_TYPE=01`，提现只上送 `BUSS_ID`；`transDate` 映射
 `oriTransDate`，`specialData.acctNo` 加密后映射顶层 `acctNo`。状态查询不接受
-`specialData.transactionType`，不得扫描 Front 本地渠道表补账户号或银行流水。当前 API capability 仍由
+`specialData.transType`，不得扫描 Front 本地渠道表补账户号或银行流水。当前 API capability 仍由
 查询入口固定为 `TRANS_STATUS_QUERY`，不得拿它代替 `capability`。
 
-中信明细查询的 `transactionDate/transactionType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
+中信明细查询的 `transDate/transType` 以及 `24` 查询的 `accountType` 由业务系统放入请求
 `specialData`，必须通过 common-core 对应常量白名单校验。业务系统不得提交银行 `TRANS_DATE/PAGE`；
-银行 24/25 一次只支持一个交易日，不支持跨日范围查询。Handle 将 `transactionDate` 映射为单个
+银行 24/25 一次只支持一个交易日，不支持跨日范围查询。Handle 将 `transDate` 映射为单个
 `reserve.TRANS_DATE`，通过 Front `pageNo` 维护银行页码。银行文档标注忽略的
 `beginDate/endDate` 不得当作有效字段透传。中信 `24` 每页固定最多 50 条，`25` 每页固定最多 20 条，
 业务 `pageSize` 不得覆盖银行限制。
@@ -846,7 +849,7 @@ R<AccountBalanceResult>
 分页明细查询必须直接返回：
 
 ```java
-TableDataInfo<TransactionDetailItem>
+TableDataInfo<AccountTransDetailItem> / TableDataInfo<PlatformTransDetailItem>
 ```
 
 禁止：
@@ -876,10 +879,10 @@ TableDataInfo<TransactionDetailItem>
 
 分页接口没有顶层 `R`。分页成功或业务失败均通过 `TableDataInfo.code/msg` 表达；成功时
 `code=200`、`rows/total` 正确赋值，失败时 `code=500`、`rows` 返回空集合。每条
-`TransactionDetailItem.specialData` 继续承接该笔明细的银行 `reserveMap` 白名单映射字段。
+`AccountTransDetailItem.specialData` / `PlatformTransDetailItem.specialData` 继续承接该笔明细的银行 `reserveMap` 白名单映射字段。
 
 `FrontBaseResult` 必须统一定义 `frontRespCode/frontRespDesc/specialData`。交易明细查询中，每条
-`TransactionDetailItem` 还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`。标准
+两套行 DTO（`AccountTransDetailItem`/`PlatformTransDetailItem`）还必须单独包含 `specialData`，承接该笔明细的银行 `reserveMap`。标准
 `TableDataInfo` 不提供查询级 `specialData` 或游标字段，因此分页协议必须使用 `pageNo/pageSize + total`；
 不得生成调用方无法从响应取回的 `continuationToken`。
 
@@ -1218,9 +1221,10 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 字段和协议未确认时，只允许创建 `PENDING_INTEGRATION` 骨架，不允许伪造银行请求或成功响应。
 
-平安账户状态/余额两个查询当前由 `PingAnQueryHandle.pendingIntegration()` 返回 `ADAPTER_NOT_READY`（交易状态与两类明细已实现，2026-08-19），对应
-`TODO-001`。后续必须一次只领取并核对一个接口；不得因为整理本地固定参数而移除挡板、创建
-未经确认的字段 ContractKeys，或继续补写下方分析草稿。
+平安账户状态/余额两个查询由 `PingAnQueryHandle.pendingIntegration()` 返回 `ADAPTER_NOT_READY`
+（交易状态与两类明细已实现，2026-08-19）。用户已明确裁决这两个入口只保留挡板，
+`TODO-001` 按此关闭；未有新的明确要求时，不得移除挡板、核对候选银行接口、创建字段
+ContractKeys 或补写未启用分支。
 
 ---
 
@@ -1393,14 +1397,15 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - [ ] Handle `doInsertInit`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→ 调银行 → `updateResponse`（UPDATE 终态/响应码）；
 - [ ] 重复交易检查：CITIC + PingAn 交易方法在当前银行业务表按
       `tenant_id + biz_order_no + biz_sub_order_no` 查询；命中返回“交易已存在”，不调用银行、不重放旧结果；
-- [ ] report 尚未接入时，两家 `checkDuplicateTransaction()` 在本地查询后保留 `TODO[REPORT]`；报表库汇总
-      四个实例数据到统一交易表后，保持当前银行/能力范围并按相同三字段追加一次查询，执行顺序为
-      “当前业务表 → report 当前银行/能力范围 → 插入 INIT”；
+- [ ] report 跨实例查重已按用户裁决暂缓；两家 `checkDuplicateTransaction()` 当前只查
+      当前银行/能力业务表，未经新的明确要求不得增加 report Provider、Mapper、Feign 或统一表查询；
 - [ ] 不存在 `frontIdempotencyCheck`、`FrontIdempotencyCheckNode` 或其他无法确定固定业务表的公共检查节点；
 - [ ] 重复交易统一返回 `TRANS_ALREADY_EXISTS(F300001, "交易已存在")`，不存在旧的
       `IDEMPOTENCY_CONFLICT`、请求处理中或参数冲突语义；
-- [ ] 中信退款不存在 `loadOriginalRefundFields` / `fillRefundAccountFieldsFromOriginal` 等本地原交易查询；
-      平安退款是否关联原交易按 `TODO-002` 单独确认；
+- [ ] 中信退款不查询原渠道表；平安退款按 TODO-002 使用租户 + 原业务主子流水精确查询原
+      transfer/consume 渠道表，统一定位结果同时用于银行报文和退款落库；
+- [ ] 平安退款 `oriTransSsn` 只取原渠道记录 `frontSsn`，不得取调用方字段、`bankUserSsn` 或
+      `bankQueryId`，并回填 `originalCapability/originalChannelTransactionId/originalFrontSsn`；
 - [ ] 平台收付款表也存 acct（pay_account_id / rec_account_id）。
 
 ### H. 分库与分区

@@ -4,7 +4,8 @@
 > 状态：current
 > 最后核对：2026-08-17（§8.1 含 2026-08-14 lsym UAT 实测复核）
 > 平安状态：交易状态查询与两类明细查询已实现（17 号 spec，2026-08-19：明细 24-04→6073、
-> 25-01/03→6050、25-02→6048）；账户状态/余额仍返回 `ADAPTER_NOT_READY`（TODO-001 剩余两项）
+> 25-01/03→6050、25-02→6048）；账户状态/余额按用户裁决固定返回 `ADAPTER_NOT_READY`，
+> `TODO-001` 已关闭
 
 ## 1. 范围和固定方法
 
@@ -14,16 +15,16 @@
 R<TransStatusResult> queryTransactionStatus(
     FrontRequest<TransStatusQueryData> request);
 
-TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）> queryPlatformTransactionDetails(
-    FrontRequest<TransactionDetailQueryData> request);
+TableDataInfo<PlatformTransDetailItem> queryPlatformTransactionDetails(
+    FrontRequest<PlatformDetailQueryData> request);
 
-TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）> queryTransactionDetails(
-    FrontRequest<TransactionDetailQueryData> request);
+TableDataInfo<AccountTransDetailItem> queryTransactionDetails(
+    FrontRequest<AccountDetailQueryData> request);
 ```
 
 三个 API 都是内部调用，API、Controller、Application Service 使用相同的方法签名；不得增加
 `FrontResponse`。单笔状态查询返回 `R<TransStatusResult>`；两个分页明细查询直接返回
-`TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）>`，禁止再使用 `R` 包裹分页结果。
+`TableDataInfo<PlatformTransDetailItem>`（25）与 `TableDataInfo<AccountTransDetailItem>`（24），禁止再使用 `R` 包裹分页结果。
 
 ## 2. 两段请求与三段 Handle 上下文
 
@@ -56,8 +57,8 @@ BankRequestContext
 
 **查询统一路线（用户裁决 2026-08-17）**：全部查询能力最终统一为"银行无关统一请求 +
 各 Handle 常量构建 wire"模式。交易状态查询已完成（`QueryTransStatusRequest`）；
-账户状态/余额/平台明细/账户明细四个能力后续逐个迁移；`PingAnQueryRequest`
-已加 TODO[QUERY-UNIFY] 过渡标记，**全部迁移完成后删除**。
+平台明细/账户明细已完成迁移；账户状态/余额按用户裁决保留挡板，不再作为待迁移项。
+`PingAnQueryRequest` 仅作为挡板后的历史草稿类保留，未经用户重新打开不得启用。
 
 ### 3.1 Front 基础对象
 
@@ -75,6 +76,18 @@ BankRequestContext
 当前 API capability 仍由交易状态查询入口固定为 `TRANS_STATUS_QUERY`，用于定位当前查询 Handle；
 `capability` 只描述被查询原交易类型，用于该 Handle 选择银行查询字段，两者不得混用。
 Front 只完成银行报文装配，不校验 `frontSsn` 与业务流水在上游业务系统中是否属于同一笔交易。
+
+平安单笔状态查询的流水规则固定为：
+
+```text
+baseData.frontSsn
+    = 原交易请求 transSsn
+    = 原渠道记录 front_ssn
+    → 平安查询报文 oriTransSsn
+```
+
+不得改用原交易应答 `queryId/bank_query_id` 或 `USER_SSN/bank_user_ssn`。该规则只约束单笔状态查询，
+与 §5.1 的 6073 明细关联是两条不同链路。
 
 ### 3.2 中信请求映射
 
@@ -128,7 +141,7 @@ chnlNo  = 0010
 
 ### 4.1 Front 请求
 
-`TransactionDetailQueryData` 公共字段：
+`PlatformDetailQueryData` 公共字段：
 
 | 字段 | 说明 |
 |---|---|
@@ -143,14 +156,14 @@ Front 分页协议固定使用 `pageNo/pageSize`，请求和响应都不暴露
 ```json
 {
   "transDate": "20260805",
-  "transType": "99"
+  "transType": "01"
 }
 ```
 
 | key | 必填 | 说明 |
 |---|---|---|
 | `transDate` | 是 | 单个交易日，`yyyyMMdd`；不支持起止日期 |
-| `transType` | 是 | 对外仅 `01/02/03`（`AccountDetailType`/`PlatformDetailType` 枚举，04/99 在 Handle 协议层保留不对外） |
+| `transType` | 是 | 对外仅 `01/02/03`（`PlatformDetailType` 枚举，04/99 在 Handle 协议层保留不对外） |
 
 交易类型：`01` 转账入金、`02` 退汇、`03` 支付渠道入金、`04` 提现、`99` 全部。
 Word 中 `05` 标为“退款（预留）”，联调确认前常量可保留说明，但 Handle 不接受该值。
@@ -166,11 +179,12 @@ Word 中 `05` 标为“退款（预留）”，联调确认前常量可保留说
 
 ### 4.2 返回
 
-每条银行明细映射一个 `PlatformTransDetailItem`（25，12 主字段 + specialData）：公共日期（`transDate`）、时间
-（`transTime`）、类型（`transType`，银行原始类型码）、金额（`amount`，分）、资金方向
-（`direction`）、摘要（`remark`）进入强类型字段；`JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/REARK*` 等确认允许返回的银行差异字段逐项进入该条记录的
-`specialData`。`TRANS_AMT/CUR_AMT` 的银行单位是元，进入 Front 公共金额字段必须使用十进制精确转分，
-禁止浮点运算。
+每条银行明细映射一个 `PlatformTransDetailItem`（25，12 主字段 + specialData）：
+`mchntMbrId / bankAccountCode / userName / transType / transDate / transTime / transAmt(分) /
+payAcctNo / payAcctName / remark / frontSeqNo / bankMemberCode` + `specialData`。
+中信 TRANS_AMT（元）×100 精确转分为 `transAmt`；`CUR_AMT`（原值+currentAmountCent 双保留）、
+`C_D_FLAG`（资金方向）、`JRNO/BKNO/ACSQ/ACTN/FTFL/TSTM/REARK1/REARK3` 等银行差异字段逐项进入
+`specialData` 兜底。禁止浮点运算。
 
 ## 5. 中信登记簿交易明细
 
@@ -178,7 +192,25 @@ Word 中 `05` 标为“退款（预留）”，联调确认前常量可保留说
 > 返回 `TableDataInfo<AccountTransDetailItem>`（11 主字段 + specialData，fee=commission 单位分、空/0 返回 0
 > 不过滤）；`TableDataInfo` 新增 `totalPage`（中信按 TOTAL_PAGE×50 估算）；请求对象拆分为
 > `AccountDetailQueryData`。平安侧 04→6073（queryFlag=2 + functionFlag 当日/历史 + tranStatus=0 过滤 +
-> frontSeqNo 查渠道表补订单号）。字段映射见 17 号 §1.2/§1.3。
+> frontSeqNo 按 `tenantId + bankQueryId` 查原提现渠道表补订单号）。字段映射见 17 号 §0.9/§1.2/§1.3。
+
+### 5.1 平安 6073 流水关联契约（2026-08-19 裁决）
+
+| 阶段 | 平安协议字段 | Front 保存/使用 | 约束 |
+|---|---|---|---|
+| 原提现请求 | `transSsn` | 渠道表 `front_ssn` | Front 生成并发送给银行，不参与 6073 `frontSeqNo` 关联 |
+| 原提现应答 | `queryId` | `bank_query_id`，同时作为对外 `frontQueryId` | 用途 36 在平安 v5.5 中明确标注为 `FrontSeqNo/见证系统流水号` |
+| 银行显式应答流水 | `USER_SSN/ssn`（如实际应答存在） | `bank_user_ssn` | 与 `queryId` 分字段保存，不作 6073 回查的文档默认依据 |
+| 6073 明细行 | `frontSeqNo` | `AccountTransDetailItem.frontTransSsn` | 按 `tenant_id + bank_query_id = frontSeqNo` 回查原提现记录 |
+
+中信可以直接使用 `USER_SSN` 类银行侧流水；平安提现的协议字段名不同，
+必须保留 `queryId` 的原始字段语义，只在 6073 关联规则中使用文档明确的
+`queryId = FrontSeqNo = recordList.frontSeqNo` 关系。禁止为了对齐中信而把平安 `queryId`
+全局改名为 `ssn`。
+
+特别注意：平安文档在此使用的 `FrontSeqNo` 是应答 `queryId` 的业务说明，不是请求
+`transSsn/front_ssn`。因此：单笔状态查询查 `front_ssn`，6073 订单补全查 `bank_query_id`；
+二者禁止互换。
 
 ```text
 POST /cwap/account/send/query-trans-details
@@ -193,7 +225,7 @@ chnlNo  = 0010
 {
   "acctNo": "待查询用户/子账户业务标识",
   "transDate": "20260805",
-  "transType": "98",
+  "transType": "04",
   "accountType": "12"
 }
 ```
@@ -202,7 +234,7 @@ chnlNo  = 0010
 |---|---|---|
 | `acctNo` | 是 | 待查询用户/子账户业务标识；Handle 按银行协议加密后映射顶层 `acctNo` |
 | `transDate` | 是 | 单个交易日，`yyyyMMdd` |
-| `transType` | 是 | `01/02/03/04/05/06/98/99` |
+| `transType` | 是 | 对外仅 `04`（`AccountDetailType` 枚举；01/02/03/05/06/98/99 在 Handle 协议层保留不对外） |
 | `accountType` | 否 | `01/12/13/17`，映射 `registerAttr` |
 
 交易类型：`01` 入金分账、`02` 交易划转、`03` 提现、`04` 提现手续费、`05` 提现退汇、`06` 渠道
@@ -220,8 +252,8 @@ chnlNo  = 0010
 | `specialData.accountType` | `registerAttr` |
 | Handle 生成流水 | `laasSsn` |
 
-每条返回的 `REQ_JRN/REGISTER_SSN` 等银行差异字段进入该条 `PlatformTransDetailItem.specialData`（`CUR_AMT` 原值 + `currentAmountCent` 换算值均保留）。
-`TRANS_AMT/CUR_AMT` 的银行单位是元，进入 Front 公共金额字段必须精确转分。
+每条返回的 `REQ_JRN/REGISTER_SSN/MCHNT_ID/C_D_FLAG/CUR_AMT/GOAC/OANM/DIGEST` 等银行差异字段进入该条 `AccountTransDetailItem.specialData`（`CUR_AMT` 原值 + `currentAmountCent` 换算值均保留）。
+中信 TRANS_AMT（元）×100 精确转分为 `fee`。
 
 ## 6. 单日和分页约束
 
@@ -238,12 +270,13 @@ chnlNo  = 0010
 
 ```java
 R<TransStatusResult>
-TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）>
+TableDataInfo<PlatformTransDetailItem>  // 25 平台明细
+TableDataInfo<AccountTransDetailItem>   // 24 账户明细
 ```
 
-`TableDataInfo` 固定使用 `code/msg/total/rows`；每一笔明细自己的银行扩展字段必须放在
-`PlatformTransDetailItem/AccountTransDetailItem.specialData`，不得把多笔明细的 reserve 合并到分页级。银行返回
-`TOTAL_NUM/totalNum` 时必须映射为 `total`，不得把总页数冒充总记录数。
+`TableDataInfo` 固定使用 `code/msg/total/totalPage/rows`；每一笔明细自己的银行扩展字段必须放在
+`PlatformTransDetailItem.specialData`（25）/ `AccountTransDetailItem.specialData`（24），不得把多笔明细的 reserve 合并到分页级。银行返回
+`TOTAL_NUM/totalNum` 时必须映射为 `total`（总记录数），`TOTAL_PAGE` 映射为 `totalPage`（总页数），不得把总页数冒充总记录数。
 
 业务成功示例：
 
@@ -252,7 +285,8 @@ TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）>
   "code": 200,
   "msg": "查询成功",
   "rows": [],
-  "total": 0
+  "total": 0,
+  "totalPage": 0
 }
 ```
 
@@ -263,7 +297,8 @@ TableDataInfo<PlatformTransDetailItem（25）/AccountTransDetailItem（24）>
   "code": 500,
   "msg": "银行拒绝交易",
   "rows": [],
-  "total": 0
+  "total": 0,
+  "totalPage": 0
 }
 ```
 
@@ -336,7 +371,7 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
   TRANS_DETAIL_QUERY（24）进入 15 号 spec §4.3 查询格——25 输出
   {transDate, transType}，24 输出 {acctNo, transDate, transType[, accountType]}；
   明细条件为 Front 契约键（Handle 再映射 TRANS_DATE/TRANS_TYPE/registerAttr），取值枚举在组装器
-  用 ContractKeys 值常量校验（25 的 05 预留值仍拒绝）；平安侧明细查询仍在 TODO-001 挡板、不支持组装；
+  用 ContractKeys 值常量校验（25 的 05 预留值仍拒绝）；平安侧明细查询已启用（24→6073、25→6050/6048），6073 订单按 tenantId+bankQueryId(frontSeqNo) 回查渠道表；
 - 中信 35/36/46 账户余额查询已按 Word v4.7 + lsym UAT 实测核对：46/36 的
   `specialData.registerAttr` 必填，35 不要求；35/36 响应金额单位分、46 单位元（2026-08-14）；
 - 中信 74 的 `acctNo`、原中信流水需要持久层按原渠道记录补齐；
@@ -380,6 +415,5 @@ FUNCTIONAL_ACCOUNT_TYPE`）。
      - 平安按 bizFunc 三模式：WITHDRAW→03、RECHARGE→04、转账/消费/退款→02；
      - 充值交易能力接入时再注册交易侧 Handle 并补中信分支；
 - 中信 24/25 当前只做单日分页，不支持跨日；
-- 平安账户状态、账户余额、平台明细、交易明细仍标 `PENDING_INTEGRATION`（交易状态查询已于
-  2026-08-17 按 lsym 生产规则实现，联调待验）；
-- 平安查询字段、多个 bizFunc 聚合和不同返回数组结构由人工逐接口核对后再更新本文档。
+- 平安交易状态、平台明细、账户明细已实现；账户状态/余额按用户裁决固定保留
+  `PENDING_INTEGRATION/ADAPTER_NOT_READY` 挡板，不再作为待核对项。

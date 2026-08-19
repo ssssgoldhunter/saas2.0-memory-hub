@@ -3,45 +3,53 @@
 本文只记录已明确延后、需要后续人工确认或逐项接入的工作，不属于
 `12-front-implementation-issues` 缺陷清单，也不计入 P0/P1/P2 Issue 完成度。
 
-## TODO-001 平安查询 Handle 逐接口核对和接入（2026-08-19 更新：已启用 3/5）
+当前状态摘要：
 
-- 状态：部分完成——交易状态查询（2026-08-17）与两类明细查询（2026-08-19，17 号 spec）已实现；剩账户状态/余额 2 项待办
+- `CLOSED`：TODO-001 已按用户裁决收口（交易状态、24 账户明细、25 平台明细已启用；
+  账户状态/余额明确保留挡板，不再作为待实现项）；
+- `CLOSED`：平安退款代码、DDL 和文档已完成静态验收，并于 2026-08-19 经用户确认关闭；
+- `DEFERRED`：report 报表库跨实例重复交易补查，用户明确暂时不做。
+
+## TODO-001 平安查询 Handle 逐接口核对和接入（CLOSED）
+
+- 状态：`CLOSED`（2026-08-19 用户裁决）——交易状态和两类明细已实现；
+  账户状态/余额不再安排接入，固定保留 `ADAPTER_NOT_READY` 挡板
 - 代码入口：`PingAnQueryHandle`
-- 当前行为：五个公开查询方法在任何银行调用前统一抛出 `ADAPTER_NOT_READY`
+- 当前行为：账户状态、账户余额两个公开查询方法在银行调用前抛出 `ADAPTER_NOT_READY`（交易状态/24明细/25明细已启用）
 
-### 延后原因
+### 保留挡板原因
 
 平安查询字段、`bizFunc`、请求路径、账户定位方式和返回数组结构尚未逐接口对照银行 Word 文档确认。
 当前 Handle 中的本地常量、字段映射和请求组装只属于历史实现分析草稿，不是正式字段契约，不能通过
 整理参数或补字段常量的方式顺带启用。
 
-### 待推进接口
+### 接口最终状态
 
-| Front 方法 | 当前状态 | 后续必须确认 |
+| Front 方法 | 当前状态 | 说明/未来条件 |
 |---|---|---|
-| `queryAccountStatus` | 待办 / `ADAPTER_NOT_READY` | 平安是否存在等价能力、请求字段和状态映射 |
-| `queryAccountBalance` | 待办 / `ADAPTER_NOT_READY` | `63/64/01/02/03` 的能力边界、账户范围及返回结构 |
-| `queryTransactionStatus` | ✅ 已实现（2026-08-17） | bizFunc 02/03/04 按 capability 转译；提现 cardNoEnc 渠道表回查；S/P/F 三态 |
-| `queryPlatformTransactionDetails` | ✅ 已实现（2026-08-19，17 号 spec） | 25-01/03→6050（inAcctType 过滤回填）、25-02→6048（termSsn） |
-| `queryTransactionDetails` | ✅ 已实现（2026-08-19，17 号 spec） | 24-04→6073（queryFlag=2 + commission 作 fee + 订单号查渠道表） |
+| `queryAccountStatus` | `CLOSED` / 按裁决保留 `ADAPTER_NOT_READY` | 不再确认或实现等价能力；除非用户未来重新打开 |
+| `queryAccountBalance` | `CLOSED` / 按裁决保留 `ADAPTER_NOT_READY` | 不再确认或实现 `63/64/01/02/03`；除非用户未来重新打开 |
+| `queryTransactionStatus` | `CLOSED`（2026-08-17） | bizFunc 02/03/04 按 capability 转译；提现 cardNoEnc 渠道表回查；S/P/F 三态 |
+| `queryPlatformTransactionDetails` | `CLOSED`（2026-08-19，17 号 spec） | 25-01/03→6050（inAcctType 过滤回填）、25-02→6048（termSsn） |
+| `queryTransactionDetails` | `CLOSED`（2026-08-19，17 号 spec） | 24-04→6073（queryFlag=2 + commission 作 fee + 订单号按 tenantId+bankQueryId 查渠道表） |
 
-### 后续领取前必读
+### 未来如经用户明确重新打开时必读
 
 1. [03-平安银行接口能力汇总](03-平安银行接口能力汇总.md)
 2. [10-transaction-query-field-contract](10-transaction-query-field-contract.md)
 3. [05-front代码开发约束](05-front代码开发约束.md)
 4. 对应平安银行 Word 接口文档
 
-### 启用门槛
+### 重新打开后的启用门槛
 
-1. 每次只领取一个查询接口并完成人工字段核对，不批量启用五个接口。
+1. 每次只领取一个查询接口并完成人工字段核对，不批量启用两个接口。
 2. 明确该接口的路径、`bizFunc`、`chnlNo`、顶层字段、`reserve` 字段、响应节点和状态映射。
 3. `bizFunc/chnlNo/API path` 作为带业务注释的 Handle 本地固定参数；字段 key 才进入该接口专属的
    PingAn Query ContractKeys，且使用银行协议原始名。
 4. 只在对应接口的确认实现中增加实际使用的本地固定参数，不为尚未实现的分支预留草稿常量或映射。
 5. 删除该接口对中信 ContractKeys、普通转账 ContractKeys 和未确认字符串字段 key 的借用。
 6. 保持 `baseData/specialData/accountSpecialData` 边界及既定 API 返回类型。
-7. 只有该接口核对完成后，才允许移除对应入口的 `pendingIntegration()`；其他四个入口继续返回
+7. 只有该接口核对完成后，才允许移除对应入口的 `pendingIntegration()`；另一个未确认入口继续返回
    `ADAPTER_NOT_READY`。
 8. LiteFlow 业务异常写 Slot 后中断，系统异常继续抛出。
 9. 按用户当次明确授权决定是否新增测试或执行编译，不以历史编译记录作为验收证据。
@@ -52,21 +60,51 @@
 - 不为了统一参数而创建未经银行文档确认的正式字段契约。
 - 不移除账户状态/余额两个入口的待接入挡板（明细两项与交易状态已于 2026-08-17/19 启用）。
 - 不将本待办计为当前 P0/P1/P2 未修复缺陷。
+- 不得主动领取、核对 6108 等候选接口或实现账户状态/余额；只有用户新的明确要求才能重新打开。
 
-## TODO-002 平安退款边界与协议字段人工确认
+## TODO-002 平安退款边界与协议字段实施
 
-- 状态：待办
+- 状态：`CLOSED`（2026-08-19，静态验收通过并经用户确认）
+- 详细取证与修复要求：
+  [TODO-002-pingan-refund-boundary.md](12-front-implementation-issues/TODO-002-pingan-refund-boundary.md)
 
-### 说明
+### 最新确认口径
 
-中信退款已确认只承担银行渠道报文装配，不承担原交易状态、累计金额和业务退款资格校验。
-该结论不得自动套用到平安退款。当前平安 Handle 也存在查询并锁定原交易、校验状态和累计金额、
-更新 `refundedAmount` 的实现，但是否删除以及平安银行请求需要哪些原交易字段，必须先逐项核对平安协议。
+已静态核验 lsym 分支 `release/lsym_20260820_limeng` 的平安退款实际 Handle、`SaasPaTest`、
+请求 DTO 和上游组装链路后，用户进一步明确渠道数据边界：
 
-### 后续确认内容
+1. `fee`：`bizFunc=02` 实际 Handle 顶层发送；为空时补 `0`，单位分。
+2. `oriTransSsn`：顶层字段，来源是原交易请求 `transSsn`，对应 SaaS 原渠道记录 `frontSsn`；
+   不是银行响应 `bankUserSsn`。
+3. `oriTransDate`：顶层字段，来源是原交易时间的 `yyyyMMdd` 日期部分。
+4. 原交易边界：业务系统不知道渠道字段；Front 按租户和原业务主子流水精确查询原转账/消费渠道表，
+   取 `frontSsn`、日期及原账户/会员字段，但不判断累计退款金额或退款资格。
+5. 当前只使用 `bizFunc=02`；`SaasPaTest` 虽有 `06` 样例，本待办不得启用 `06`。
+6. 上述裁决只适用于平安退款，不改变中信 `FRONT-P1-005` 已关闭的实现。
 
-1. 平安退款原交易定位字段及顶层/reserve 位置。
-2. 业务系统可直接提供哪些字段，哪些必须由 Front 渠道数据补齐。
-3. 是否允许部分退款，以及银行如何判定累计金额。
-4. 当前 `oriTransSsn`、交易日期和原交易类型的真实来源。
-5. 确认前保持独立待办，不纳入中信 `FRONT-P1-005` 修改范围。
+### 目标实现与当前状态
+
+| 范围 | 文件 | 目标与当前状态 |
+|---|---|---|
+| 组装器 | `FrontSpecialDataAssembler`、`PingAnSpecialDataAssembler` | 退款仅保留可选备注；`withdraw()` 与退款 Javadoc 均已恢复、修正 |
+| 银行请求对象 | `PingAnRefundRequest` | 顶层原流水/日期/金额/手续费已明确；`oriOrderId` 当前不发送 |
+| Handle 实现 | `PingAnTransHandle` | `bizFunc=02`、两表精确查询、`frontSsn`、账号加密、原记录/日期校验和单实例查重均已闭环 |
+| 渠道落库 | `PingAnTransHandle#insertRefundInitRecord` | 本次业务字段、原渠道三项关联及原账户字段完整落库 |
+| 字段常量 | `PingAnRefundContractKeys` | key 与来源、加密及不发送字段的注释已统一 |
+| 引用文档 | 03、05、08、13、15、16、WIKI、Issue 索引 | 设计边界、实现状态和 `originalBizTransactionId` 选填/DDL 可空口径已统一 |
+
+### 静态验收结果
+
+最终静态验收确认：TODO-002 的原渠道查询、报文映射、必填校验、日期兼容、INIT 落库、
+单实例并发查重、DDL 和文档口径均已闭环；用户已确认验收通过。详细证据见 TODO-002 §12。
+
+## TODO-003 report 汇总表接入后的跨实例重复交易补查
+
+- 状态：`DEFERRED`（2026-08-19 用户裁决：暂时不做）
+- 已完成边界：当前银行、当前能力业务表内已按
+  `tenantId + bizOrderNo + bizSubOrderNo` 精确检查，`FRONT-P1-012` 按当前部署边界保持 `CLOSED`。
+- 当前行为：`CiticTransHandle` 和 `PingAnTransHandle` 只查当前银行/能力业务表，
+  不调用 report 查询接口或统一交易表。
+- 暂缓约束：不主动开发 Provider、Mapper、Feign 或 report 查询逻辑；不因此重新打开
+  `FRONT-P1-012`。
+- 恢复条件：只有用户未来明确要求重新接入 report 跨实例查重时再开发。

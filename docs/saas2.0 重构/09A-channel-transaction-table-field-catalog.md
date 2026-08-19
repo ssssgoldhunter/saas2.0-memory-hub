@@ -188,8 +188,8 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 31 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
 | 32 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
 | 33 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[0,8)` | 银行请求交易日期，格式 yyyyMMdd；供平安退款原交易定位 |
+| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[8,14)` | 银行请求交易时间，格式 HHmmss |
 | 36 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
 | 37 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
 | 38 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
@@ -328,8 +328,8 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 31 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
 | 32 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
 | 33 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易日期，格式 yyyyMMdd |
-| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | `—` | 银行交易时间，格式 HHmmss |
+| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[0,8)` | 银行请求交易日期，格式 yyyyMMdd；供平安退款原交易定位 |
+| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[8,14)` | 银行请求交易时间，格式 HHmmss |
 | 36 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
 | 37 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
 | 38 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
@@ -460,7 +460,7 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 15 | `original_capability` | `VARCHAR(20)` | 否 | `—` | `—` | 原渠道交易能力，当前允许 TRANSFER 或 CONSUME |
 | 16 | `original_channel_transaction_id` | `BIGINT` | 否 | `—` | `—` | 同银行原转账或消费渠道表记录主键 |
 | 17 | `original_front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | 原 Front 渠道交易流水号 |
-| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务交易主表记录 ID |
+| 18 | `original_biz_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易主表记录 ID（选填，TODO-002 §2.1 裁决：契约选填，目标 DDL 已同步可空） |
 | 19 | `original_biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务交易子表或明细表记录 ID |
 | 20 | `original_biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 原业务主流水号或主订单号 |
 | 21 | `original_biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 原业务子流水号或子订单号 |

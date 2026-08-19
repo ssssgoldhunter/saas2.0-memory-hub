@@ -260,4 +260,9 @@ git clone <saas2.0-memory-hub 仓库地址> ~/workspaces/IdeaProjects_saas_dep/s
 
 ---
 
+- **UI 全家桶恢复（2026-08-18）**：用户要求回退原始风格后装回没冲突的 UI 工具栏插件；
+  已从备份恢复 `@linxin666/dsh-web-ui-all@0.1.10`（aionui-panel/任务看板/SSH 等 11 子包），
+  **冲突插件不装回**：`dsh-client-ui-obsidian-memory`（与 HARNESS 加载器不兼容）与
+  `skin-maid-atelier`（覆盖默认界面）；pnpm-workspace.yaml 中 obsidian-memory 残留排除引用已清。
+
 **更新日期**：2026-08-16　**维护者**：ssssgoldhunter

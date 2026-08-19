@@ -1,9 +1,9 @@
 # 明细查询对外契约与平安启用执行计划（18 号）
 
 > 前置阅读：[17-明细查询对外契约与平安启用-spec.md](17-明细查询对外契约与平安启用-spec.md)（契约唯一事实来源，
-> §0 八条裁决 + §1.3 迁移对照表）
+> §0 九条裁决 + §1.3 迁移对照表）
 > 原始溯源：`/Users/limeng/WorkBuddy/钱包功能/文档/中信24_25明细查询_平安对齐映射表.md`（v6.10，字段级论证）
-> 纪律：每阶段编译；不新增测试；所有裁决以 17 号 §0 八条为准，与对齐表冲突时以 17 号为准
+> 纪律：每阶段编译；不新增测试；所有裁决以 17 号 §0 九条为准，与对齐表冲突时以 17 号为准
 
 ## 任务清单（执行 AI 按序领取，完成后打勾并在 16 号风格记录实际改动）
 
@@ -13,12 +13,12 @@
 - [x] T3 Phase 3：中信 queryTransactionDetails 改产 AccountTransDetailItem（fee×100、查表无关、specialData 兜底）
 - [x] T4 Phase 3：中信 queryPlatformTransactionDetails 改产 PlatformTransDetailItem（02/03 中信侧字段自然空）
 - [x] T5 Phase 3：中信 TableDataInfo 赋值（TOTAL_PAGE 直传 + total=页大小估算）
-- [x] T6 Phase 4：平安 queryTransactionDetails 实现（6073：functionFlag/subAcctNo/queryFlag=2/tranStatus 过滤/commission→fee=0 不过滤/frontSeqNo 查表补订单号）
+- [x] T6 Phase 4：平安 queryTransactionDetails 实现（6073：functionFlag/subAcctNo/queryFlag=2/tranStatus 过滤/commission→fee=0 不过滤/frontSeqNo 按 `tenantId + bankQueryId` 查原提现表补订单号）。**FRONT-P1-014 已修复并关闭**
 - [x] T7 Phase 4：平安 queryPlatformTransactionDetails 实现（6050/6048 类型分流 + SM2 解密三连 + inAcctType 过滤回填 + termSsn + 分页三态）
 - [x] T8 Phase 4：移除两个明细方法 pendingIntegration（账户状态/余额保留挡板）
 - [x] T9 Phase 5：web-test 两明细 Tab 类型下拉收窄 + 返回文案
-- [x] T10 Phase 6：文档同步（10/13/15/16/05/TODO-001/WIKI-START）
-- [x] T11 Phase 7：17 号 §8 七条自检 + 执行报告（含编译证据）
+- [ ] T10 Phase 6：文档同步（10/13/15/16/05/TODO-001/WIKI-START）。**FRONT-P2-008 第八轮用户复核重新打开**：13 号 §5.4/§5.5 `pageNo/pageSize` 必填语义、FrontQueryApi 注释 `accountType` 选填口径已按第八轮修复，等待用户确认后勾选
+- [ ] T11 Phase 7：17 号 §8 八条自检 + 执行报告（含编译证据）。**静态项已复核；本轮未获编译授权，保持未勾选**
 
 ## Phase 0 基线（只读）
 
@@ -60,7 +60,9 @@
 2. 24-04 → 6073（bizFunc=08）：请求 functionFlag（当日 1 不传 begin/end / 历史 2 + begin=end）+
    subAcctNo=acctNo（SM2）+ queryFlag=2 + pageNum；返回：tranStatus=0 过滤、解密 subAcctNo/subAcctName、
    fee=commission 直传（分，空/0 → 0 不过滤）、frontTransSsn=frontSeqNo、bizOrderNo/bizSubOrderNo 以
-   frontSeqNo 查 front 渠道表（tenantId+银行流水号，参考 loadOriginalRefundFields 回查模式）查不到置空；
+   frontSeqNo 按 `tenantId + bankQueryId` 查原提现渠道表（平安提现应答 `queryId` 的协议语义为
+   `FrontSeqNo`，与 6073 `frontSeqNo` 直接关联），查不到置空；不查 `bankUserSsn`，也不查原请求
+   `frontSsn`；原请求 `frontSsn/transSsn` 仅供平安单笔状态查询映射 `oriTransSsn`；
 3. 25 类型分流：01/03 → 6050（bizFunc=04，共用请求，业务体无 inAcctType；functionFlag 当日/历史；
    page）+ 返回按 inAcctType 过滤回填 transType；02 → 6048（bizFunc=02，仅租户配置三件套，无日期无分页
    一次全返；frontSeqNo=**termSsn**（17 号 §0.6））；
@@ -81,23 +83,62 @@
 15 号 §4.3（白名单修订）、13-front后续待办 TODO-001（明细两项转已启用）、05 号（挡板表述）、
 16 号收盘记录、WIKI-START 注册 17/18 号。
 
-## Phase 7 终验（17 号 §8 七条全量自检）+ 执行报告
+## Phase 7 终验（17 号 §8 八条全量自检）+ 执行报告
 
 ## 回滚策略
 
 Phase 1-2 为契约/白名单变更（有外部影响但当前无业务方，窗口期安全）；Phase 3-4 为 Handle 行为切换，
 按能力小步提交可独立 revert；平安侧新增协议类纯增量。
 
-## T11 执行报告（2026-08-19，主对话接手收尾后全量完成）
+## T11 历史执行报告（2026-08-19，FRONT-P1-014 / FRONT-P2-008 发现后终验重新打开）
 
 | 任务 | 实际改动文件 |
 |---|---|
 | T1 | api-front：AccountTransDetailItem/PlatformTransDetailItem/AccountDetailQueryData/PlatformDetailQueryData/AccountDetailType/PlatformDetailType 新建；TransactionDetailItem/TransactionDetailQueryData/FrontPageResult 删除；TableDataInfo.totalPage；FrontQueryApi/Controller/Service/BankQueryHandle 签名替换 |
 | T2 | CiticSpecialDataAssembler/PingAnSpecialDataAssembler 白名单接枚举 allowedCodes()；平安补 24/25 两分支（含 mchntMbrId 要素保留） |
 | T3-T5 | CiticQueryHandle：queryDetails 拆 typed queryPlatformDetails/queryAccountDetails、壳字段 MCHNT_ID/USER_ID 从应答壳读取（v5.3 壳3+行14）、remark 改 REMARK、CUR_AMT 原值+currentAmountCent 双保留、GOAC/OANM 常量化、totalPage/total 赋值 |
-| T6-T8 | PingAnQueryHandle：6073/6050/6048 三模板 + PingAnDetailQueryContractKeys 新建、明细两挡板移除、6050 补 reserve、6048 补 termSsn 原值；PingAnTransHandle updateResponse 补写 bank_user_ssn（USER_SSN） |
-| T9 | web-test：明细 Tab 下拉收窄 + Controller 新类型 + RECHARGE 选项 + label 更正 |
-| T10 | 10/13/15/16/05/WIKI-START/TODO-001/P1-002/P1-004 文档联动 |
-| T11 | 四模块编译 BUILD SUCCESS（common-core+api-front install → front → web-test → consume）；trans 缩写全链路（字段/常量/类名/枚举/链名）；验收三 P1 修复（壳层级/bank_user_ssn 回写/rows 默认空集合） |
+| T6-T8 | PingAnQueryHandle：6073/6050/6048 三模板 + PingAnDetailQueryContractKeys 新建、明细两挡板移除、6050 补 reserve、6048 补 termSsn 原值 |
 
-编译证据：api-front/front/web-test/consume 全绿（2026-08-19，本地 m2saas install 后）。
+### T6 补充修复（2026-08-19，FRONT-P1-014 已确认关闭）
+
+- **代码文件**：`PingAnQueryHandle.java`（fillWithdrawBizOrders）、`PingAnTransHandle.java`（2 处注释修正）
+- **修改内容**：查询字段从 `getBankUserSsn` 改为 `getBankQueryId`；保留 tenantId 条件；两处注释从"6073 按 bank_user_ssn 回查"改为"显式 USER_SSN 独立落 bank_user_ssn，6073 订单回查走 bank_query_id"
+- **关联公式**：6073 recordList.frontSeqNo = 原提现应答 queryId = front_pingan_withdraw_transaction.bank_query_id
+- **与单笔状态查询分界**：平安单笔状态查询使用原请求
+  `frontSsn/front_ssn → oriTransSsn`；6073 使用原应答 `queryId/bank_query_id`，不得互换
+- **静态证据**：`getBankUserSsn` 在 PingAnQueryHandle 中 grep 0 命中；`getBankQueryId` 在 fillWithdrawBizOrders:729 使用；`git diff --check` 无空白错误；git diff 仅 2 个 Java 文件（PingAnQueryHandle/PingAnTransHandle）
+
+### T10 补充修复（2026-08-19，FRONT-P2-008 复核未通过）
+
+- **文档文件**：10/13/15/05/WIKI-START/13-front后续待办 共 6 份
+- **修改内容**：当前 API 签名改用两套 QueryData/Item 泛型；F200003 收窄为"当前仅平安账户状态/余额 2 个查询"；WIKI 两处分页泛型拆分；TODO-001 行为改 2/5 挡板口径；13号 §6 拆为 24/25 两套引用 17号 §1.2
+- **静态证据**：6 份文档 grep `TransactionDetailItem|TransactionDetailQueryData` 0 命中；"五个方法全部抛异常"口径清零
+
+### T10 第二轮修复（2026-08-19，FRONT-P2-008 用户复核反馈）
+
+- **文件**：`10-transaction-query-field-contract.md`（6 处错误）
+- **修复内容**：
+  1. §4.1 请求对象：删除混入 25 章节的 `AccountDetailQueryData`，25 只写 `PlatformDetailQueryData`
+  2. §4.1 transType 行：删除混入的 `AccountDetailType`，25 只写 `PlatformDetailType`（01/02/03）
+  3. §4.2 25 返回：旧字段 `amount/direction` 改为新字段集 `transAmt/payAcctNo/payAcctName/frontSeqNo/bankMemberCode` 等 12 主字段
+  4. §5.1 24 transType 枚举收窄：从 8 值改为"对外仅 04（AccountDetailType）"
+  5. §5.1 24 返回：`PlatformTransDetailItem.specialData` 误写改为 `AccountTransDetailItem.specialData`
+  6. §7 返回结构：补 `TableDataInfo<AccountTransDetailItem>` 签名、`totalPage` 字段、成功示例补 totalPage
+- **静态证据**：25 章节 grep AccountDetail 0 命中；24 返回不再出现 PlatformTrans；amount/direction 不再作为 25 当前字段；totalPage 在 §7 结构+示例中均出现
+| T9 | web-test：明细 Tab 下拉收窄 + Controller 新类型 + RECHARGE 选项 + label 更正 |
+| T10 | 10/13/15/16/05/WIKI-START/TODO-001/P1-002/P1-004 历史文档联动；三轮修复含 10 号 L27/示例枚举/失败示例 totalPage |
+| T11 | 四模块历史编译 BUILD SUCCESS（common-core+api-front install → front → web-test → consume）；6073 关联列已修复，但 FRONT-P2-008 文档契约漂移仍未关闭，终验保持打开 |
+
+历史编译证据：api-front/front/web-test/consume 全绿（2026-08-19，本地 m2saas install 后）。
+该证据只说明当时可编译，不代表 FRONT-P2-008 验收通过；
+修复后是否重新编译以用户当次授权为准。
+
+
+### T11 当前状态（2026-08-19）
+
+- T1-T9 完成；T10 在 FRONT-P2-008 第八轮用户复核中重新打开（13 号 §5.4/§5.5 与
+  FrontQueryApi 注释的 pageNo/pageSize/accountType 必填语义已按第八轮修复，等待确认）。
+  FRONT-P1-015 已静态修复，状态 `FIXED_PENDING_REVIEW`；FRONT-P2-008 状态 `OPEN`
+- T11 **保持未完成**：17 号 §8 静态项已复核；本轮按用户既有约束未执行编译，待用户
+  确认两个 Issue 并明确授权编译后终验
+- T6（FRONT-P1-014）已由用户确认关闭

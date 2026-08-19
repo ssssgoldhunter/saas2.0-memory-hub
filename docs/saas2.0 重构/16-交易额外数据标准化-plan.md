@@ -3,6 +3,9 @@
 > 前置阅读：[15-交易额外数据标准化-spec.md](15-交易额外数据标准化-spec.md)（契约与矩阵的唯一事实来源，本计划只排顺序，不重复定义）
 > 2026-08-17 架构定稿：组装 = catering-api-front 实例工具类（本地调用，front 服务零改动）；consume 侧 check 按能力维度
 > 纪律：用户明确本次**不编译、不跑测试、不新增 JUnit**；验证 = api-front 已编译 install 一次（已做）+ web-test 人工两步调用
+>
+> 2026-08-19 口径更新：下文“平安退款空实现”仅是 2026-08-17 的历史实施记录；当前最终设计以
+> TODO-002 为准——业务系统不提供原渠道字段，Front 按原业务主子流水查询原渠道表。
 
 ## 实施记录（2026-08-17）
 
@@ -12,7 +15,7 @@
    - 新增 `com/chinaums/front/api/assemble/FrontSpecialDataAssembler.java`（单文件）：
      大对象 + 嵌套 AccountInfo/BankCard/Auth + newPay/newRec/newOriPay/newOriRec/newAuth/newBankCard
      工厂方法 + `assemble()` 实例入口 + CiticSpecialDataAssembler/PingAnSpecialDataAssembler 两个私有内部类；
-   - 能力映射 12 个（中信 6 + 平安 6 含平安退款空实现），键全走 `*ContractKeys`，
+   - 当时能力映射 12 个（中信 6 + 平安 6，平安退款当时为空实现；当前已由 TODO-002 覆盖），键全走 `*ContractKeys`，
      originalBusinessDate 做 yyyyMMdd 严格校验；全实例方法零 static；
    - 2026-08-17 晚按用户要求重构为**工厂模式**：银行组装逻辑从主类私有内部类拆为同包独立类
      （`BankSpecialDataAssembler` 接口 + `CiticSpecialDataAssembler` + `PingAnSpecialDataAssembler`，
@@ -86,6 +89,10 @@
 - **遗留**：整批代码未编译未提交（用户已知）；中信退款 TRANS_TYPE=01 待协议核对；
   4 个查询能力迁移统一模式待启动；consume 存量修复进行中。
 
+> 2026-08-19 现状更正：两类明细已完成迁移；账户状态/余额按用户裁决固定保留
+> `ADAPTER_NOT_READY` 挡板，不再属于待迁移能力。`PingAnQueryRequest` 仅作为挡板后历史草稿保留，
+> 上述 `TODO[QUERY-UNIFY]` 按该裁决关闭。
+
 ## 划付死链清除 + 钱包网关公共化（2026-08-18 用户裁决，未提交）
 
 - **删除划付迁移死代码 11 文件**（4 个全注释体 SaasZxInterService/SaasTemplateUtils/
@@ -140,5 +147,7 @@ front 服务零改动，不存在行为切换点。web-test 改造独立 revert�
 - 执行路径：执行 AI 完成 T1 主体（新 DTO/枚举/QueryData 拆分/TableDataInfo+FrontPageResult 处置/
   三层签名）后由主对话接手收尾：中信拆强转桥+remark 来源修正+GOAC/OANM 常量化、平安 6073/6050/6048
   三模板实现（PingAnDetailQueryContractKeys 新建）、移除明细两挡板、web-test 下拉收窄、文档联动；
-- 遗留（联调项）：6073 frontSeqNo 与渠道表 bank_user_ssn 对应关系待联调验证；25 userName（6048）
-  查表补全为后续增强；中信 totalNum=TOTAL_PAGE×页大小估算联调后可改置空。
+- 已确认：6073 `frontSeqNo = 原提现应答 queryId = front_pingan_withdraw_transaction.bank_query_id`，
+  按 `tenantId + bank_query_id` 回查；`bank_user_ssn` 独立保存银行返回的用户流水，不参与6073回查。
+  平安单笔状态查询使用原请求 `front_ssn → oriTransSsn`，两条链路不得互换；
+- 遗留（后续增强）：25 userName（6048）查表补全；中信 totalNum=TOTAL_PAGE×页大小估算联调后可改置空。

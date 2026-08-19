@@ -187,8 +187,9 @@ public class FrontBaseRequestData {
 
 交易公共基础对象增加 `payStoreNo/payStoreId/recStoreNo/recStoreId` 两组收付款门店字段。
 单笔状态查询基础对象使用 `frontSsn/bizOrderNo/bizSubOrderNo`，其中后两者分别是业务主流水和
-业务子流水。交易明细返回的每条 `TransactionDetailItem` 包含自己的 `JSONObject specialData`，
-用于承接该笔银行明细的 `reserveMap`；分页结果继承的 `specialData` 只保存查询级扩展字段。
+业务子流水。账户明细返回的每条 `AccountTransDetailItem`、平台明细返回的每条
+`PlatformTransDetailItem` 均包含自己的 `JSONObject specialData`，用于承接该笔银行明细的
+`reserveMap`。
 
 ### 5.2 内部执行上下文
 
@@ -679,8 +680,10 @@ SUB_ACCOUNT_TRANSFER 子账户转账
 - 来源业务系统、业务交易类型、业务主/子记录 ID 及主/子订单；
 - 付款/收款门店、金额、手续费等公共业务数据；
 - 业务及银行所需明确字段；不保存整段 `baseData/specialData` 快照；
-- 中信退款的原业务主子流水及银行协议必填字段；不关联 Front 本地原转账、消费记录。
-  平安退款是否需要本地原交易关联按 `TODO-002` 等待确认。
+- 中信退款的原业务主子流水及银行协议必填字段；不关联 Front 本地原转账、消费记录；
+- 平安退款由 Front 按 `tenantId + originalBizOrderNo + originalBizSubOrderNo` 精确查询原平安转账表和
+  消费表，唯一命中后从原渠道记录取得 `frontSsn`、原日期和原收付款字段，并在退款表保存原能力、
+  原渠道记录 ID、原 Front 流水及原收付款字段。未命中或双命中均明确失败。
 
 物理表必须按“银行 + 交易业务”拆分：
 
@@ -749,7 +752,8 @@ public class FrontBaseResult {
 ```
 
 单条交易、交易状态和账户查询由公共 `R` 包装确定类型结果，例如 `R<FrontTransResult>`；
-分页明细查询直接返回工程统一的 `TableDataInfo<TransactionDetailItem>`，禁止再使用 `R` 包装。
+分页明细查询分别返回 `TableDataInfo<AccountTransDetailItem>` 和
+`TableDataInfo<PlatformTransDetailItem>`，禁止再使用 `R` 包装。
 `FrontBaseResult.specialData` 保存当前银行和接口的特殊响应字段。Handle 内部直接返回确定的
 `FrontBaseResult` 子类，禁止 `FrontResponse` 中间层和无法约束的 `<T> T` 返回。
 
@@ -857,7 +861,7 @@ Service 内按 `application/controller/route/handle/channel/context/handler` 分
 - [ ] 首版交易业务最终范围；
 - [ ] 每类交易核心 `baseData`；
 - [ ] 重复交易键和主/子订单关系；
-- [ ] 退款原交易定位及协议字段；中信按 `FRONT-P1-005`，平安按 `TODO-002`；
+- [x] 退款原交易定位及协议字段已裁决：中信按 `FRONT-P1-005`，平安按 `TODO-002`；平安运行代码仍待按裁决修复；
 - [ ] 平安、中信 `specialData` 字段；
 - [ ] 银行响应到 Front 状态的映射。
 

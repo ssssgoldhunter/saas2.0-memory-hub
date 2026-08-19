@@ -438,7 +438,7 @@ CREATE TABLE `front_pingan_refund_transaction` (
   `original_capability`               VARCHAR(20)   NOT NULL                COMMENT '原渠道交易能力，当前允许 TRANSFER 或 CONSUME',
   `original_channel_transaction_id`   BIGINT        NOT NULL                COMMENT '同银行原转账或消费渠道表记录主键',
   `original_front_ssn`                VARCHAR(100)  NOT NULL                COMMENT '原 Front 渠道交易流水号',
-  `original_biz_transaction_id`       VARCHAR(100)  NOT NULL                COMMENT '原业务交易主表记录 ID',
+  `original_biz_transaction_id`       VARCHAR(100)  DEFAULT NULL            COMMENT '原业务交易主表记录 ID（选填，TODO-002 §2.1 裁决）',
   `original_biz_sub_transaction_id`   VARCHAR(100)  DEFAULT NULL            COMMENT '原业务交易子表或明细表记录 ID',
   `original_biz_order_no`             VARCHAR(100)  NOT NULL                COMMENT '原业务主流水号或主订单号',
   `original_biz_sub_order_no`         VARCHAR(100)  DEFAULT NULL            COMMENT '原业务子流水号或子订单号',

@@ -118,7 +118,7 @@ codegraph status               # 索引状态
     （2026-08-17 工具类 + 7 个 check 骨架已落地；余 web-test 两步调用、buildRequest 补实与挂链）。
 23. [17-明细查询对外契约与平安启用-spec](17-明细查询对外契约与平安启用-spec.md)：24/25 明细查询
     对外契约重构（AccountTransDetailItem/PlatformTransDetailItem 两套独立 DTO + TableDataInfo.totalPage + §1.3
-    原对象迁移对照）与平安明细启用（6048/6050/6073）的契约，含用户八条裁决；实施前必须完整阅读。
+    原对象迁移对照）与平安明细启用（6048/6050/6073）的契约，含用户九条裁决；实施前必须完整阅读。
 24. [18-明细查询对外契约与平安启用-plan](18-明细查询对外契约与平安启用-plan.md)：17 号 spec 的
     分阶段执行计划与任务清单（T1-T11）。
 
@@ -156,7 +156,7 @@ codegraph status               # 索引状态
 - 10 张渠道表的完整字段字典已逐表列出字段顺序、类型、NULL、默认值、更新规则、注释和索引，可交给其他 AI
   按目标字符集生成最终 SQL；
 - 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
-  `TableDataInfo<TransactionDetailItem>`，禁止再用 `R` 包裹；
+  `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和结构化日志工具；交易链路执行完整日志矩阵，查询链路只强制钱包真正发送前
   输出完整请求 JSON，查询日志不要求 `capability` 或交易型 metadata；
@@ -197,7 +197,23 @@ codegraph status               # 索引状态
 - `CLOSED`：用户已确认，不得根据历史文档重新实现；
 - `DEFERRED`：安全或外部治理事项，必须另行授权。
 
-当前 P0/P1/P2 Issue 已全部关闭。平安账户状态/余额 2 个查询（TODO-001 尾巴）、平安退款边界确认属于普通后续待办；
+当前24/25明细任务有2个 `FIXED_PENDING_REVIEW` Issue，已有静态修复证据，不得重复修改：
+
+1. [FRONT-P1-015](12-front-implementation-issues/FRONT-P1-015-detail-query-total-page-failure.md)：
+   中信非法 `TOTAL_PAGE` 与 web-test Feign失败分页壳已收口，等待用户确认。
+2. [FRONT-P2-008](12-front-implementation-issues/FRONT-P2-008-detail-query-doc-contract-drift.md)：
+   13/16号最后两处对外枚举、必填性和6073关联口径已收口，等待用户确认。
+
+[FRONT-P2-009](12-front-implementation-issues/FRONT-P2-009-detail-query-legacy-dto-residual.md) 的旧DTO和ContractKeys
+注释已完成静态验收并关闭。
+
+[FRONT-P1-014](12-front-implementation-issues/FRONT-P1-014-pingan-6073-queryid-link.md) 已经静态复核并由用户确认关闭。
+
+平安账户状态/余额 2 个查询已按用户裁决固定保留 `ADAPTER_NOT_READY` 挡板，TODO-001 已关闭，
+不得主动领取；平安退款 TODO-002 的渠道查询、`oriTransSsn=原记录.frontSsn`、校验、INIT、
+单实例并发查重和 DDL 口径已完成静态验收，并于 2026-08-19 经用户确认关闭；
+report 跨实例重复交易补查已按用户裁决暂缓，
+未经新的明确要求不得开发；
 明文凭据轮换和 Git 历史清理由独立安全事项跟踪。
 任何历史文档中的“未实现”“待改”“编译通过”均不是当前状态证据。
 
@@ -248,7 +264,7 @@ AbstractBankHandle.prepareContext
   `<T> T` 返回；领域 Registry 的类型安全 `(BankCode, FrontCapability)` 是本项目规定的必要路由键，
   不属于此禁令；
 - 不增加 `FrontResponse`；单条接口返回 `R<具体结果>`，分页明细查询直接返回
-  `TableDataInfo<TransactionDetailItem>`，不再使用 `R` 包裹；
+  `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），不再使用 `R` 包裹；
 - API、Controller、Application Service 使用同一方法签名并原样透传；Router 和 Handle 不返回 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
@@ -289,6 +305,9 @@ AbstractBankHandle.prepareContext
 - `bizFunc/chnlNo/API path` 在具体银行 Handle 中使用带业务注释的本地常量；字段 key 才进入
   `*ContractKeys`，不得在两处重复保存同一调用控制值；
 - `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
+- 平安查询流水必须按场景分离：单笔状态查询使用原请求 `frontSsn/front_ssn → oriTransSsn`；
+  6073 明细订单补全使用原应答 `queryId/bank_query_id = recordList.frontSeqNo`；
+  `bank_user_ssn` 只保存明确返回的 `USER_SSN/ssn`，三者禁止互换；
 - 租户数据源配置是必备前置条件；STANDARD 分片找不到配置、配置解析失败或目标 `ds_x` 不存在时
   必须立即失败，
   禁止默认路由到任意数据库；
@@ -304,7 +323,7 @@ AbstractBankHandle.prepareContext
 
 ## 7. 后续 AI 的实现单位
 
-每次只领取“一个银行 + 一个能力”，例如“中信 transfer”或“平安 queryAccountBalance”。实现步骤固定：
+每次只领取“一个银行 + 一个能力”，例如“中信 transfer”或“平安 withdraw”。实现步骤固定：
 
 1. 在 `04` 中确认新 Handle 方法与旧 Front/mdl 的映射；
 2. 阅读目标银行能力文档并定位 mdl 具体实现类；
@@ -335,8 +354,8 @@ platformReceive
 查询方法：
 
 ```text
-queryAccountStatus
-queryAccountBalance
+queryAccountStatus              // 平安固定保留 ADAPTER_NOT_READY 挡板
+queryAccountBalance             // 平安固定保留 ADAPTER_NOT_READY 挡板
 queryTransactionStatus
 queryPlatformTransactionDetails
 queryTransactionDetails

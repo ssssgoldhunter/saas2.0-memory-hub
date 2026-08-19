@@ -517,18 +517,19 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `pageNo` | Integer | 是 | 页码，从 1 开始 |
-| `pageSize` | Integer | 是 | 每页条数（中信 ≤ 20） |
+| `pageNo` | Integer | 否 | 页码，从 1 开始；不传默认第 1 页 |
+| `pageSize` | Integer | 否 | 每页条数（仅表达期望，不限制调用方）；银行原生页大小透传：25 统一 20，6048 无分页一次全返 |
 
-**中信 specialData 字段：**
+**specialData 字段（两家银行统一 Front 对外键）：**
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `transDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
-| `transType` | String | 是 | 交易类型：`01` 转账入金 / `02` 退汇 / `03` 支付渠道入金 / `04` 提现 / `05` 退款(预留) / `99` 所有 |
+| `transType` | String | 是 | 对外仅允许：`01` 转账入金 / `02` 退汇 / `03` 支付渠道入金（`PlatformDetailType`） |
 
 | 注意：
 | - 中信 `bizFunc=25` 不支持跨日查询，业务系统需按日期多次调用；
+| - 中信 Handle 保留的其他银行协议类型不对业务系统开放；
 | - `bizFunc`、`chnlNo`、`PAGE` 由 Front 内部处理，业务系统不允许传入。
 
 ---
@@ -544,38 +545,32 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 
 | baseData 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `pageNo` | Integer | 是 | 页码，从 1 开始 |
-| `pageSize` | Integer | 是 | 每页条数（中信 ≤ 50） |
+| `pageNo` | Integer | 否 | 页码，从 1 开始；不传默认第 1 页 |
+| `pageSize` | Integer | 否 | 每页条数（仅表达期望，不限制调用方）；银行原生页大小透传：24 中信 50、平安 6073 20 |
 
-**中信 specialData 字段：**
+**specialData 字段（两家银行统一 Front 对外键）：**
 
 | key | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `acctNo` | String | 是 | 用户编号 |
 | `transDate` | String | 是 | 查询日期 yyyyMMdd，**不支持跨日** |
-| `transType` | String | 是 | 交易类型：`01` 入金分账 / `02` 交易划转 / `03` 提现 / `04` 提现手续费 / `05` 提现退汇 / `06` 渠道来账 / `98` 所有明细 / `99` 所有汇总 |
-| `accountType` | String | 是 | 登记簿/账户类型：`01` 公共调账登记簿 / `12` 平台自有资金登记簿 / `13` 担保登记簿 / `17` 待结算手续费登记簿 |
+| `transType` | String | 是 | 对外仅允许 `04` 提现手续费（`AccountDetailType`） |
+| `accountType` | String | 否 | 登记簿/账户类型：`01` 公共调账登记簿 / `12` 平台自有资金登记簿 / `13` 担保登记簿 / `17` 待结算手续费登记簿；仅中信生效，平安 6073 忽略 |
+
+中信 Handle 保留的其他银行协议类型不对业务系统开放。
 
 ---
 
-## 6. 响应行明细项结构（`TransactionDetailItem`）
+## 6. 响应行明细项结构
 
-```json
-{
-  "transDate": "20260810",
-  "transactionTime": "123456",
-  "transType": "01",
-  "transTypeName": "转账入金",
-  "amount": 10000,
-  "fee": 0,
-  "currency": "CNY",
-  "oppositeAccountNo": "6217000098765432",
-  "oppositeName": "李四",
-  "remark": "采购货款",
-  "frontStatus": "SUCCESS",
-  "specialData": {}
-}
-```
+24/25 两套行 DTO 的字段定义以 17 号 spec §1.2 为唯一事实来源：
+
+- **24 账户明细** → `AccountTransDetailItem`（11 主字段 + specialData）：
+  mchntMbrId / bankAccountCode / userName / transType / bizOrderNo / bizSubOrderNo /
+  bankMemberCode / frontTransSsn / fee(分) / transDate / transTime / specialData
+- **25 平台明细** → `PlatformTransDetailItem`（12 主字段 + specialData）：
+  mchntMbrId / bankAccountCode / userName / transType / transDate / transTime /
+  transAmt(分) / payAcctNo / payAcctName / remark / frontSeqNo / bankMemberCode / specialData
 
 ---
 
@@ -596,7 +591,7 @@ Feign 接口：`FrontQueryApi`，服务名 `catering-front`，前缀 `/front/v1/
 | `"F100004"` | 请求银行与租户配置不一致 |
 | `"F200001"` | 银行不支持 |
 | `"F200002"` | 当前银行不支持该能力 |
-| `"F200003"` | 适配器尚未接入（如平安查询） |
+| `"F200003"` | 适配器尚未接入（当前仅平安账户状态/余额 2 个固定挡板入口） |
 | `"F300001"` | 交易已存在（重复交易） |
 | `"F400001"` | 钱包通信失败（可确认未送达） |
 | `"F400002"` | 钱包结果未知，需查询确认 |
@@ -647,10 +642,10 @@ Front 自动从请求头读取以下参数并注入 `FrontRequest.baseData`：
 
 ## 9. 当前限制
 
-1. 平安查询：交易状态与两类明细已实现（2026-08-19，17 号 spec）；账户状态/余额 2 个仍返回
-   `ADAPTER_NOT_READY`，待后续逐接口确认后启用；
+1. 平安查询：交易状态与两类明细已实现（2026-08-19，17 号 spec）；账户状态/余额 2 个按用户裁决固定返回
+   `ADAPTER_NOT_READY`，不列为待实现能力；
 2. 中信明细查询 `bizFunc=24/25` **不支持跨日**查询，业务系统按日期多次调用；
-3. 退款关联原交易使用 `orgBizOrderNo + orgBizSubOrderNo` 逻辑关联，
-   Front **不查询**本地原交易记录补字段；
-4. 平安退款边界（是否需要本地原交易关联）待确认；
+3. 中信退款使用 `orgBizOrderNo + orgBizSubOrderNo` 及请求 `specialData` 组装，不查询本地原交易；
+4. 平安退款由业务系统提供原业务主子流水，Front 按租户 + 原业务主子流水查询原 transfer/consume
+   渠道表补齐原流水、日期和账户字段；`oriTransSsn` 固定取原记录 `frontSsn`；
 5. 所有金额单位为人民币分，禁止浮点数。
