@@ -8,6 +8,7 @@
 ## 任务清单（执行 AI 按序领取，完成后打勾并在 16 号风格记录实际改动）
 
 - [ ] T1 Phase 1：AccountDetailItem / PlatformDetailItem 新建 + **AccountDetailQueryData / PlatformDetailQueryData 拆分（替代 TransactionDetailQueryData，specialData 键不变）+ AccountDetailType / PlatformDetailType 两枚举** + TableDataInfo.totalPage + FrontPageResult.totalPage + API 三层泛型替换（入参出参都按新类型） + TransactionDetailItem/TransactionDetailQueryData 删除（按 17 号 §1.1/§1.2/§1.3）
+      **分层红线（05 号约束钦定，不得改变）**：FrontPageResult 仅 Handle 层承接银行分页结果；Application Service 必须转换为 TableDataInfo；API/Controller/Service 三层对外签名一致；禁止对外出现 R<TableDataInfo>/R<FrontPageResult>/FrontPageResult。
 - [ ] T2 Phase 2：组装器 24/25 枚举白名单改由 AccountDetailType/PlatformDetailType 生成（{04} / {01,02,03}），Handle 白名单不动
 - [ ] T3 Phase 3：中信 queryTransactionDetails 改产 AccountDetailItem（fee×100、查表无关、specialData 兜底）
 - [ ] T4 Phase 3：中信 queryPlatformTransactionDetails 改产 PlatformDetailItem（02/03 中信侧字段自然空）
