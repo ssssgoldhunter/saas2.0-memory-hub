@@ -58,7 +58,9 @@ front 交易链路（validate → route → contextPrepare → dispatch → Hand
   api-front 升版本（用户已确认此更新模式）；
 - 交易 API 请求结构**不变**：baseData 现有字段 + 协议键 specialData。auth/originalBusinessDate/contractId
   **不进**交易 baseData，它们只是组装工具的入参（见 §3.2）；
-- 查询接口（5 个查询能力）不涉及：查询 specialData 仍由调用方按 10 号契约直传。
+- 查询接口：5 个查询能力的 specialData 组装格已全部入矩阵（2026-08-19 用户 web-test 规范
+  「所有请求参数经组装工具类转换」；交易状态/两类明细先行，账户状态/余额最后补入）；
+  平安账户状态/余额因固定 `ADAPTER_NOT_READY` 挡板不在组装范围。
 
 ## 3. 数据结构定义
 
@@ -198,7 +200,7 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2；REFUND 原渠道要
 | | pay.bankCard.cardHolderName | `userNameEnc`（持卡人户名，与 nameEnc 是两个字段） | 🔒 |
 | REFUND (02) | refundRemark（选填） | `remark`（reserve） | 明文；原流水/日期/账户/会员由 Front Handle 查原渠道表，不由业务组装 |
 
-### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行；2026-08-18 增两类明细）
+### 4.3 查询能力组装（2026-08-17 增，交易状态查询先行；2026-08-18 增两类明细；2026-08-19 增账户状态/余额两格）
 
 | 能力 | 中信 | 平安 |
 |---|---|---|
@@ -208,8 +210,11 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2；REFUND 原渠道要
 
 明细两能力的入参（transDate/transType/accountType）为 `FrontSpecialDataAssembler` 顶层组装字段；取值枚举在组装器用 ContractKeys 值常量校验（与 Handle 直传防线白名单同源），非法值组装即报错（如 `transType取值不支持: 07`）。
 
-账户状态/余额按用户裁决固定保留 `ADAPTER_NOT_READY` 挡板，不补组装格；
-只有用户未来重新打开时才增加。
+账户状态/余额两格（2026-08-19，用户 web-test 规范「所有请求参数经组装」）：中信
+`pay.bankEAccountId` → `acctNo`（2058 状态 / 35·36·46 余额共用 1 要素）；余额格另有顶层入参
+`registerAttr`（登记簿类型，选填透传，46/36 的必填联动由 front 按 baseData.accountScope 校验）；
+**平安两格维持 `ADAPTER_NOT_READY` 挡板不在组装范围**（组装即抛 `CAPABILITY_NOT_SUPPORTED`，
+此前"账户状态/余额不补组装格"的口径仅指平安挡板，中信两格按 2026-08-19 新规范补入）。
 
 ### 4.4 矩阵纪律
 
@@ -228,7 +233,7 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2；REFUND 原渠道要
   （同包独立银行组装类，package-private）；
 - 入口 `assemble()` 校验：capability 非空、platformCode 非空且能 `BankCode.fromCode`（不得 valueOf）映射，
   失败抛 `FrontException(INVALID_REQUEST / BANK_NOT_SUPPORTED)`，消息带完整路径（如 `pay.bankEAccountId不能为空`）；
-- 银行内部类按矩阵逐键组装，**能力映射：中信 6 交易 + 3 查询格（状态/平台明细/登记簿明细）、
+- 银行内部类按矩阵逐键组装，**能力映射：中信 6 交易 + 5 查询格（状态/余额/交易状态/平台明细/登记簿明细）、
   平安 6 交易 + 3 查询格（状态/24明细/25明细）（平安 REFUND 空实现仅生成可选 remark）**；
   矩阵外组合（中信 TRANSFER_AUTH/RESEND、平安 PLATFORM_*、平安账户状态/余额 2 个查询（固定挡板，非组装范围））抛
   `CAPABILITY_NOT_SUPPORTED`；
@@ -304,7 +309,7 @@ public abstract class SpecialDataAssembleCheck<S> extends NodeComponent {
 
 | 文档 | 改动 |
 |---|---|
-| 13-front-api-external | 登记组装工具类（§：FrontSpecialDataAssembler，含标准结构与矩阵引用） |
+| 20-catering-front交易接口对接手册 / 21-catering-front交易查询接口对接手册 | 登记 `FrontSpecialDataAssembler` 标准结构、组装矩阵及上游调用方式 |
 | 05-front代码开发约束 | 新增组装工具类章节：标准结构入参、矩阵引用、"交易 API 仍收协议键"的双层口径；**"specialData 必须银行协议原始名"条款保留不变**（交易请求仍协议键） |
 | 06/07/08 字段契约 | 头部加注：业务方可经组装工具类获取下述协议键，标准结构与矩阵见 15 号 spec |
 | WIKI-START.md | 已注册 15/16 号文档 |
