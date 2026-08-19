@@ -50,18 +50,22 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 
 ## 4. UI 使用说明
 
-### 4.1 核心交互流程（2026-08-17 起为两步调用，模拟 consume 侧组装 check）
+### 4.1 核心交互流程（两步调用，模拟 consume 侧组装 check；2026-08-18 起页面隐藏参数表单）
 
 1. 每个 Tab 顶部选择**租户** → 联动加载该租户的可用账户列表
-2. 选择**账户** → 自动填入该 Tab 的**标准账户结构**字段（std-* 输入：银行电子账户id、
-   会员号、户名、卡要素），银行无关
-3. 按业务需要填写/修改其他字段（鉴权 auth、退款原交易日期、平台收付 contractId 等）
+2. 选择**账户** → 标准账户结构（银行电子账户id、会员号、户名、卡要素）自动填充到**隐藏表单**
+   （std-* 输入保留为组装入参载体，页面不展示，银行无关）
+3. 交易类 Tab 页面**不再展示默认参数表单**（公共 baseData 参数与标准账户结构均隐藏），
+   左侧仅保留租户、账户与执行按钮；鉴权 auth、退款原交易日期、平台收付 contractId 等参数
+   同样只在确认弹窗中可见/可改
 4. 点击执行 → **第一步**：前端把标准结构 POST 到
    `/api/test/front/assemble/special-data`，后端本地调用
    `FrontSpecialDataAssembler.assemble()` 返回**协议键明文 specialData**；
    组装失败（缺必填/银行不支持该能力）直接提示并终止，不发交易
-5. **第二步**：确认弹窗中部展示组装出的协议键 specialData、下部展示完整交易报文，
-   确认后发送交易请求（specialData 原样带入）
+5. **第二步**：确认弹窗展示——参数摘要行、组装出的协议键 specialData、
+   **完整交易请求报文（可编辑 JSON，默认参数自动带出，含全部字段与层级）**；
+   修改后点确认发送（未修改原样发送；报文非合法 JSON 或缺少 baseData 时回退原参数并提示）。
+   resendAuth 与其他交易 Tab 一致走确认弹窗
 6. 查询类 Tab 两步组装覆盖三个：**交易状态查询**（账户下拉→组装端点→{acctNo}/{mchntMbrId} 注入查询请求，
    frontSsn 输入平安必填、capability/transactionDate 字段已去 original 前缀）、**平台明细/登记簿明细**
    （2026-08-18 起：transactionDate/transactionType/accountType 经组装端点校验枚举后注入，
@@ -79,7 +83,9 @@ mvn spring-boot:run -pl catering-modules/catering-web-test
 ### 4.3 账户联动的标准结构字段（std-*）
 
 2026-08-17 起，交易 Tab 的 specialData 协议键输入框已替换为**标准账户结构**输入（15 号 spec §3），
-协议键由组装工具类按 (platformCode, capability) 矩阵生成，页面不再出现协议键名：
+协议键由组装工具类按 (platformCode, capability) 矩阵生成，页面不再出现协议键名。
+2026-08-18 起该组输入**随参数表单一起隐藏**（d-none），仍由账户下拉联动填充、仅作为组装入参载体；
+如需核对或调整，确认弹窗的完整请求报文（可编辑 JSON）中可见全部协议键：
 
 | Tab | 填充的组 | 来源字段 → 标准字段 |
 |---|---|---|
@@ -294,4 +300,5 @@ metadata 携带 `tenantId/clientId/platformCode/dataSourceId` 定位字段（无
 
 - 交易类 Tab 提交前弹窗二次确认（无安全开关/复选框）
 - 查询类 Tab 无安全限制，直接提交
-- 交易类 Tab 每次提交前重新生成 `bizTransactionId`/`bizRequestNo` 防止重复
+- 交易类 Tab 每次提交前重新生成 `bizTransactionId`/`bizRequestNo`/`bizOrderNo`/`bizSubOrderNo`
+  及 businessDate/businessTime（参数表单隐藏、无法手改，防止重复订单号触发 front 重复交易校验）
