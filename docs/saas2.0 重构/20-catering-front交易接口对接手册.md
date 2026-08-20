@@ -62,8 +62,8 @@ private final FrontTransApi frontTransApi;
 |---|---|---|---|
 | `tenantId` | String | 是 | 租户标识 |
 | `clientId` | String | 是 | 调用客户端标识 |
-| `platformCode` | String | 是 | `zxegj` 中信；`pajzb` 平安 |
-| `dataSourceId` | String | 是 | 分库编号，如 `2`；Front 渠道流水将路由到 `ds_2` |
+| `platformCode` | String | 否 | `zxegj` 中信；`pajzb` 平安。缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
+| `dataSourceId` | String | 否 | 分库编号，如 `2`；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填。显式传入优先于配置值 |
 
 正常 Feign Web 调用由 `catering-common-feign` 自动转发并注入到 `baseData`。异步线程或定时任务没有
 原请求上下文时，调用方必须显式建立正确的 RequestContext；不能只填 JSON 而遗漏请求头链路。
@@ -71,7 +71,7 @@ private final FrontTransApi frontTransApi;
 ### 2.3 实际对接顺序
 
 1. 确认租户已配置目标银行，并能提供正确 `platformCode`。
-2. 准备 `tenantId/clientId/platformCode/dataSourceId/storeId`。
+2. 最少准备 `tenantId/clientId/storeId`；`platformCode/dataSourceId` 可省略，Front 链路前置节点（`tenantBaseConfigResolve`）会从租户基础配置回填。
 3. 准备业务唯一号、主子订单号、金额和日期时间。
 4. 从账户/企业/绑卡等上游 check 结果取得标准账户要素。
 5. 每笔请求新建 `FrontSpecialDataAssembler` 并生成 `specialData`。
@@ -245,6 +245,37 @@ JSONObject specialData = assembler.assemble();
 
 中信成功时可能在 `data.specialData.USER_SSN` 返回银行侧流水。平安普通交易当前没有额外响应
 `specialData`；授权码接口除外。
+
+### 5.1.1 银行业务失败时 frontRespDesc 的取值（2026-08-20 起）
+
+钱包/银行业务失败（`frontRespCode != "200"`）时，应用服务会把 `frontRespDesc` 与顶层
+`R.msg` 覆写为银行原始错误描述原文（不转译、不拼接）。取值优先级：
+银行层 `sysRespDesc`（原文通常自带错误码，如 `[JU005]用户编号不存在`）>
+`sysRespCode` > 平台层 `errInfo` > `errCode`：
+
+```json
+{
+  "code": 500,
+  "msg": "[JU005]用户编号不存在",
+  "data": {
+    "frontRespCode": "F400004",
+    "frontRespDesc": "[JU005]用户编号不存在",
+    "frontSsn": "...",
+    "specialData": {}
+  }
+}
+```
+
+- `frontRespCode` 仍为 Front 统一码（如 `F400005` 钱包平台拒绝、`F400004` 银行拒绝），
+  与描述文本不再一一对应，判断成败必须用 `frontRespCode`/`R.code`；
+- 银行层失败取 `sysRespDesc`（原文自带 `[JU005]` 类错误码）；平台层失败取 `errInfo`；
+  描述缺失时退回对应错误码本身；
+- `specialData` 按约束只存放接口额外返回内容，不包含错误诊断字段（错误要素仅在
+  Front 进程内中转，覆写 `frontRespDesc` 后即移除）；
+- 渠道流水落库仍保存统一文案（如"钱包平台拒绝请求"），便于按 Front 错误码分类审计；
+  银行原始码保存在渠道表 `bank_resp_code/bank_resp_desc` 等明确列；
+- Front 内部业务失败（参数校验、路由、配置缺失）没有银行原始错误，`frontRespDesc`
+  保持 Front 统一文案或具体校验消息。
 
 ### 5.2 判断模板
 

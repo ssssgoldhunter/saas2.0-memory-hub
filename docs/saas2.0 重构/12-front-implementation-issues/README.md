@@ -4,7 +4,7 @@
 >
 > 建立时间：2026-08-07
 >
-> 最近核验：2026-08-19
+> 最近核验：2026-08-20
 >
 > 用途：其他 AI 每次只领取一个问题，按问题文件范围修改代码并同步引用文档。
 
@@ -54,7 +54,7 @@
 | [FRONT-P1-012](FRONT-P1-012-duplicate-transaction-atomicity.md) | P1 | 重复交易检查的实例边界 | CLOSED |
 | [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | CLOSED |
 | [FRONT-P1-014](FRONT-P1-014-pingan-6073-queryid-link.md) | P1 | 平安 6073 订单回查错用 bank_user_ssn | CLOSED |
-| [FRONT-P1-015](FRONT-P1-015-detail-query-total-page-failure.md) | P1 | 24/25 明细失败返回缺少 totalPage | FIXED_PENDING_REVIEW |
+| [FRONT-P1-015](FRONT-P1-015-detail-query-total-page-failure.md) | P1 | 24/25 明细失败返回缺少 totalPage | CLOSED |
 | [FRONT-P2-001](FRONT-P2-001-base-special-boundary.md) | P2 | baseData 与 specialData 字段边界未落实 | CLOSED |
 | [FRONT-P2-002](FRONT-P2-002-persistence-converter.md) | P2 | Handle 反射赋值违反对象转换约束 | CLOSED |
 | [FRONT-P2-003](FRONT-P2-003-resource-consistency.md) | P2 | LiteFlow 与 DDL 存在多份冲突资源 | CLOSED |
@@ -62,40 +62,35 @@
 | [FRONT-P2-005](FRONT-P2-005-route-capability-overcoupling.md) | P2 | 统一路由节点按 capability 猜测 Router 且重复预验证 | CLOSED |
 | [FRONT-P2-006](FRONT-P2-006-capability-dispatch-overcoupling.md) | P2 | 银行 + capability 未直接映射到能力 Handler | CLOSED |
 | [FRONT-P2-007](FRONT-P2-007-handler-fixed-value-consistency.md) | P2 | Handle 银行固定参数和公共常量口径混用 | CLOSED |
-| [FRONT-P2-008](FRONT-P2-008-detail-query-doc-contract-drift.md) | P2 | 24/25 明细查询联动文档仍有当前口径漂移 | OPEN |
+| [FRONT-P2-008](FRONT-P2-008-detail-query-doc-contract-drift.md) | P2 | 24/25 明细查询联动文档仍有当前口径漂移 | CLOSED |
 | [FRONT-P2-009](FRONT-P2-009-detail-query-legacy-dto-residual.md) | P2 | 24/25 明细旧 DTO 在 ContractKeys 注释残留 | CLOSED |
 
-当前 P0/P1/P2：`25 CLOSED + 1 FIXED_PENDING_REVIEW（P1-015）+ 2 OPEN（P2-008、P2-008 复核中）`；
-独立 TODO-002 保持 `OPEN`（2026-08-19 用户 review 中，修复未提交）。
+当前 P0/P1/P2 共 28 项全部 `CLOSED`（P1-015、P2-008 已于 2026-08-20 经用户确认关闭）；
+独立 TODO-002 保持 `CLOSED`（2026-08-20 用户 review 确认，修复代码已在工作区完成）。
 
 ## 当前状态摘要
 
-当前24/25明细任务有1个待确认项 + 1个重新打开项；平安退款另有独立 TODO-002：
+全部 P0/P1/P2 功能 Issue 与独立 TODO-002 均已关闭：
 
-1. `FRONT-P1-015`（FIXED_PENDING_REVIEW）：中信非法 `TOTAL_PAGE` 和 web-test Feign
-   失败分页壳均已静态收口，等待用户确认。
-2. `FRONT-P2-008`（OPEN，第八轮重新打开）：13号 §5.4/§5.5 与 FrontQueryApi 注释的
-   `pageNo/pageSize` 必填语义、`accountType` 选填口径已按用户第八轮反馈修复，等待用户确认。
-3. `TODO-002`（OPEN）：平安退款修复已在工作区完成、未提交，等待用户 review；该任务独立于24/25明细验收结论。
+1. `FRONT-P1-015`（CLOSED，2026-08-20）：中信非法 `TOTAL_PAGE` 收口为失败分页、
+   web-test Feign 失败分页壳补齐 `totalPage=0`，用户确认关闭。
+2. `FRONT-P2-008`（CLOSED，2026-08-20）：第八轮 `pageNo/pageSize` 选填、
+   `accountType` 选填（仅中信生效）口径修复，用户确认关闭。
+3. `TODO-002`（CLOSED，2026-08-20）：平安退款原渠道查询、协议映射、INIT 落库、
+   单实例并发查重与 DDL 口径，用户 review 确认关闭。
 
-其余 P0/P1/P2 共 25 项已关闭。
 平安账户状态/余额已按用户裁决固定保留挡板，不再作为待解决项；report 跨实例补查
-已按用户裁决暂缓（`DEFERRED`）；平安退款主链路修复见
-[TODO-002 平安退款边界与协议字段](TODO-002-pingan-refund-boundary.md) 和
-[13-front后续待办](../13-front后续待办.md)。
+已按用户裁决暂缓（`DEFERRED`）。
 
-### 当前仍需处理（2026-08-19）
+### 当前仍需处理
 
-| 类型 | 对应文档 | 还需处理 |
+| 类型 | 对应文档 | 说明 |
 |---|---|---|
-| 验收确认 | [FRONT-P1-015](FRONT-P1-015-detail-query-total-page-failure.md) | 已完成静态修复，等待用户确认；不得重复改动 |
-| 验收确认 | [FRONT-P2-008](FRONT-P2-008-detail-query-doc-contract-drift.md) | 第八轮修复已完成（pageNo/pageSize 选填、accountType 选填），等待用户确认后关闭 |
 | 终验任务 | [18 号 plan T11](../18-明细查询对外契约与平安启用-plan.md) | 保持未勾选；只有用户明确授权时才执行当次编译和最终自检 |
 
-平安账户状态/余额挡板、report 跨实例查重和明文凭据治理分别属于已裁决不处理、`DEFERRED`
-或安全治理范围，不列为当前需要修复的功能问题。
+全部功能 Issue 已关闭；上表仅为按用户授权才会执行的终验编译项，不属于缺陷。
 
-## 本轮用户确认关闭（9 项）
+## 历史用户确认关闭（9 项，2026-08-19）
 
 1. `FRONT-P0-002`：确认 Front 接收 header 后注入四字段，以及 Front 调用 Feign API 时转发四字段。
 2. `FRONT-P1-004`：确认中信转账/消费/退款按业务主子流水查询，提现按业务主流水查询。
@@ -112,6 +107,17 @@
 `FRONT-P1-005` 的代码、字段契约和目标 DDL 已收口，用户已确认已有物理库完成
 `09C-citic-refund-legacy-columns-nullable.sql`，该问题已关闭。
 
+## 2026-08-20 用户确认关闭（3 项）
+
+1. `FRONT-P1-015`：确认中信非法 `TOTAL_PAGE` 收口为失败分页、web-test Feign 失败
+   分页壳补齐 `totalPage=0`。
+2. `FRONT-P2-008`：确认第八轮 `pageNo/pageSize` 选填、`accountType` 选填
+   （仅中信生效、平安 6073 忽略）口径修复。
+3. `TODO-002`：用户 review 确认平安退款修复（原渠道两表定位、`oriTransSsn=frontSsn`、
+   INIT 落库、单实例并发查重、DDL 口径）验收通过。
+
+以上 3 项均已 `CLOSED`。
+
 ## 延后安全事项
 
 | ID | 事项 | 状态 |
@@ -121,17 +127,14 @@
 ## 本轮核验边界
 
 - 状态依据代码分支 `limeng_front@d3ec00af` 以及代码/记忆体当前工作区静态证据；
-- P1-006、P1-011、P1-013 已由用户确认关闭；
-- `FRONT-P1-012` 继续保持 `CLOSED`；两家交易 Handle 已登记 report 汇总四实例后的第二次重复查询 TODO；
+- 2026-08-20 用户确认 P1-015、P2-008、TODO-002 关闭；P0/P1/P2 28 项全部 `CLOSED`；
+- 两家交易 Handle 已登记 report 汇总四实例后的第二次重复查询 TODO（跨实例补查 `DEFERRED`）；
 - 本轮没有新增测试、没有运行测试、没有执行编译，不用历史"编译通过"替代当前验收；
 - 平安 5 个查询中 3 个已启用、2 个按用户裁决保留挡板，TODO-001 已关闭；
-  平安退款 TODO-002 修复已完成、未提交，状态保持 `OPEN` 等待用户 review；report 跨实例补查已暂缓，
-  统一由 `13-front后续待办.md` 跟踪；
+  report 跨实例补查已暂缓，统一由 `13-front后续待办.md` 跟踪；
 - 明文凭据保持独立安全事项，凭据轮换、Git 历史重写和强制推送必须另行授权。
 
 ## 完成度口径
 
-- 当前 P0/P1/P2 中有 1 个 `FIXED_PENDING_REVIEW`（FRONT-P1-015）和 1 个 `OPEN`（FRONT-P2-008），
-  其余 25 项已关闭；
-  TODO-002 另为独立 `OPEN`（修复未提交），不计入24/25明细任务完成度。
+- 当前 P0/P1/P2 28 项全部 `CLOSED`；独立 TODO-001/TODO-002 均已 `CLOSED`；
 - 后续待办和 `DEFERRED` 安全事项不计入功能 Issue 完成度，但上线计划必须单独跟踪。

@@ -253,23 +253,29 @@ catering-front (实际业务服务)
 ## 7. 后台实现
 
 - `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi` 和 `FrontTransApi`，透传请求
+- `WebTestRawDecoder.java` / `WebTestFeignConfig.java`（config 包，2026-08-20 增）：
+  透传解码器及注册配置，见 §7.1
 - `TenantTestProperties.java`：`@ConfigurationProperties` 绑定 YAML 测试数据
 - `CateringWebTestApplication.java`：入口，`@EnableFeignClients` 扫描 `catering-api-front`
 
-### 7.1 业务失败响应的透出（2026-08-14 修复）
+### 7.1 业务失败响应的完整透出（2026-08-20 改为透传解码）
 
-Feign 调用 `catering-front` 时，若 front 正常返回但业务失败（HTTP 200 + `R.code != 200`，
-如银行拒绝交易），公共 `FeignJsonDecoder` 会按设计把该响应转为 `ServiceException`，
-Feign 框架再包装为 `DecodeException` 抛出。
+web-test 配置了专用透传解码器，远程业务失败不再转异常、响应体完整到达浏览器 UI：
 
-`FrontTestController.callFeign/callFeignTable` 捕获 `FeignException`，沿 cause 链提取
-`ServiceException` 的真实消息（如"银行拒绝交易"）返回给浏览器 UI：
+- `config/WebTestRawDecoder.java`：不做 `R.code != 200` 业务失败检测，只保留 text/plain
+  头修正和空响应处理，其余直接委托 Spring MVC 解码；
+- `config/WebTestFeignConfig.java`：以 `@Primary` 注册 `webTestRawDecoder`；
+- `application.yml`：`feign.client.config.default.decoder: webTestRawDecoder` 对全部
+  Feign 客户端生效。
 
-- `R` 类型接口：`R.fail(真实消息)`；
-- `TableDataInfo` 分页接口：`code=500 + msg=真实消息` 的错误对象。
+生效后行为：front 返回 HTTP 200 + `R.code != 200`（如银行拒绝交易）或分页
+`TableDataInfo` 失败码时，`FrontTestController.callFeign/callFeignTable` 走正常返回分支，
+浏览器应答区完整展示 `code/msg/data`（含 `data.frontRespCode/frontRespDesc/specialData`）。
+`catch (FeignException)` 分支保留，仅兜底 HTTP 层错误（连接拒绝、5xx 等）。
 
-不捕获时异常会落到公共 `GlobalExceptionHandler` 的 `RuntimeException` 兜底分支，
-被吞成 `发生未知异常，请联系管理员`，丢失真实业务失败原因，本修复即为解决该问题。
+历史说明（2026-08-14 修复，已被透传方案取代）：公共 `FeignJsonDecoder` 会把业务失败
+转成 `ServiceException` 并丢弃响应体，当时通过 `extractRemoteErrorMessage` 沿 cause 链
+提取真实消息返回 `R.fail(消息)`。该机制现仅存在于公共模块，web-test 已不再依赖。
 
 ### 7.2 结构化调用日志（2026-08-14 升级）
 

@@ -539,7 +539,9 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 分片键 `data_source_id` 自动路由。
 
 - **分片键**：`data_source_id`（每条渠道流水 SQL 自带，由业务请求方在 `baseData.dataSourceId`
-  传入，经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到 Entity 的 `data_source_id` 列）；
+  传入——缺失时链路前置节点 `tenantBaseConfigResolve` 用 tenantId 从 `tenant_base_config`
+  缺省回填，显式传入优先——经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到
+  Entity 的 `data_source_id` 列）；
 - **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
   1. 从 SQL 的 `data_source_id` 值拿到数据源编号（如 `"2"`）；
   2. `formatDataSourceName("2")` → `"ds_2"`，返回给 ShardingSphere 路由；
@@ -548,7 +550,7 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config-${spring.profiles.active:dev}.yaml`；
 - **新增库**：在 `shardingsphere-config-*.yaml` 加 `ds_3` 数据源，业务请求方传 `data_source_id=3`
   即可路由到新库，不改代码；
-- **失败策略**：`data_source_id` 为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
+- **失败策略**：`tenantBaseConfigResolve` 回填后 `data_source_id` 仍为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
   系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源或广播到其他租户数据库；
 - **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
   SQL 的 `data_source_id` 自动触发分片路由；
@@ -1315,6 +1317,9 @@ ContractKeys 或补写未启用分支。
 ### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
 
 - [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
+- [ ] platformCode/dataSourceId 缺失时由 catering-front 链路节点 `tenantBaseConfigResolve`
+      用 tenantId 从 `tenant_base_config` 缺省回填（2026-08-20 起，调用方最少只需传
+      tenantId + clientId）；显式传入优先，回填查询失败不中断链路；
 - [ ] `FeignRequestInterceptor`（common-feign 发送端）逐个解析 4 个值：header 优先，
       header 缺失时从 `RequestContext` 补齐；非 Web/Feign 异步线程不得因没有
       `HttpServletRequest` 就提前返回；

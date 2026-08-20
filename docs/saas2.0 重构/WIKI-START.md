@@ -186,10 +186,14 @@ codegraph status               # 索引状态
 - ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
   `TenantDataSourceShardingAlgorithm` 直接把 `data_source_id` 的值拼成 `ds_x` 路由（不查配置中心）；
   `data_source_id` 由业务请求方在 `baseData` 传入，请求头同名字段用于跨服务透传与落库记录；
-  若 `data_source_id` 缺失、为空或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
+  `data_source_id` 缺失时先由链路前置节点 `tenantBaseConfigResolve` 从
+  `tenant_base_config` 回填（2026-08-20 起，调用方最少只需传 tenantId + clientId）；
+  回填后仍为空、或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
   禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
-- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入：
+- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；
+  其中 platformCode/dataSourceId 缺失时由 `tenantBaseConfigResolve` 节点用 tenantId
+  从 `tenant_base_config` 缺省回填（显式传入优先）：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
   `BaseDataRequestBodyAdvice`（反序列化后填充到 `FrontRequest<T>.baseData`），Application Service 零改动；
 - 交易发送前执行重复交易校验：在当前银行业务表内按
@@ -200,32 +204,23 @@ codegraph status               # 索引状态
 
 当前完成状态只以 [12-front-implementation-issues/README.md](12-front-implementation-issues/README.md)
 及各问题子文件为准；平安延后工作只记录在 [13-front后续待办](13-front后续待办.md)，不作为 Issue。
-本页不再复制会漂移的“未完成”明细。领取任务前必须重新核对当前代码：
+本页不再复制会漂移的"未完成"明细。领取任务前必须重新核对当前代码：
 
 - `OPEN`：当前代码仍有未满足的验收项，可按清单顺序领取；
 - `FIXED_PENDING_REVIEW`：已有静态修复证据，只等待用户确认，不得重复修改；
 - `CLOSED`：用户已确认，不得根据历史文档重新实现；
 - `DEFERRED`：安全或外部治理事项，必须另行授权。
 
-当前24/25明细任务有2个 `FIXED_PENDING_REVIEW` Issue，已有静态修复证据，不得重复修改：
-
-1. [FRONT-P1-015](12-front-implementation-issues/FRONT-P1-015-detail-query-total-page-failure.md)：
-   中信非法 `TOTAL_PAGE` 与 web-test Feign失败分页壳已收口，等待用户确认。
-2. [FRONT-P2-008](12-front-implementation-issues/FRONT-P2-008-detail-query-doc-contract-drift.md)：
-   13/16号最后两处对外枚举、必填性和6073关联口径已收口，等待用户确认。
-
-[FRONT-P2-009](12-front-implementation-issues/FRONT-P2-009-detail-query-legacy-dto-residual.md) 的旧DTO和ContractKeys
-注释已完成静态验收并关闭。
-
-[FRONT-P1-014](12-front-implementation-issues/FRONT-P1-014-pingan-6073-queryid-link.md) 已经静态复核并由用户确认关闭。
+P0/P1/P2 共 28 项功能 Issue 与独立 TODO-002 已全部 `CLOSED`（2026-08-20 用户确认
+P1-015、P2-008、TODO-002 关闭；此前 25 项已于 2026-08-19 确认）。当前无 `OPEN`
+功能 Issue。
 
 平安账户状态/余额 2 个查询已按用户裁决固定保留 `ADAPTER_NOT_READY` 挡板，TODO-001 已关闭，
-不得主动领取；平安退款 TODO-002 的渠道查询、`oriTransSsn=原记录.frontSsn`、校验、INIT、
-单实例并发查重和 DDL 口径已完成静态验收，并于 2026-08-19 经用户确认关闭；
+不得主动领取；平安退款 TODO-002 已于 2026-08-20 经用户 review 确认关闭；
 report 跨实例重复交易补查已按用户裁决暂缓，
 未经新的明确要求不得开发；
 明文凭据轮换和 Git 历史清理由独立安全事项跟踪。
-任何历史文档中的“未实现”“待改”“编译通过”均不是当前状态证据。
+任何历史文档中的"未实现""待改""编译通过"均不是当前状态证据。
 
 ## 5. 固定的数据流
 

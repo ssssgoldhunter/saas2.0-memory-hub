@@ -194,17 +194,23 @@ FeignRequestInterceptor
 
 ```text
 交易：frontRequestValidate
+   → tenantBaseConfigResolve
    → frontTransactionRoute
    → bankHandleContextPrepare
    → frontTransactionDispatch
    → frontResponseNormalize
 
 查询：frontRequestValidate
+   → tenantBaseConfigResolve
    → frontQueryRoute
    → bankHandleContextPrepare
    → frontQueryDispatch
    → frontResponseNormalize
 ```
+
+`tenantBaseConfigResolve`（2026-08-20 增）是租户基础信息缺省回填节点：baseData 缺
+`platformCode` 或 `dataSourceId` 时用 tenantId 从 `tenant_base_config` 取值回填，
+调用方最少只需传 `tenantId + clientId`；显式传入优先，配置查询失败不中断链路。
 
 关键纪律：
 

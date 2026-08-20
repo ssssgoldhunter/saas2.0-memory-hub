@@ -56,8 +56,8 @@ private final FrontQueryApi frontQueryApi;
 |---|---|---|---|
 | `tenantId` | String | 是 | 租户标识，由 Header/Feign 上下文注入 |
 | `clientId` | String | 是 | 客户端标识，由 Header/Feign 上下文注入 |
-| `platformCode` | String | 是 | `zxegj` / `pajzb`，由 Header/Feign 上下文注入 |
-| `dataSourceId` | String | 是 | 数据源编号；涉及平安本地渠道表回查时决定分库 |
+| `platformCode` | String | 否 | `zxegj` / `pajzb`，由 Header/Feign 上下文注入；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
+| `dataSourceId` | String | 否 | 数据源编号；涉及平安本地渠道表回查时决定分库。缺失时从 `tenant_base_config` 回填，显式传入优先 |
 | `storeId` | String | 是 | 发起本次查询的业务门店 ID |
 
 ### 2.3 查询对接步骤
@@ -95,6 +95,25 @@ private final FrontQueryApi frontQueryApi;
 | `data.frontRespCode` | 必须为字符串 `"200"` |
 | 具体业务字段 | 再按接口语义判断，例如交易状态 `S/P/F/null` |
 
+银行业务失败示例（2026-08-20 起）：钱包/银行拒绝时 `frontRespDesc` 与 `R.msg` 覆写为
+银行原始错误描述原文（不转译、不拼接），优先级 `sysRespDesc` > `sysRespCode` >
+`errInfo` > `errCode`；`frontRespCode` 仍为 Front 统一码，判断成败必须用它而非描述
+文本。`specialData` 按约束只存放接口额外返回内容（如成功时的 `queryId`），不含错误
+诊断字段；Front 内部失败（参数校验/路由/配置）保持统一文案或校验消息。
+
+```json
+{
+  "code": 500,
+  "msg": "[JU005]用户编号不存在",
+  "data": {
+    "frontRespCode": "F400004",
+    "frontRespDesc": "[JU005]用户编号不存在",
+    "accountId": "J04069400000302",
+    "specialData": {}
+  }
+}
+```
+
 ### 3.2 明细查询：`TableDataInfo<T>`
 
 ```json
@@ -114,7 +133,7 @@ private final FrontQueryApi frontQueryApi;
 | `totalPage` | Long | `0` | 总页数；无记录可为 0 |
 | `rows` | `List<T>` | `[]` | 默认空集合，不返回 null |
 | `code` | int | `500` | `200` 成功，`500` 查询失败 |
-| `msg` | String | 安全失败说明 | 不包含银行敏感报文 |
+| `msg` | String | 安全失败说明 | 银行业务失败时直接为银行原始错误描述原文（如 `[JU005]用户编号不存在`），不拼接 Front 文案；无银行响应要素时为 `查询失败` |
 | `extraData` | Map | 通常 null | 当前 Front 明细接口未使用 |
 
 分页接口不返回 `data` 字段，也不包 `R`。

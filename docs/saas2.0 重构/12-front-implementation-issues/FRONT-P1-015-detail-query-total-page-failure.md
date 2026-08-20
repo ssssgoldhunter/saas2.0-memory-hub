@@ -1,8 +1,8 @@
 # FRONT-P1-015 24/25 明细失败返回缺少 totalPage
 
-- 状态：FIXED_PENDING_REVIEW
+- 状态：CLOSED（2026-08-20 用户确认关闭）
 - 优先级：P1
-- 核验时间：2026-08-19
+- 核验时间：2026-08-20
 - 修复结果：中信非法 `TOTAL_PAGE` 已统一转为 `WALLET_RESPONSE_INVALID`；web-test 的
   Feign 异常兜底已固定返回 `total=0,totalPage=0,rows=[]`。
 
