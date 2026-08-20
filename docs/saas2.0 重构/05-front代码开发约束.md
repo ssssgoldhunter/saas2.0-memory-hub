@@ -101,7 +101,9 @@
 - 钱包发送共用网关（`channel/gateway/BankWalletGateway` + `BankWalletSender`，2026-08-18 用户裁决
   公共化）：全部银行钱包调用统一入口，两个 HttpClient 收编为银行 sender；**新银行接口（账户类/
   划付等）一律走网关五步 SOP（ContractKeys→常量键报文→gateway.post→ResponseChecker→capability
-  注册），禁止新建 InterService 式每银行方法封装类**；
+  注册），禁止新建 InterService 式每银行方法封装类**。HttpClient 收尾纪律（2026-08-20）：
+  响应体完整读取并记录日志后，收尾异常（如资源关闭）不得丢弃银行结果；BOM 去除后再解析；
+  `JSONException` 独立映射 `F400002`；
 - `FrontExceptionHandler`；
 - 单元测试和集成测试。
 

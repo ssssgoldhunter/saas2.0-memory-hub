@@ -55,7 +55,7 @@ private final FrontQueryApi frontQueryApi;
 | 原始字段 | 类型 | 必填 | 注释 |
 |---|---|---|---|
 | `tenantId` | String | 是 | 租户标识，由 Header/Feign 上下文注入 |
-| `clientId` | String | 是 | 客户端标识，由 Header/Feign 上下文注入 |
+| `clientId` | String | 否 | 客户端标识，由 Header/Feign 上下文注入 缺失时 Front 从 `tenant_base_config` 回填 |
 | `platformCode` | String | 否 | `zxegj` / `pajzb`，由 Header/Feign 上下文注入；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
 | `dataSourceId` | String | 否 | 数据源编号；涉及平安本地渠道表回查时决定分库。缺失时从 `tenant_base_config` 回填，显式传入优先 |
 | `storeId` | String | 是 | 发起本次查询的业务门店 ID |

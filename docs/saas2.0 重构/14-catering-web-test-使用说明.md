@@ -189,9 +189,9 @@ mvn spring-boot:run -Dmaven.repo.local=/Users/limeng/shares/m2saas
 | Java 字段 | YAML key | 说明 | 来源 |
 |---|---|---|---|
 | `tenantId` | `tenant-id` | 租户ID | 配置系统 |
-| `clientId` | `client-id` | 客户端ID（四必要参数之一，请求缺失时 setupContext 自动补全） | 配置系统 |
-| `platformCode` | `platform-code` | 银行平台编码（缺失时自动补全） | 配置系统 |
-| `dataSourceId` | `data-source-id` | 数据源ID（四必要参数之一，缺失时自动补全） | 配置系统 |
+| `clientId` | `client-id` | 客户端ID（请求缺失时 setupContext 自动补全并随 header 发送） | 配置系统 |
+| `platformCode` | `platform-code` | 银行平台编码（2026-08-20 起只用于组装输入与日志对照，不进 header/baseData，front 从 tenant_base_config 回填） | 配置系统 |
+| `dataSourceId` | `data-source-id` | 数据源ID（同上，front 从 tenant_base_config 回填） | 配置系统 |
 | `selfDealType` | `self-deal-type` | 自营交易类型(中信) | zx_bank_config |
 | `selfFundType` | `self-fund-type` | 自营资金类型(中信) | zx_bank_config |
 | `defaultRole` | `default-role` | 默认角色(中信) | zx_bank_config |
@@ -252,6 +252,13 @@ catering-front (实际业务服务)
 
 ## 7. 后台实现
 
+> 最小调用方形态（2026-08-20 用户要求）：web-test 调 front 的 header 只封装
+> `tenantId + clientId` 两字段；请求体 baseData 只带 `tenantId/storeId` 等业务字段，
+> 不填 platformCode/dataSourceId——由 front 链路节点 `tenantBaseConfigResolve` 从
+> `tenant_base_config` 缺省回填（见 19 号手册）。specialData 组装仍按开发手册两步
+> 调用：先调 `/assemble/special-data`（本地 `FrontSpecialDataAssembler`，组装输入的
+> platformCode/dataSourceId 来自本地租户配置），确认后再发起交易/查询。
+
 - `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi` 和 `FrontTransApi`，透传请求
 - `WebTestRawDecoder.java` / `WebTestFeignConfig.java`（config 包，2026-08-20 增）：
   透传解码器及注册配置，见 §7.1
@@ -283,8 +290,13 @@ web-test 后端调用日志由 `[test] >>>/<<<` 文本样式升级为与 caterin
 event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），覆盖全部 13 个
 测试接口及 `/tenants`。每条日志是合法单行 JSON：
 
-- `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode/dataSourceId）；
+- `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode）；
+  dataSourceId 不进 RequestContext/header（2026-08-20 起），只保留在请求体 baseData——
+  front 分库路由读 body 值，避免 header 注入的配置值覆盖业务请求体的 dataSourceId；
 - `test_request_sending`：Feign 调用发送前，payload=完整请求体；
+- `test_feign_headers`（2026-08-20 增）：Feign 拦截器链末尾记录实际发送的完整 header
+  （tenantId/clientId/Same-Token/Authorization 等），payload=header 名到值的映射，
+  用于核对最小调用方形态（header 只封装 tenantId + clientId）；
 - `test_response_received`：调用成功返回，payload=完整响应体，带 `elapsedMs`；
 - `test_request_failed`：远程失败，payload=`{exceptionType,message}`，带 `elapsedMs`，保留完整堆栈；
 - `test_tenants_loaded`：租户列表加载；

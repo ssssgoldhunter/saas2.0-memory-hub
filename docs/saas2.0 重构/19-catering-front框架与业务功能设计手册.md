@@ -208,9 +208,12 @@ FeignRequestInterceptor
    → frontResponseNormalize
 ```
 
-`tenantBaseConfigResolve`（2026-08-20 增）是租户基础信息缺省回填节点：baseData 缺
-`platformCode` 或 `dataSourceId` 时用 tenantId 从 `tenant_base_config` 取值回填，
-调用方最少只需传 `tenantId + clientId`；显式传入优先，配置查询失败不中断链路。
+`tenantBaseConfigResolve`（2026-08-20 增）是租户基础信息获取与缺省回填节点：每个
+front api 请求都用 tenantId 从 `tenant_base_config` 一次查询取出
+`clientId/platformCode/dataSourceId/supportBankConfig` 写入 Slot，并回填 baseData
+缺失的 `clientId/platformCode/dataSourceId`（调用方最少只需传 tenantId；
+显式传入优先）。`bankHandleContextPrepare` 加载银行账户配置时复用 Slot 中的
+`supportBankConfig`，不再重复查询 `tenant_base_config`。
 
 关键纪律：
 
@@ -317,6 +320,14 @@ API、Controller、Application Service 三层签名必须一致；Controller 只
 | `F400003` | 钱包响应格式错误 |
 | `F400004` | 银行拒绝交易 |
 | `F400005` | 钱包平台拒绝请求 |
+
+钱包 HttpClient 纪律（2026-08-20 起，中信/平安对称）：响应体完整读取并记录
+`wallet_response_received` 日志后，资源关闭等收尾异常不得丢弃银行结果（仅告警，
+继续解析返回）；响应体开头 BOM 去除后再解析；`JSONObject.parse` 独立捕获
+`JSONException` 映射 `F400002`。银行业务失败时 `frontRespDesc`/`R.msg` 覆写为银行
+原始错误描述原文（`sysRespDesc` > `sysRespCode` > `errInfo` > `errCode`，
+如 `[JU005]用户编号不存在`），分页失败 `msg` 同规则；`frontRespCode` 保持 Front
+统一码。
 | `F900001` | Front 内部异常 |
 
 原始 `errCode/sysRespCode` 不能直接作为 Front 错误码。

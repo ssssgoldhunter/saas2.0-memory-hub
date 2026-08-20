@@ -191,9 +191,10 @@ codegraph status               # 索引状态
   回填后仍为空、或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
   禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
-- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；
-  其中 platformCode/dataSourceId 缺失时由 `tenantBaseConfigResolve` 节点用 tenantId
-  从 `tenant_base_config` 缺省回填（显式传入优先）：
+- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；每个请求由
+  `tenantBaseConfigResolve` 节点用 tenantId 从 `tenant_base_config` 一次查询取出
+  clientId/platformCode/dataSourceId/supportBankConfig，缺省回填前三者（显式传入优先，
+  调用方最少只需传 tenantId），银行配置加载复用 supportBankConfig 免二次查询：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
   `BaseDataRequestBodyAdvice`（反序列化后填充到 `FrontRequest<T>.baseData`），Application Service 零改动；
 - 交易发送前执行重复交易校验：在当前银行业务表内按
