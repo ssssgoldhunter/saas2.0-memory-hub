@@ -131,6 +131,16 @@ codegraph status               # 索引状态
     原对象迁移对照）与平安明细启用（6048/6050/6073）的契约，含用户九条裁决；实施前必须完整阅读。
 24. [18-明细查询对外契约与平安启用-plan](18-明细查询对外契约与平安启用-plan.md)：17 号 spec 的
     分阶段执行计划与任务清单（T1-T11）。
+25. [22-lsym-pa授权转账原始流程](22-lsym-pa授权转账原始流程.md)：lsym 平安授权转账
+    （transferAuth/resendTransferAuthCode）两阶段业务流程基线（front Handle + consume 编排）。
+26. [23-lsym-pa授权转账原始功能字段](23-lsym-pa授权转账原始功能字段.md)：同两接口的 lsym
+    字段级输入/银行报文/返回映射基线。
+27. [24-平安授权转账迁移改造方案](24-平安授权转账迁移改造方案.md)：SaaS 现状对照、差异核对项
+    （receiveMobile 加密口径、验证码申请 tranType）与 consume 侧对接方案。
+28. [25-平安授权转账接口改造-spec](25-平安授权转账接口改造-spec.md)：两接口对外契约
+    定稿（语义键 authType/authOrderNo/authCode、payMemberCode、R<FrontTransResult> 公用）。
+29. [26-平安授权转账接口改造-plan](26-平安授权转账接口改造-plan.md)：25 号 spec 的分阶段
+    执行计划（T1-T18、波及文件总表、风险与回退）。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
