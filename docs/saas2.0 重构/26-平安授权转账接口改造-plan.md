@@ -1,6 +1,7 @@
 # 平安授权转账接口改造 plan（25 号 spec 执行计划）
 
-> 状态：pending（2026-08-21 建立待实施；任务领取顺序 T1→T6，一次改造不混入其他能力）
+> 状态：implemented（2026-08-21 建立；2026-08-21 按 T1→T16 全部执行完毕，待用户 review 确认后提交；
+> T17 编译待用户当次授权、T18 联调待环境就绪）
 >
 > 依据：25 号 spec（契约）、24 号方案（背景）、22/23 号（lsym 基线）
 >
@@ -30,61 +31,79 @@
 
 ### Phase 1 — api-front 契约层（T1）
 
-- [ ] T1 新增 `AuthType` 枚举（SMS/APP，字段级注释）
-- [ ] T2 `PingAnTransferContractKeys`：PAY_MEMBER_ID/REC_MEMBER_ID 更名
+- [x] T1 新增 `AuthType` 枚举（SMS/APP，字段级注释）
+- [x] T2 `PingAnTransferContractKeys`：PAY_MEMBER_ID/REC_MEMBER_ID 更名
       PAY_MEMBER_CODE/REC_MEMBER_CODE（保留旧常量删除，全仓引用同步更名，不留兼容别名）
-- [ ] T3 `PingAnTransferAuthContractKeys`：新增对外键 AUTH_ORDER_NO/AUTH_CODE/AUTH_TYPE、
+- [x] T3 `PingAnTransferAuthContractKeys`：新增对外键 AUTH_ORDER_NO/AUTH_CODE/AUTH_TYPE、
       会员键更名；协议键改注释标明"仅 Handle 内部 reserve 映射使用"
-- [ ] T4 `PingAnTransferAuthCodeContractKeys`：新增 AUTH_ORDER_NO/AUTH_TYPE（含
+- [x] T4 `PingAnTransferAuthCodeContractKeys`：新增 AUTH_ORDER_NO/AUTH_TYPE（含
       "smsIdx 解密后以 authOrderNo 对外"注释）
-- [ ] T5 组装器：`FrontSpecialDataAssembler` auth 结构加 authType（必填校验 SMS）；
+- [x] T5 组装器：`FrontSpecialDataAssembler` auth 结构加 authType（必填校验 SMS）；
       `PingAnSpecialDataAssembler.transferAuth()` 输出语义键；
       `transferAuthCodeResend()` 输入校验 authType、输出 payMemberCode 等语义键
-- [ ] T6 `FrontTransApi` 签名 + 删除 `FrontTransferAuthCodeResult`
+- [x] T6 `FrontTransApi` 签名 + 删除 `FrontTransferAuthCodeResult`
 
 ### Phase 1A — 查重策略修正（T1A，并入 Handle 层一并实施）
 
-- [ ] T1A `checkDuplicateTransaction` 增加 capability 过滤参数（按本能力记录查重）；
+- [x] T1A `checkDuplicateTransaction` 增加 capability 过滤参数（按本能力记录查重）；
       `resendTransferAuthCode` 的 INIT 走免查重直插路径（豁免 DEDUP_LOCKS）；
       transfer/consume/transferAuth/withdraw 调用点传各自 capability
 
 ### Phase 2 — catering-front Handle 层（T2）
 
-- [ ] T7 `PingAnTransHandle.transferAuth`：specialData 读取键改 AUTH_ORDER_NO/AUTH_CODE/
+- [x] T7 `PingAnTransHandle.transferAuth`：specialData 读取键改 AUTH_ORDER_NO/AUTH_CODE/
       AUTH_TYPE + 会员键更名；reserve 写入用协议键常量；authType 非 SMS 抛 INVALID_REQUEST
-- [ ] T8 `PingAnTransHandle.resendTransferAuthCode`：返回类型 FrontTransResult（补
+- [x] T8 `PingAnTransHandle.resendTransferAuthCode`：返回类型 FrontTransResult（补
       frontStatus=SUCCESS/FAILED）；specialData 写 AUTH_TYPE/AUTH_ORDER_NO（smsIdx 解密值）/
       receiveMobile；错误原文中转逻辑保持
-- [ ] T9 `BankTransHandle` default 方法、`FrontTransApplicationService`、
+- [x] T9 `BankTransHandle` default 方法、`FrontTransApplicationService`、
       `FrontTransController` 泛型同步；transfer/consume/resend 全部 PAY_MEMBER_ID 引用点更名
-- [ ] T10 渠道表映射核对（**结论 2026-08-21：front 侧零 DDL**）：授权两能力落
-      front_pingan_transfer_transaction（capability 区分，WIKI §6 既有裁决，现有实现
-      已验证）；authOrderNo 不落渠道列（specialData 返回 + front_ssn/bank_query_id
-      已足够关联）
+- [x] T10 渠道表映射核对（**结论修订 2026-08-21 用户裁决：渠道表新增 auth_type 列，推翻「front 侧零 DDL」结论**）：
+      授权两能力落 front_pingan_transfer_transaction（capability 区分，WIKI §6 既有裁决）；
+      authOrderNo 不落渠道列（specialData 返回 + front_ssn/bank_query_id 已足够关联）；
+      **auth_type 列**（VARCHAR(8) DEFAULT NULL，capability 后）随本改造一并落地：
+      仅 TRANSFER_AUTH / TRANSFER_AUTH_CODE_RESEND 行 INIT 写入（缺省 SMS），
+      transfer/consume/withdraw 行 NULL，存量不回填、不加索引（详见补充任务 T10A）
 
 ### Phase 3 — web-test（T3）
 
-- [ ] T11 `FrontTestController` 泛型同步；app.js 授权码 Tab 展示 authOrderNo/authType
+- [x] T11 `FrontTestController` 泛型同步；app.js 授权码 Tab 展示 authOrderNo/authType
       （确认无 smsIdx 硬编码）
 
 ### Phase 4 — 文档同步（T4）
 
-- [ ] T12 07 号契约：两接口字段全面更新（语义键、AuthType、FrontTransResult、
+- [x] T12 07 号契约：两接口字段全面更新（语义键、AuthType、FrontTransResult、
       receiveMobile 口径 §4.1 默认值）
-- [ ] T13 15 号 spec：auth 标准结构加 authType；(bank × capability) 矩阵的
+- [x] T13 15 号 spec：auth 标准结构加 authType；(bank × capability) 矩阵的
       transferAuth/transferAuthCodeResend 输出键更新；16 号 plan 补实施记录
-- [ ] T14 20 号手册：§7/§8 请求返回示例更新（语义键 + authType + FrontTransResult）；
-      transfer/consume 的 specialData 会员键更名同步
-- [ ] T15 24 号标记已实施、25 号 spec 状态 confirmed→implemented、WIKI 必读清单补
+- [x] T14 20 号手册：§7/§8 请求返回示例更新（语义键 + authType + FrontTransResult）；
+      transfer/consume 的 specialData 会员键更名同步（含 06 号契约、20 号 §11.2 提现键、
+      代码仓 docs/20 副本）
+- [x] T15 24 号标记已实施、25 号 spec 状态 confirmed→implemented、WIKI 必读清单补
       25/26 号、`catering-front/README.md` 授权段落同步、14 号 web-test 说明（如涉及）
+
+### Phase 4A — 渠道表 auth_type 列（T10A，2026-08-21 用户裁决补充任务，推翻 T10 零 DDL）
+
+- [x] T10A-1 新增 `09D-pingan-auth-type.sql`（存量库 ALTER：`auth_type VARCHAR(8) DEFAULT NULL`
+      AFTER `capability`，注释与 09A/09B/09-final 一致）
+- [x] T10A-2 09A 字段目录 capability 行后插 auth_type 行（序号顺延重排，字段数 49→50）；
+      09B 与 09-final 建表 SQL 同步加列
+- [x] T10A-3 `FrontPinganTransferTransaction` Entity + VO 加 `authType`；Mapper XML
+      resultMap/Base_Column_List 同步
+- [x] T10A-4 `PingAnTransHandle` 两处 INIT 写入：`insertTransferInitRecord` 仅
+      capability==TRANSFER_AUTH 时 `setAuthType(requestAuthType(specialData))`（缺省 SMS）；
+      `insertTransferAuthCodeInitRecord` 恒 `setAuthType(requestAuthType(specialData))`；
+      transfer/consume/withdraw 行不写（NULL）；updateResponse 不回写；不加索引
+- [x] T10A-5 文档同步：25 号 spec 新增 §6、19 号手册 §9.1 补 auth_type（含 NULL 语义）；
+      20 号手册确认无需改动（对外契约不变，authType 仍只在 specialData）；15/16 号不受影响
 
 ### Phase 5 — 静态验收（T5）
 
-- [ ] T16 `git diff --check`；grep 残留：对外键不得再出现 payMemberId/recMemberId/
+- [x] T16 `git diff --check`；grep 残留：对外键不得再出现 payMemberId/recMemberId/
       messageOrderNo/messageCheckCode/smsIdx（协议键常量与 Handle 内部映射除外）；
       FrontTransferAuthCodeResult 无引用
-- [ ] T17 编译验证：**需用户当次明确授权**（front 链 5 模块）
-- [ ] T18 联调清单执行（25 号 §5 + 24 号 §5 六场景，环境就绪时）
+- [ ] T17 编译验证：**需用户当次明确授权**（front 链 5 模块）——未授权，未执行
+- [ ] T18 联调清单执行（25 号 §5 + 24 号 §5 六场景，环境就绪时）——环境未就绪，未执行
 
 ## 附：consume 侧表设计（本次 front 改造不含，consume 对接时实施）
 

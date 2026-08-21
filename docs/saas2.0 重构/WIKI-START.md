@@ -163,7 +163,8 @@ codegraph status               # 索引状态
 - 银行账户配置固定为两次配置接口查询：先用 `support_bank_config` 动态解析模板 key，再在当前
   `tenantId` 上下文中用该 key 查询用户银行配置；`configVersion/config_version` 已废弃且禁止恢复；
 - transfer/consume 公共金额、收付款会员字段，两家银行字段常量和原始响应码常量；
-- 平安 transferAuth/授权码发送重发的基础对象、专用结果、字段常量和明确映射契约；
+- 平安 transferAuth/授权码发送重发的基础对象、对外语义键（authType/authOrderNo/authCode/
+  payMemberCode/recMemberCode，2026-08-21 起）、公用 `R<FrontTransResult>` 出参与明确映射契约；
 - 中信、平安 withdraw/refund 的请求对象和字段常量；中信平台收付款字段常量；
 - 中信平台交易资金账户明细固定 `bizFunc=25/chnlNo=0010`，登记簿交易明细固定
   `bizFunc=24/chnlNo=0010`，两个查询的 specialData Key、交易类型、账户类型和响应字段常量；

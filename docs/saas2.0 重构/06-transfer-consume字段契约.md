@@ -172,7 +172,7 @@ errCode == D5000000
 |---|---|---|
 | `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
 | `mchntId` | 租户银行通用配置 | 接入方编号 |
-| `mchntMbrId` | `specialData.outAcctId` | 当前会员间交易的付款方商户会员编号 |
+| `mchntMbrId` | `specialData.payMemberCode` | 当前会员间交易的付款方商户会员编号（对外语义键，更名自 outAcctId，2026-08-21） |
 | `transTime` | 平安 Handle | 每次请求生成，格式按协议 |
 | `transSsn` | 平安 Handle | 按平安规则生成、落渠道交易表并回传 `frontSsn` |
 | `bizFunc` | Handle 常量 `01` | 禁止业务系统覆盖 |
@@ -192,9 +192,9 @@ errCode == D5000000
 | `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务系统覆盖 |
 | `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，进入请求前加密，禁止记录明文 |
 | `functionFlag` | 平安 Handle 场景策略 | lsym 生产代码：transfer=`9`；consume 默认/`0109`=`9`；特殊 `0107`=`7` |
-| `outAcctId` | `specialData.outAcctId` | 转出方商户会员编号 |
+| `outAcctId` | `specialData.payMemberCode` | 转出方商户会员编号（reserve 协议键；来源为对外语义键 payMemberCode，2026-08-21 更名） |
 | `outAcctName` | `specialData.outAcctName` | 转出方户名，按协议加密 |
-| `inAcctId` | `specialData.inAcctId` | 转入方商户会员编号 |
+| `inAcctId` | `specialData.recMemberCode` | 转入方商户会员编号（reserve 协议键；来源为对外语义键 recMemberCode，2026-08-21 更名） |
 | `inAcctName` | `specialData.inAcctName` | 转入方户名，按协议加密 |
 | `transType` | Handle 常量 `01` | 普通交易 |
 | `orderId` | `baseData.bizSubOrderNo` | 订单号，选填，最大 30；有值时按业务规则保证唯一 |

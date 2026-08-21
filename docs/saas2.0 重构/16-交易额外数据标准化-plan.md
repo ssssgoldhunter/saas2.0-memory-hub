@@ -151,3 +151,18 @@ front 服务零改动，不存在行为切换点。web-test 改造独立 revert�
   按 `tenantId + bank_query_id` 回查；`bank_user_ssn` 独立保存银行返回的用户流水，不参与6073回查。
   平安单笔状态查询使用原请求 `front_ssn → oriTransSsn`，两条链路不得互换；
 - 遗留（后续增强）：25 userName（6048）查表补全；中信 totalNum=TOTAL_PAGE×页大小估算联调后可改置空。
+
+## 收盘记录（2026-08-21，平安授权转账接口改造，25/26/27 号 spec/plan 执行）
+
+- 25 号 spec（语义键 + AuthType + 出参公用化 + §3A 查重）与 26 号 plan（T1-T16）已实施完毕，
+  代码仓 `limeng_front` 未提交（待用户 review 确认）；本文档随 15 号 spec 同步更新；
+- 组装器变更：`FrontSpecialDataAssembler.Auth` 增加 `authType`（AuthType 枚举，SMS 本期/APP 预留，
+  组装必填校验 SMS，非 SMS 拒绝 INVALID_REQUEST）；`PingAnSpecialDataAssembler.transferAuth()`
+  输出 9 个对外语义键（payMemberCode/recMemberCode/payAccountNo/recAccountNo/payName/recName/
+  authType/authOrderNo/authCode）；`transferAuthCodeResend()` 输出 3 个语义键（payMemberCode/
+  payAccountNo/recAccountNo），authType 仅组装入参校验、不进 wire；transfer/consume 会员键
+  `outAcctId/inAcctId → payMemberCode/recMemberCode`（不含兼容别名）；
+- 矩阵同步：15 号 §4.2 平安 TRANSFER/CONSUME/TRANSFER_AUTH/TRANSFER_AUTH_CODE_RESEND 四格已更新
+  （语义键 + Handle 内部协议键映射注记）；07 号契约已按 25 号重写；
+- web-test 组装两步调用已适配：transferAuth/resendAuth Tab 增加 authType 输入（默认 SMS），
+  组装入参 `auth.authType` 自动带出；resendAuth 响应展示 authOrderNo/authType（无 smsIdx 硬编码）。

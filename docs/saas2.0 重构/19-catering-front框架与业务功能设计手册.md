@@ -291,7 +291,7 @@ JSONObject response = walletGateway.post(
 | 类型 | 固定返回 |
 |---|---|
 | 交易 | `R<FrontTransResult>` |
-| 授权码发送/重发 | `R<FrontTransferAuthCodeResult>` |
+| 授权码发送/重发 | `R<FrontTransResult>`（2026-08-21 起公用，`FrontTransferAuthCodeResult` 已删除） |
 | 账户状态/余额/交易状态 | `R<具体结果>` |
 | 两类明细 | `TableDataInfo<具体行>`，不得再包 `R` |
 
@@ -344,6 +344,9 @@ API、Controller、Application Service 三层签名必须一致；Controller 只
 | 平安 | transfer、consume、refund、withdraw |
 
 平安 `TRANSFER_AUTH` 和 `TRANSFER_AUTH_CODE_RESEND` 共用平安转账表，通过 `capability` 区分。
+平安转账表另含 `auth_type` 列（2026-08-21 用户裁决新增，`VARCHAR(8) DEFAULT NULL`，位于
+`capability` 之后）：仅授权两能力行写入 AuthType 枚举名（SMS/APP，INIT 即定型、缺省 SMS），
+普通转账行与存量历史行为 NULL（NULL 即代表 SMS-only 历史时期）；不加索引。
 
 ### 9.2 生命周期
 

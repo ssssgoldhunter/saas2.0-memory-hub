@@ -100,7 +100,7 @@ public class FrontSpecialDataAssembler extends BaseRequest {
     private AccountInfo rec;
     private AccountInfo oriPay;                // 仅退款
     private AccountInfo oriRec;
-    private Auth auth;                         // 仅鉴权转账：{authOrderNo, authCode}
+    private Auth auth;                         // 仅鉴权转账：{authType, authOrderNo, authCode}（25 号 spec 增 authType）
     private String originalBusinessDate;       // 仅退款：原交易日期 yyyyMMdd
     private String contractId;                 // 仅平台收付，选填
 
@@ -117,7 +117,8 @@ public class FrontSpecialDataAssembler extends BaseRequest {
         public BankCard newBankCard();
     }
     @Data public static class BankCard { … }   // bankCardNo / cardHolderName（仅平安提现）
-    @Data public static class Auth { … }       // authOrderNo / authCode
+    @Data public static class Auth { … }       // authType（AuthType 枚举，SMS 本期/APP 预留，必填校验 SMS）
+                                               // / authOrderNo / authCode
 }
 
 // 同包独立银行组装类（package-private，实现 BankSpecialDataAssembler 接口，
@@ -176,23 +177,26 @@ class PingAnSpecialDataAssembler { … }   // 矩阵 §4.2；REFUND 原渠道要
 
 | 能力 | 标准结构/入参来源 | 目标协议键 | 加密 |
 |---|---|---|---|
-| TRANSFER / CONSUME (01) | pay.bankEMemberCode | `outAcctId`（交易时同时进顶层 mchntMbrId 与 reserve，由 Handle 既有逻辑处理） | 明文 |
+| TRANSFER / CONSUME (01) | pay.bankEMemberCode | `payMemberCode`（对外语义键，更名自 outAcctId；交易时同时进顶层 mchntMbrId 与 reserve outAcctId，由 Handle 既有逻辑处理） | 明文 |
 | | pay.bankEAccountId | `outAcctNo` | 🔒 |
 | | pay.bankAccountName | `outAcctName` | 🔒 |
 | | rec.bankEAccountId | `inAcctNo` | 🔒 |
 | | rec.bankAccountName | `inAcctName` | 🔒 |
-| | rec.bankEMemberCode | `inAcctId` | 明文 |
-| TRANSFER_AUTH (45) | pay.bankEMemberCode | `outMemberCode` | 明文 |
-| | pay.bankEAccountId | `outAcctNo` | 🔒 |
-| | pay.bankAccountName | `outSubAcctName` | 🔒 |
-| | rec.bankEAccountId | `inAcctNo` | 🔒 |
-| | rec.bankAccountName | `inSubAcctName` | 🔒 |
-| | rec.bankEMemberCode | `inMemberCode` | 明文 |
-| | auth.authOrderNo | `messageOrderNo` | 明文 |
-| | auth.authCode | `messageCheckCode` | 🔒 |
-| TRANSFER_AUTH_CODE_RESEND (26) | pay.bankEMemberCode | `outAcctId` | 明文 |
-| | pay.bankEAccountId | `acctNo` | 🔒 |
-| | rec.bankEAccountId | `intAcctNo`（协议原始拼写，**禁止**改成 inAcctNo） | 🔒 |
+| | rec.bankEMemberCode | `recMemberCode`（对外语义键，更名自 inAcctId） | 明文 |
+| TRANSFER_AUTH (45) | pay.bankEMemberCode | `payMemberCode`（对外语义键） | 明文 |
+| | pay.bankEAccountId | `payAccountNo`（对外语义键） | 🔒 |
+| | pay.bankAccountName | `payName`（对外语义键） | 🔒 |
+| | rec.bankEAccountId | `recAccountNo`（对外语义键） | 🔒 |
+| | rec.bankAccountName | `recName`（对外语义键） | 🔒 |
+| | rec.bankEMemberCode | `recMemberCode`（对外语义键） | 明文 |
+| | auth.authType | `authType`（对外语义键；SMS 本期/APP 预留，组装必填校验 SMS） | 明文（不上送银行） |
+| | auth.authOrderNo | `authOrderNo`（对外语义键；接口一返回原样回传） | 明文 |
+| | auth.authCode | `authCode`（对外语义键） | 🔒 |
+| | （Handle 内部映射，不进 wire） | outMemberCode/inMemberCode/outSubAcctName/inSubAcctName/messageOrderNo/messageCheckCode | — |
+| TRANSFER_AUTH_CODE_RESEND (26) | pay.bankEMemberCode | `payMemberCode`（对外语义键） | 明文 |
+| | pay.bankEAccountId | `payAccountNo`（对外语义键） | 🔒 |
+| | rec.bankEAccountId | `recAccountNo`（对外语义键） | 🔒 |
+| | auth.authType | 仅组装入参校验（SMS 必填，非 SMS 拒绝），**不进 wire specialData** | — |
 | WITHDRAW (01) | pay.bankEMemberCode | `outAcctId` | 明文 |
 | | pay.bankEAccountId | `acctNo` | 🔒 |
 | | pay.bankAccountName | `nameEnc`（客户户名） | 🔒 |

@@ -105,6 +105,7 @@ CREATE TABLE `front_pingan_transfer_transaction` (
   `store_id`                          VARCHAR(100)  NOT NULL                COMMENT '发起本次调用的业务门店 ID',
   `data_source_id`                    VARCHAR(30)   NOT NULL DEFAULT ''     COMMENT '数据源实例标识（如 ds_0/ds_2），记录数据所在库实例',
   `capability`                        VARCHAR(20)   NOT NULL                COMMENT '能力编码：TRANSFER、TRANSFER_AUTH 或 TRANSFER_AUTH_CODE_RESEND',
+  `auth_type`                         VARCHAR(8)    DEFAULT NULL            COMMENT '授权类型（AuthType枚举：SMS/APP；仅 TRANSFER_AUTH、TRANSFER_AUTH_CODE_RESEND 行写入，普通转账行与历史行为 NULL）',
   `front_ssn`                         VARCHAR(100)  NOT NULL                COMMENT 'Front 全局渠道流水号，同时作为本次银行请求 transSsn',
   `front_query_id`                    VARCHAR(100)  DEFAULT NULL            COMMENT '返回业务系统的 Front 查询标识',
   `biz_system_code`                   VARCHAR(100)  NOT NULL                COMMENT '来源业务系统编码',

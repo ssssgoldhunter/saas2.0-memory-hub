@@ -1,6 +1,6 @@
 # 平安授权转账接口改造 spec（transferAuth / resendTransferAuthCode）
 
-> 状态：confirmed（2026-08-21 用户逐项确认：出参公用化、payMemberCode、authType、authOrderNo/authCode 统一）
+> 状态：implemented（2026-08-21 用户逐项确认：出参公用化、payMemberCode、authType、authOrderNo/authCode 统一；同日按 26 号 plan T1-T16 实施完毕，待用户 review 后提交）
 >
 > 依据：22/23 号 lsym 取证、24 号迁移方案（本文是其可实施契约化）
 >
@@ -136,3 +136,22 @@ SaaS 平安提现不接短信验证码（当前结论），保持固定 2。
    幂等拦截、跨 capability 不误伤；
 8. 渠道流水、错误原文直返等既有行为不回退；
 9. 未授权不编译、不测试、不提交。
+
+## 6. 渠道表 authType 落库（2026-08-21 用户裁决，修订 26 号 plan T10「front 侧零 DDL」结论）
+
+> 裁决背景：原 T10 结论「本期恒 SMS，auth_type 列无信息量」不再成立——authType 后续需支持
+> SMS/APP 区分，渠道表现在就加列记录（2026-08-21 用户裁决，推翻零 DDL 结论）。
+
+- **列定义**（存量库 ALTER 见 `09D-pingan-auth-type.sql`；09A/09B/09-final 已同步）：
+
+  ```sql
+  `auth_type` VARCHAR(8) DEFAULT NULL COMMENT '授权类型（AuthType枚举：SMS/APP；仅 TRANSFER_AUTH、TRANSFER_AUTH_CODE_RESEND 行写入，普通转账行与历史行为 NULL）'
+  -- 位置：capability 列之后
+  ```
+
+- **写入规则**（INIT 即定型，updateResponse 不回写）：
+  - `TRANSFER_AUTH` 行：`entity.authType = specialData.authType（已校验 SMS）`，缺省 `"SMS"`；
+  - `TRANSFER_AUTH_CODE_RESEND` 行：`entity.authType = requestAuthType(specialData)`（缺省 `"SMS"`）；
+  - `TRANSFER`/`CONSUME`/`WITHDRAW` 行：不写该列（NULL）；
+- **存量历史行不回填**（NULL 即代表 SMS-only 历史时期）；**APP 开放前新行恒为 `'SMS'`**；
+- **不加索引**（低基数列）；渠道表零快照、只存明确业务字段的既有约束不变。

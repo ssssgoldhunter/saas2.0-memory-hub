@@ -1,387 +1,208 @@
 # transferAuth / resendTransferAuthCode 字段契约
 
-> 状态：平安首版字段边界已确认，可作为后续 Handle 实现基线
+> 状态：**已按 25 号 spec 重写（2026-08-21，两接口出参公用化 + 语义键 + AuthType + §3A 查重）**
+>
+> 契约唯一事实来源：25-平安授权转账接口改造-spec（本文是其展开说明，口径以 25 号为准）
 >
 > 范围：短信鉴权转账 `transferAuth`、转账授权码发送或重发 `resendTransferAuthCode`
 >
-> 银行：仅平安 `pajzb`；中信 `zxegj` 明确不支持
->
-> 组装注记（2026-08-17）：业务方可经 `FrontSpecialDataAssembler` 组装工具类获取下述协议键
-> （鉴权入参 auth → messageOrderNo/messageCheckCode 等），标准结构与矩阵见 15 号 spec §4；直传协议键仍合法。
+> 银行：仅平安 `pajzb`；中信 `zxegj` 明确不支持（未登记 capability → F200002，用户裁决）
 
-## 1. 依据和能力结论
-
-本契约同时核对了：
-
-- 《客户钱包应用平台接口文档-平安项目 v5.5》；
-- mdl `PaTransTransferHandle.transTransferAuth()`；
-- mdl `PaTransSendVerificationHandle.sendSmsVerification()`；
-- 旧 Front API、Service、Handle 调用链；
-- 中信 v4.7 文档及旧中信挡板代码。
-
-最终能力边界：
+## 1. 能力结论
 
 | Front 方法 | 平安银行接口 | 固定用途 | 中信状态 |
-|---|---|---:|---|
-| `transferAuth` | `POST /cwap/account/send/transfer` | `bizFunc=45` | `UNSUPPORTED` |
-| `resendTransferAuthCode` | `POST /cwap/account/send/gen-auth-code` | `bizFunc=26` | `UNSUPPORTED` |
+|---|---|---|---:|---|
+| `transferAuth` | `POST /cwap/account/send/transfer` | `bizFunc=45` | `UNSUPPORTED`（F200002） |
+| `resendTransferAuthCode` | `POST /cwap/account/send/gen-auth-code` | `bizFunc=26` | `UNSUPPORTED`（F200002） |
 
-平安 v5.5 定义的是“申请短信动态码”，没有另一个“重发”银行接口。Front 的首次发送和重发使用同一
-`resendTransferAuthCode` 方法：每次都生成新的 `transSsn/transTime` 并重新申请，不把旧 `smsIdx`
-传给银行。重复申请限流、旧验证码失效和有效期仍需以联调结果为准。
+平安 v5.5 定义的是"申请短信动态码"，没有另一个"重发"银行接口。Front 的首次发送和重发使用同一
+`resendTransferAuthCode` 方法：每次都生成新的 `transSsn/transTime` 并重新申请，不把旧指令号传给银行。
 
-旧 `ZxTransTransferHandle.transTransferAuth()` 只在本地构造成功结果，旧
-`ZxTransSendVerificationHandle.sendSmsVerification()` 只返回模拟手机号和验证码，均未调用中信银行，
-不能作为中信支持这两项能力的证据。新 Front 禁止复制这些挡板。
+## 2. 对外契约（25 号 spec §1）
 
-## 2. 新旧方法与具体实现类映射
+### 2.1 两段式请求
 
-### 2.1 `transferAuth`
+两个方法统一使用 `FrontRequest<T>`：`baseData` 跨银行公共业务字段 + `specialData` 动态特殊字段。
+`AuthTransferBusinessData extends TransferBusinessData`、`TransferAuthCodeBusinessData extends
+BaseTransactionBusinessData`，**均不增加新字段**。
 
-```text
-新 FrontTransApi.transferAuth
-→ FrontTransController.transferAuth
-→ FrontTransApplicationService.transferAuth
-→ BankTransHandle.transferAuth
-→ PingAnTransHandle.transferAuth（后续真实实现位置）
+### 2.2 接口一 resendTransferAuthCode（授权码申请/重发，bizFunc=26）
 
-旧 FrontTransConsumeFacadeApi.transTransferAuth
-→ TransConsumeServiceImpl.transTransferAuth
-→ BasTransTransferHandle.transTransferAuth
-→ PaTransTransferHandle.transTransferAuth
-→ SaasPaInterService.paTansfer
-→ 平安 /cwap/account/send/transfer，bizFunc=45
-```
+**组装输入**（`FrontSpecialDataAssembler` 标准结构 + authType）：
 
-### 2.2 `resendTransferAuthCode`
+| 输入 | 必填 | 说明 |
+|---|---|---|
+| auth.authType | 是 | `AuthType` 枚举：`SMS`（本期）/ `APP`（预留，组装即拒绝 INVALID_REQUEST） |
+| pay.bankEMemberCode / pay.bankEAccountId | 是/是 | 付款会员/账户 |
+| rec.bankEAccountId | 是 | 收款账户 |
 
-```text
-新 FrontTransApi.resendTransferAuthCode
-→ FrontTransController.resendTransferAuthCode
-→ FrontTransApplicationService.resendTransferAuthCode
-→ BankTransHandle.resendTransferAuthCode
-→ PingAnTransHandle.resendTransferAuthCode（后续真实实现位置）
+**请求 specialData（组装器输出，3 个对外语义键）**：
 
-旧 FrontTransVerificationFacadeApi.sendSmsVerification
-→ TransVerificationServiceImpl.sendSmsVerification
-→ BasTransSendVerificationHandle.sendSmsVerification
-→ PaTransSendVerificationHandle.sendSmsVerification
-→ SaasPaInterService.applyWithdrawOrPaymentAuthCode
-→ 平安 /cwap/account/send/gen-auth-code，bizFunc=26
-```
+| 键 | 值来源 | 上送银行 |
+|---|---|---|
+| `payMemberCode` | pay.bankEMemberCode | 顶层 mchntMbrId 明文 |
+| `payAccountNo` | pay.bankEAccountId | 顶层 acctNo，SM2 |
+| `recAccountNo` | rec.bankEAccountId | reserve intAcctNo，SM2 |
 
-## 3. Front 对外对象
+**返回 `R<FrontTransResult>`**（公用，无专用结果对象）。成功时 specialData：
 
-### 3.1 两段式请求
-
-两个方法继续统一使用：
-
-```text
-FrontRequest<T>
-├─ baseData: T
-└─ specialData: JSONObject
-```
-
-银行账户配置不由业务系统传入。平安 Handle 通过统一父类获得：
-
-```text
-accountConfig
-├─ appId / appKey / url / mchntId / mchntMbrId
-└─ accountSpecialData
-   ├─ mrchCode
-   ├─ txnClientNo
-   └─ stlAcctNo
-```
-
-`accountSpecialData` 是租户银行静态配置；请求 `specialData` 是单次业务动态数据。禁止合并、覆盖或
-整体 `putAll` 到银行 `reserve`。
-
-### 3.2 `transferAuth` 基础对象
-
-```text
-AuthTransferBusinessData extends TransferBusinessData
-├─ tenantId / storeId / platformCode
-├─ bizRequestNo / bizOrderNo / bizSubOrderNo
-├─ amount / fee / currency
-├─ businessDate / businessTime / remark
-└─ payStoreNo / payStoreId / recStoreNo / recStoreId
-```
-
-银行使用的账户号、会员编号、姓名、短信指令号和验证码均不放入 `AuthTransferBusinessData`。
-请求 `specialData` 固定为：
-
-```json
-{
-  "outAcctNo": "转出见证子账户",
-  "inAcctNo": "转入见证子账户",
-  "outMemberCode": "转出方交易网会员代码",
-  "outSubAcctName": "转出方户名",
-  "inMemberCode": "转入方交易网会员代码",
-  "inSubAcctName": "转入方户名",
-  "messageOrderNo": "上一步响应 specialData.smsIdx 的明文值",
-  "messageCheckCode": "用户收到的短信验证码"
-}
-```
-
-两个字段在当前短信鉴权转账场景均必填。`messageCheckCode` 由平安 Handle 在组装银行请求时 SM2 加密；
-两者均禁止写日志、异常消息或普通接口响应；渠道表也不得保存完整请求快照。
-
-### 3.3 `resendTransferAuthCode` 基础对象
-
-```text
-TransferAuthCodeBusinessData extends BaseTransactionBusinessData
-├─ tenantId / storeId / platformCode
-├─ bizRequestNo / bizOrderNo / bizSubOrderNo
-├─ amount / fee / currency
-├─ businessDate / businessTime / remark
-└─ payStoreNo / payStoreId / recStoreNo / recStoreId
-```
-
-银行请求实际使用 `bizRequestNo/bizOrderNo/amount/remark` 和请求 `specialData` 的三项动态字段；
-其余交易公共字段只用于业务审计和渠道流水，不得无依据映射到平安报文。
-
-该方法请求 `specialData` 固定包含：
-
-```json
-{
-  "acctNo": "转出见证子账户",
-  "outAcctId": "付款方交易网会员代码",
-  "intAcctNo": "转入见证子账户"
-}
-```
-
-以下旧字段已删除：
-
-| 旧框架字段 | 删除原因 |
+| 键 | 说明 |
 |---|---|
-| `mobileNo` | 平安用途 26 不接收调用方手机号，短信发送到银行预留手机号 |
-| `originalAuthRequestNo` | 重发是重新申请，不上送原短信指令号 |
+| `authType` | 本次签发的授权码类型（本期固定 SMS；请求带 authType 则原样回显） |
+| `authOrderNo` | 授权指令号（银行响应 reserve.smsIdx 解密；**原样回传接口二**） |
+| `receiveMobile` | 接收手机号（authType=SMS 时返回；默认按 SM2 解密，见 §8） |
 
-### 3.4 授权码专用返回
+失败时 specialData 为空对象，msg/frontRespDesc=银行原文（全局失败直返规则）。
 
-授权码发送或重发直接返回：
+### 2.3 接口二 transferAuth（授权转账，bizFunc=45）
 
-```java
-R<FrontTransferAuthCodeResult>
-```
+**组装输入**：pay/rec 标准结构（同 transfer）+ auth 扩展：
+
+| auth 字段 | 必填 | 说明 |
+|---|---|---|
+| auth.authType | 是 | 同接口一 |
+| auth.authOrderNo | 是 | 接口一返回的 authOrderNo **原样回传** |
+| auth.authCode | 是 | 用户本次输入的验证码 |
+
+**请求 specialData（组装器输出，9 个对外语义键）**：
+
+| 键 | 值来源 | 上送银行 |
+|---|---|---|
+| `payMemberCode` / `recMemberCode` | pay/rec.bankEMemberCode | reserve outMemberCode/inMemberCode 明文 |
+| `payAccountNo` / `recAccountNo` | pay/rec.bankEAccountId | 顶层 outAcctNo/inAcctNo，SM2 |
+| `payName` / `recName` | pay/rec.bankAccountName | reserve 户名，SM2 |
+| `authType` | auth.authType | Front 内部判定（不上送银行） |
+| `authOrderNo` | auth.authOrderNo | reserve messageOrderNo 明文 |
+| `authCode` | auth.authCode | reserve messageCheckCode，SM2 |
+
+**返回 `R<FrontTransResult>`**：与 transfer 完全一致；成功 specialData 为空对象。
+
+## 3. 键名与枚举规范（25 号 spec §2）
+
+### 3.1 对外语义键（唯一命名，两接口闭环）
 
 ```text
-FrontTransferAuthCodeResult extends FrontBaseResult
-├─ frontRespCode / frontRespDesc
-├─ frontSsn
-├─ frontQueryId
-└─ specialData
-   ├─ smsIdx
-   └─ receiveMobile
+authType / authOrderNo / authCode / payMemberCode / recMemberCode
 ```
 
-`smsIdx/receiveMobile` 都是平安特有响应字段，不提升为公共强类型字段。
+- 请求/响应 `specialData` 键一律使用语义键，**禁止**出现银行协议键（outMemberCode/inMemberCode/
+  outAcctNo/inAcctNo/outSubAcctName/inSubAcctName/messageOrderNo/messageCheckCode/smsIdx）；
+- `authOrderNo` 同名闭环：接口一返回值由接口二原样回传，不得改写；
+- `transfer/consume` 的 specialData 会员键同步更名 `payMemberCode/recMemberCode`
+  （原 `outAcctId/inAcctId`，不留兼容别名）。
 
-## 4. `transferAuth` 请求映射
+### 3.2 协议键常量分层（ContractKeys）
 
-### 4.1 钱包基础字段
-
-| 钱包字段 | 来源 | 规则和注意点 |
+| 常量类 | 对外键（语义键） | 银行协议键（Handle 内部） |
 |---|---|---|
-| `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
-| `mchntId` | 租户银行通用配置 | 接入方编号 |
-| `mchntMbrId` | `specialData.outMemberCode` | 当前付款方交易网会员代码 |
-| `transTime` | 平安 Handle | 每次请求生成，格式 `yyyyMMddHHmmss` |
-| `transSsn` | 平安 Handle | 按平安 22 位规则生成、保存渠道流水并回传 `frontSsn` |
-| `bizFunc` | Handle 常量 `45` | 会员间交易-验证短信动态码，禁止业务系统覆盖 |
-| `chnlNo` | Handle 常量 `0001` | 平安见证宝渠道号，禁止业务系统覆盖 |
-| `outAcctNo` | `specialData.outAcctNo` | 转出见证子账户，SM2 加密 |
-| `inAcctNo` | `specialData.inAcctNo` | 转入见证子账户，SM2 加密 |
-| `pwd` | Handle 固定空字符串 | 协议标注忽略 |
-| `transAmt` | `baseData.amount` | 人民币分，包含手续费，必须大于 0 |
-| `fee` | `baseData.fee` | 人民币分，无手续费传 0 |
-| `ccy` | Handle 常量 `CNY` | 当前固定人民币 |
-| `remark` | `baseData.remark` | Handle 校验协议长度；最大 120，已从 Word 协议确认 |
+| `PingAnTransferAuthContractKeys` | `PAY_MEMBER_CODE/REC_MEMBER_CODE`、`PAY_ACCOUNT_NO("payAccountNo")/REC_ACCOUNT_NO("recAccountNo")/PAY_NAME("payName")/REC_NAME("recName")`、`AUTH_ORDER_NO("authOrderNo")/AUTH_CODE("authCode")/AUTH_TYPE("authType")` | `RESERVE_OUT_MEMBER_CODE("outMemberCode")/RESERVE_IN_MEMBER_CODE("inMemberCode")/RESERVE_OUT_SUB_ACCT_NAME("outSubAcctName")/RESERVE_IN_SUB_ACCT_NAME("inSubAcctName")/RESERVE_MESSAGE_ORDER_NO("messageOrderNo")/RESERVE_MESSAGE_CHECK_CODE("messageCheckCode")` |
+| `PingAnTransferAuthCodeContractKeys` | `PAY_MEMBER_CODE/PAY_ACCOUNT_NO("payAccountNo")/REC_ACCOUNT_NO("recAccountNo")`、响应键 `AUTH_ORDER_NO/AUTH_TYPE` | `RESERVE_IN_ACCT_NO("intAcctNo")`、响应银行键 `RESPONSE_SMS_INDEX("smsIdx")/RESPONSE_RECEIVE_MOBILE("receiveMobile")` |
+| `PingAnTransferContractKeys` | `PAY_MEMBER_CODE("payMemberCode")/REC_MEMBER_CODE("recMemberCode")`（transfer/consume 会员键） | `RESERVE_OUT_ACCT_ID("outAcctId")/RESERVE_IN_ACCT_ID("inAcctId")` |
 
-金额全链路使用 `Long` 人民币分，不得转换为元或使用浮点数。
+### 3.3 AuthType 枚举（api-front `model.enums`，新增）
 
-### 4.2 `reserve` 映射
-
-| reserve 字段 | 来源 | 规则和注意点 |
+| 值 | 含义 | 状态 |
 |---|---|---|
-| `mrchCode` | `accountSpecialData.mrchCode` | 平台号，禁止业务请求覆盖 |
-| `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务请求覆盖 |
-| `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，SM2 加密 |
-| `functionFlag` | Handle 固定 `9` | 当前 mdl 实际场景为直接支付 T+0 |
-| `outMemberCode` | `specialData.outMemberCode` | 转出方交易网会员代码 |
-| `outSubAcctName` | `specialData.outSubAcctName` | 转出方见证子账户户名，SM2 加密 |
-| `inMemberCode` | `specialData.inMemberCode` | 转入方交易网会员代码 |
-| `inSubAcctName` | `specialData.inSubAcctName` | 转入方见证子账户户名，SM2 加密 |
-| `tranType` | Handle 固定 `01` | 当前普通鉴权转账 |
-| `orderNo` | `baseData.bizOrderNo` | 必填，最大 30，必须满足平安全局唯一约束 |
-| `remark` | `baseData.remark` | 最大 120；旧 mdl 写死 `Remark`，新实现改为真实业务备注 |
-| `messageOrderNo` | `request.specialData.messageOrderNo` | 上一步返回的短信指令号明文 |
-| `messageCheckCode` | `request.specialData.messageCheckCode` | 短信验证码，SM2 加密 |
+| `SMS` | 短信动态码（平安 bizFunc=26/45） | 本期 |
+| `APP` | App 授权 | 预留；组装器与 Handle 双层拒绝（INVALID_REQUEST） |
 
-平安 v5.5 还定义了可选 `orderContent` 等字段，但当前 mdl Handle 未实际映射，本阶段不声明活动常量，
-也不允许业务系统提前透传。
+## 4. Handle 内部映射（语义键 → 银行协议键 + SM2）
 
-## 5. `resendTransferAuthCode` 请求映射
+### 4.1 transferAuth（bizFunc=45）
 
-### 5.1 钱包基础字段
-
-| 钱包字段 | 来源 | 规则和注意点 |
+| 银行字段 | 来源 | 规则 |
 |---|---|---|
-| `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
-| `mchntId` | 租户银行通用配置 | 接入方编号 |
-| `mchntMbrId` | `specialData.outAcctId` | 付款方交易网会员代码 |
-| `transTime` | 平安 Handle | 每次申请或重发都重新生成 |
-| `transSsn` | 平安 Handle | 每次重新生成、保存渠道流水并回传 `frontSsn` |
-| `bizFunc` | Handle 常量 `26` | 申请提现或支付短信动态码 |
-| `chnlNo` | Handle 常量 `0001` | 平安见证宝渠道号 |
-| `acctNo` | `specialData.acctNo` | 转出见证子账户，SM2 加密 |
-| `transAmt` | `baseData.amount` | 当前支付场景交易金额，人民币分 |
+| 顶层 mchntMbrId | `specialData.payMemberCode` | 明文 |
+| 顶层 outAcctNo / inAcctNo | `specialData.payAccountNo/recAccountNo` | SM2 |
+| 顶层 transAmt / fee / pwd | baseData.amount/fee、固定空串 | 人民币分 |
+| reserve mrchCode/txnClientNo/stlAcctNo | accountSpecialData | stlAcctNo SM2 |
+| reserve functionFlag / tranType | Handle 常量 `9` / `01` | 固定 |
+| reserve outMemberCode / inMemberCode | `specialData.payMemberCode/recMemberCode` | 明文 |
+| reserve outSubAcctName / inSubAcctName | `specialData.payName/recName` | SM2 |
+| reserve orderNo / remark | baseData.bizOrderNo / baseData.remark | orderNo ≤30、remark ≤120 |
+| reserve messageOrderNo | `specialData.authOrderNo` | 明文（接口一闭环值） |
+| reserve messageCheckCode | `specialData.authCode` | SM2 |
 
-### 5.2 `reserve` 映射
+**authType 校验**：`specialData.authType` 必填且必须为 `SMS`；缺失或 APP → `INVALID_REQUEST`（Handle 层
+双层拒绝，直传协议键绕过组装器时仍生效）。
 
-| reserve 字段 | 来源 | 规则和注意点 |
+### 4.2 resendTransferAuthCode（bizFunc=26）
+
+| 银行字段 | 来源 | 规则 |
 |---|---|---|
-| `mrchCode` | `accountSpecialData.mrchCode` | 平台号，禁止业务请求覆盖 |
-| `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务请求覆盖 |
-| `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，SM2 加密 |
-| `tranType` | Handle 固定 `2` | 当前 Front 只使用“支付”分支 |
-| `orderNo` | `baseData.bizOrderNo` | 业务主订单号；最大 30 |
-| `remark` | `baseData.remark` | 业务备注；最大 120 |
-| `intAcctNo` | `specialData.intAcctNo` | 转入见证子账户，SM2 加密 |
+| 顶层 mchntMbrId | `specialData.payMemberCode` | 明文 |
+| 顶层 acctNo | `specialData.payAccountNo` | SM2 |
+| 顶层 transAmt | baseData.amount | 人民币分 |
+| reserve mrchCode/txnClientNo/stlAcctNo | accountSpecialData | stlAcctNo SM2 |
+| reserve tranType | Handle 常量 `2`（支付） | 固定 |
+| reserve orderNo / remark | baseData.bizOrderNo / baseData.remark | orderNo ≤30、remark ≤120 |
+| reserve intAcctNo | `specialData.recAccountNo` | SM2；**协议原始拼写 intAcctNo，禁止改成 inAcctNo** |
 
-`intAcctNo` 是平安 v5.5 和现有接口的原始拼写。实现时不得凭习惯改成 `inAcctNo`。
+**authType 校验**：请求 wire specialData 不要求 authType（组装器仅入参校验、不输出该键），缺失按 SMS
+默认放行；一旦出现且非 SMS（APP）→ `INVALID_REQUEST`（双层拒绝）。
 
-重发时读取上述账户 `specialData`，但不传旧 `smsIdx/messageOrderNo`。发送前仍按当前平安转账表的
-`tenantId + bizOrderNo + bizSubOrderNo` 执行重复交易检查；命中返回“交易已存在”。用户主动再次发送
-必须使用新的主/子业务流水。
+## 5. 重复交易检查策略（25 号 spec §3A，2026-08-21 用户确认）
+
+授权场景含两次渠道操作（发码 → 授权转账），共表后 `checkDuplicateTransaction` 按能力区分：
+
+| 能力 | 查重策略 | 理由 |
+|---|---|---|
+| 验证码发送（TRANSFER_AUTH_CODE_RESEND） | **豁免查重**：每次发码直接插新记录（新 frontSsn），`DEDUP_LOCKS` 一并豁免 | 非资金操作，重发合法（用户未收到短信）；渠道表多行记录即发送历史日志 |
+| 授权转账（TRANSFER_AUTH） | 查重**限定 capability=TRANSFER_AUTH** | 资金交易保持幂等（重复授权请求 F300001 拦截）；不被发码记录误伤 |
+| transfer / consume | 查重限定本 capability（共表误伤隐患顺手修正） | 同一业务键不同能力互不干扰 |
+
+改后行为：首次发码✅ → 重发✅（新行）→ 授权转账✅（只看 TRANSFER_AUTH 行）→ 重复授权请求❌F300001。
 
 ## 6. 响应判定与映射
-
-### 6.1 两层银行响应
 
 两个接口成功都必须同时满足：
 
 ```text
-errCode == D5000000
-&& errInfo == success
-&& sysRespCode == 000000
+errCode == D5000000 && errInfo == success && sysRespCode == 000000
 ```
 
-`000000` 是平安 6 位成功码。钱包原始 `errCode/errInfo/sysRespCode/sysRespDesc` 只用于 Handle
-判定和渠道流水审计，不直接成为 `frontRespCode/frontRespDesc`。
+- `frontRespCode/frontRespDesc` 统一取 `FrontErrorCode`，银行原始码只用于 Handle 判定与渠道流水；
+- `frontStatus`：SUCCESS / UNKNOWN（WALLET_RESULT_UNKNOWN）/ FAILED（其余）；
+- 失败时顶层 `R.code` 也为失败码，`frontRespDesc`/`R.msg` 覆写为银行原始错误描述原文（取值优先级
+  sysRespDesc > sysRespCode > errInfo > errCode），specialData 为空对象；
+- `frontSsn` = Handle 生成的 22 位 transSsn；`frontQueryId` = 银行 queryId；
+- 接口一成功 `specialData`：`authType/authOrderNo/receiveMobile`（见 §2.2）；接口二成功
+  `specialData`：空对象。
 
-### 6.2 `transferAuth` 返回映射
-
-| 平安或 Front 字段 | Front 返回字段 | 说明 |
-|---|---|---|
-| Handle 生成的 `transSsn` | `frontSsn` | 不使用银行 `queryId` 覆盖 |
-| 平安 `queryId` | `frontQueryId` | 渠道方查询流水 |
-| 归一化成功 | `frontRespCode=200/frontRespDesc=成功/frontStatus=SUCCESS` | 使用 `FrontErrorCode.SUCCESS` |
-| 明确银行失败 | 统一 `F4xxxxx/frontStatus=FAILED` | 顶层 `R.code` 也为失败码 |
-| 平安特有响应 | `specialData={}` | 当前文档和 mdl 未确认需返回其他字段 |
-
-### 6.3 `resendTransferAuthCode` 返回映射
-
-| 平安或 Front 字段 | Front 返回字段 | 说明 |
-|---|---|---|
-| Handle 生成的 `transSsn` | `frontSsn` | 保存授权码申请渠道流水 |
-| 平安 `queryId` | `frontQueryId` | 渠道方查询流水 |
-| 平安 `smsIdx` | `specialData.smsIdx` | 银行返回 SM2 密文，Handle 解密后写入；下步映射 `messageOrderNo` |
-| 平安 `receiveMobile` | `specialData.receiveMobile` | lsym 生产 Handle 按银行返回值直接复制；禁止日志输出，是否需要解密以联调为准 |
-| 归一化结果 | `frontRespCode/frontRespDesc` | 使用 `FrontErrorCode`，不透传银行码 |
-
-lsym 生产 Handle 只解密 `smsIdx`，`receiveMobile` 按银行返回值直接复制；当前新代码同时解密两者，
-与生产参考实现不一致。修复前应以银行联调结果确认 `receiveMobile` 的实际形态；确认前不得强制解密，
-也不得在日志中输出该值。
-
-### 6.4 成功响应示例
-
-授权码发送或重发：
-
-```json
-{
-  "code": 200,
-  "msg": "操作成功",
-  "data": {
-    "frontRespCode": "200",
-    "frontRespDesc": "成功",
-    "frontSsn": "平安Handle生成的22位交易流水",
-    "frontQueryId": "钱包queryId",
-    "specialData": {
-      "smsIdx": "解密后的短信指令号",
-      "receiveMobile": "解密后的银行预留手机号"
-    }
-  }
-}
-```
-
-银行明确拒绝时，Application Service 返回 `R.fail(message, result)`：
-
-```json
-{
-  "code": 500,
-  "msg": "银行拒绝交易",
-  "data": {
-    "frontRespCode": "F400004",
-    "frontRespDesc": "银行拒绝交易",
-    "specialData": {}
-  }
-}
-```
-
-## 7. common-core 常量入口
+## 7. 常量入口
 
 ```text
 catering-common/catering-common-core/src/main/java/com/chinaums/common/core/constant/front
-├─ FrontBankRequestConstants.java
-├─ FrontBankResponseConstants.java
-├─ PingAnBankAccountConfigKeys.java
 ├─ PingAnTransferAuthContractKeys.java
-└─ PingAnTransferAuthCodeContractKeys.java
+├─ PingAnTransferAuthCodeContractKeys.java
+└─ PingAnTransferContractKeys.java
 ```
 
-- `bizFunc=45/26` 由 `PingAnTransHandle` 的带注释本地常量确定；
-- `PingAnTransferAuthContractKeys`、`PingAnTransferAuthCodeContractKeys` 只保存当前支付分支实际使用的
-  银行原始字段 key、协议枚举固定值和响应白名单；
-- Word 有定义但当前 Handle 不使用的字段只留在本文说明，不提前搬进 Java 常量；
-- 银行协议 DTO、加密实现和 HTTP 客户端仍放在 `catering-front/channel/pingan`，不能放入
-  `catering-common-core`。
+- `bizFunc=45/26`、`chnlNo=0001`、`functionFlag/tranType` 等调用控制值由 `PingAnTransHandle` 的
+  带注释本地常量确定，不进入 ContractKeys；
+- ContractKeys 只保存协议字段 key（对外语义键 + Handle 内部协议键），键名分层见 §3.2；
+- 银行协议 DTO、加密实现和 HTTP 客户端仍放在 `catering-front/channel/pingan`。
 
-## 8. 后续 Handle 实现约束
+## 8. receiveMobile 解密口径（25 号 spec §4.1）
 
-后续 AI 实现这两个方法时必须：
+lsym 明文直取、SaaS 当前解密。**默认保持解密**（若联调发现银行返回明文导致解密失败，按 §4.1 修正
+并同步本文）；验证码申请 tranType 固定 2（支付，§4.2 保持）。
 
-1. 只覆盖 `PingAnTransHandle` 的目标方法，中信保持 `UNSUPPORTED`；
-2. 从现有 `BankRequestContext` 读取 `baseData/specialData/accountConfig`，不得重新查询账户配置；
+## 9. 渠道流水（零 DDL）
+
+- 两能力均写入 `front_pingan_transfer_transaction`，通过 `capability`（TRANSFER_AUTH /
+  TRANSFER_AUTH_CODE_RESEND）与普通 TRANSFER 区分；中信不支持，不创建空记录；
+- **authOrderNo 不落渠道列**（specialData 返回 + frontSsn/bankQueryId 已足够关联）；
+- 每条记录保留业务主/子记录关联和明确业务字段，不保存报文快照；验证码不得进入任何数据库字段。
+
+## 10. 实施约束
+
+1. 只覆盖 `PingAnTransHandle` 的目标方法，中信保持未登记（F200002）；
+2. 从现有 `BankRequestContext` 读取三段数据，不重新查询账户配置；
 3. 逐字段组装钱包基础字段和 `reserve`，禁止 `putAll`；
-4. `transSsn/transTime` 每次由平安 Handle 生成，`bizFunc/chnlNo/functionFlag/tranType` 使用常量；
-5. 渠道流水保存能力、业务请求号、业务订单、明确账户字段、`frontSsn/queryId`、原始响应码和归一化状态；
-6. 验证码、短信指令号、手机号、账户号、户名等字段值按明文输出到日志（2026-08-14 用户确认取消
+4. 银行调用固定走 `BankWalletGateway.post(bank, …)`，禁止直连 HttpClient；
+5. `transSsn/transTime` 每次生成；`bizFunc/chnlNo/functionFlag/tranType` 使用 Handle 本地常量；
+6. 验证码、短信指令号、手机号、账户号、户名等字段值按明文输出日志（2026-08-14 用户确认取消
    日志敏感值掩码）；`appKey`、签名头和完整银行 URL 不进入日志；
-7. API、Handler、报文组装和钱包调用前后均记录结构完整的 JSON，并携带 `tenantId`、
-   `storeId`、`bankCode`、`capability`、`bizRequestNo`、`bizOrderNo`、`bizSubOrderNo`、`platformCode`、
-   `dataSourceId`、`frontSsn`、`frontRespCode`、`elapsedMs` 等定位字段；
-8. 超时或无法确认银行是否受理时返回 `UNKNOWN/F400002`，资金交易不得盲目重试；
-9. 未经用户明确要求，不新增测试类、不运行测试、不执行编译。
-
-`transferAuth` 和 `resendTransferAuthCode` 每次真实调用均写入
-`front_pingan_transfer_transaction`，通过 `capability` 与普通 `TRANSFER` 区分；中信不支持这两个能力，
-不得创建中信授权空记录。每条记录必须保留业务主/子记录关联和明确业务字段，不保存整段请求快照；
-验证码不得进入任何数据库字段。详细 DDL 见 [09-channel-transaction-ddl](09-channel-transaction-ddl.md)。
-
-这里的 `capability` 由当前 API 方法内部固定，不接受请求输入；它既是平安共享转账表的记录字段，也是
-Transaction Registry 中 `(BankCode, FrontCapability)` 精确路由的一部分。`transferAuth` 必须定位到
-`(PING_AN, TRANSFER_AUTH)` 的单能力 Handler；中信未注册该复合键时返回
-`CAPABILITY_NOT_SUPPORTED`。不得建立统一能力预校验，也不得在公共 Dispatch 中再按 capability
-选择方法。
-
-## 9. 仍需联调确认
-
-以下内容不阻塞框架和字段契约，但生产接入前必须确认：
-
-1. 平安连续申请验证码的限流规则；
-2. 新申请是否立即使旧验证码和旧 `smsIdx` 失效；
-3. 验证码和短信指令号的精确有效期；
-4. `functionFlag=9` 是否覆盖全部当前鉴权转账业务，是否还需 T+1 分支；
-5. `orderNo` 的业务唯一性范围及重试复用规则；
-6. `receiveMobile` 对业务系统应返回完整值还是统一脱敏值。
+7. 超时或无法确认银行是否受理时返回 `UNKNOWN/F400002`，资金交易不得盲目重试；
+8. 未经用户明确授权，不新增测试类、不运行测试、不执行编译。

@@ -733,8 +733,10 @@ transfer/consume 的已确认字段白名单、来源、单位和响应映射以
 
 平安 `transferAuth/resendTransferAuthCode` 的字段白名单、加密边界和响应映射以
 [07-transferAuth-resendTransferAuthCode字段契约](07-transferAuth-resendTransferAuthCode字段契约.md)
-为准。`transferAuth` 请求 `specialData` 只允许 `messageOrderNo/messageCheckCode`；授权码发送或重发
-请求当前不需要银行动态 `specialData`。中信这两个能力必须返回 `UNSUPPORTED`，不得复制旧项目挡板。
+为准（2026-08-21 起按 25 号 spec：两接口出参公用 `R<FrontTransResult>`，请求/响应
+`specialData` 使用对外语义键 `authType/authOrderNo/authCode/payMemberCode/recMemberCode`，
+银行协议键 messageOrderNo/messageCheckCode/smsIdx 只在 Handle 内部与 ContractKeys 协议常量
+中出现）。中信这两个能力必须返回 `UNSUPPORTED`（未登记 capability → F200002），不得复制旧项目挡板。
 
 两家 `withdraw/refund` 和中信 `platformPay/platformReceive` 的字段、资金方向、加密边界及响应映射以
 [08-withdraw-refund-platform-transfer字段契约](08-withdraw-refund-platform-transfer字段契约.md)
@@ -845,10 +847,12 @@ R<具体结果>
 
 ```java
 R<FrontTransResult>
-R<FrontTransferAuthCodeResult>
 R<TransStatusResult>
 R<AccountBalanceResult>
 ```
+
+> 2026-08-21 起：授权码发送/重发（`resendTransferAuthCode`）不再有专用结果，
+> 出参公用 `R<FrontTransResult>`（`FrontTransferAuthCodeResult` 已删除，见 07 号契约）。
 
 分页明细查询必须直接返回：
 

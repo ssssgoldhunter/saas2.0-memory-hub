@@ -68,7 +68,7 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 序号 | 表名 | 字段数 | 表用途 |
 |---:|---|---:|---|
 | 1 | `front_citic_transfer_transaction` | 47 | Front 中信转账渠道交易流水 |
-| 2 | `front_pingan_transfer_transaction` | 49 | Front 平安转账及转账授权渠道交易流水 |
+| 2 | `front_pingan_transfer_transaction` | 50 | Front 平安转账及转账授权渠道交易流水 |
 | 3 | `front_citic_consume_transaction` | 47 | Front 中信消费渠道交易流水 |
 | 4 | `front_pingan_consume_transaction` | 47 | Front 平安消费渠道交易流水 |
 | 5 | `front_citic_refund_transaction` | 53 | Front 中信真退款渠道交易流水 |
@@ -160,50 +160,51 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 | 3 | `store_id` | `VARCHAR(100)` | 否 | `—` | `—` | 发起本次调用的业务门店 ID |
 | 4 | `data_source_id` | `VARCHAR(30)` | 否 | `''` | `—` | 数据源实例标识（如 ds_0/ds_2），记录数据所在库实例 |
 | 5 | `capability` | `VARCHAR(20)` | 否 | `—` | `—` | 能力编码：TRANSFER、TRANSFER_AUTH 或 TRANSFER_AUTH_CODE_RESEND |
-| 6 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
-| 7 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
-| 8 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
-| 9 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
-| 10 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
-| 11 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
-| 12 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
-| 13 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
-| 14 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
-| 15 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
-| 16 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
-| 17 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
-| 18 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
-| 19 | `pay_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方商户会员编号 |
-| 20 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
-| 21 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
-| 22 | `rec_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方商户会员编号 |
-| 23 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
-| 24 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
-| 25 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账或授权交易金额，单位为人民币分 |
-| 26 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安转账手续费，单位为人民币分 |
-| 27 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
-| 28 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
-| 29 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
-| 30 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
-| 31 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
-| 32 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
-| 33 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
-| 34 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[0,8)` | 银行请求交易日期，格式 yyyyMMdd；供平安退款原交易定位 |
-| 35 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[8,14)` | 银行请求交易时间，格式 HHmmss |
-| 36 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
-| 37 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
-| 38 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
-| 39 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
-| 40 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
-| 41 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
-| 42 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
-| 43 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
-| 44 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
-| 45 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
-| 46 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
-| 47 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
-| 48 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
-| 49 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
+| 6 | `auth_type` | `VARCHAR(8)` | 是 | `NULL` | `—` | 授权类型（AuthType枚举：SMS/APP；仅 TRANSFER_AUTH、TRANSFER_AUTH_CODE_RESEND 行写入，普通转账行与历史行为 NULL） |
+| 7 | `front_ssn` | `VARCHAR(100)` | 否 | `—` | `—` | Front 全局渠道流水号，同时作为本次银行请求 transSsn |
+| 8 | `front_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 返回业务系统的 Front 查询标识 |
+| 9 | `biz_system_code` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务系统编码 |
+| 10 | `biz_transaction_type` | `VARCHAR(20)` | 否 | `—` | `—` | 来源业务交易逻辑类型，不保存物理表名 |
+| 11 | `biz_transaction_id` | `VARCHAR(100)` | 否 | `—` | `—` | 来源业务交易主表记录 ID |
+| 12 | `biz_sub_transaction_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 来源业务交易子表或明细表记录 ID |
+| 13 | `biz_request_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务系统本次调用唯一号 |
+| 14 | `biz_order_no` | `VARCHAR(100)` | 否 | `—` | `—` | 业务主流水号或主订单号 |
+| 15 | `biz_sub_order_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 业务子流水号或子订单号 |
+| 16 | `pay_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店编码 |
+| 17 | `pay_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 付款方业务门店 ID |
+| 18 | `rec_store_no` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店编码 |
+| 19 | `rec_store_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 收款方业务门店 ID |
+| 20 | `pay_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方商户会员编号 |
+| 21 | `pay_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方电子账户号（原始值，未加密） |
+| 22 | `pay_name` | `VARCHAR(100)` | 是 | `NULL` | — | 付款方名称 |
+| 23 | `rec_member_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方商户会员编号 |
+| 24 | `rec_account_id` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方电子账户号（原始值，未加密） |
+| 25 | `rec_name` | `VARCHAR(100)` | 是 | `NULL` | — | 收款方名称 |
+| 26 | `amount` | `BIGINT` | 否 | `—` | `—` | 转账或授权交易金额，单位为人民币分 |
+| 27 | `fee` | `BIGINT` | 否 | `0` | `—` | 平安转账手续费，单位为人民币分 |
+| 28 | `refunded_amount` | `BIGINT` | 否 | `0` | `—` | 该原交易累计确认退款金额，单位为人民币分 |
+| 29 | `currency` | `VARCHAR(20)` | 否 | `'CNY'` | `—` | 币种 |
+| 30 | `bank_channel_no` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议渠道编号 chnlNo |
+| 31 | `bank_biz_func` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安协议业务编号 bizFunc |
+| 32 | `external_platform_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行 reserve 中的外联平台流水 laasSsn |
+| 33 | `bank_query_id` | `VARCHAR(100)` | 是 | `NULL` | `—` | 电子钱包或银行返回的 queryId |
+| 34 | `bank_user_ssn` | `VARCHAR(100)` | 是 | `NULL` | `—` | 银行返回的 USER_SSN 等银行侧交易流水 |
+| 35 | `bank_trans_date` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[0,8)` | 银行请求交易日期，格式 yyyyMMdd；供平安退款原交易定位 |
+| 36 | `bank_trans_time` | `VARCHAR(20)` | 是 | `NULL` | INIT：请求 `transTime[8,14)` | 银行请求交易时间，格式 HHmmss |
+| 37 | `wallet_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应码 errCode |
+| 38 | `wallet_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 电子钱包平台层原始响应说明 errInfo |
+| 39 | `bank_resp_code` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安业务层原始响应码 sysRespCode |
+| 40 | `bank_resp_desc` | `VARCHAR(512)` | 是 | `NULL` | `—` | 平安业务层原始响应说明 sysRespDesc |
+| 41 | `bank_status` | `VARCHAR(20)` | 是 | `NULL` | `—` | 平安原始交易状态，仅供查询与审计 |
+| 42 | `reserve1` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 1，稳定后迁移为明确业务列 |
+| 43 | `reserve2` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 2，稳定后迁移为明确业务列 |
+| 44 | `reserve3` | `VARCHAR(1024)` | 是 | `NULL` | `—` | 临时扩展字段 3，稳定后迁移为明确业务列 |
+| 45 | `front_status` | `VARCHAR(20)` | 否 | `'INIT'` | `—` | Front 归一化交易状态 |
+| 46 | `bank_responded_at` | `DATETIME` | 是 | `NULL` | `—` | 收到银行同步响应时间 |
+| 47 | `create_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 创建者 |
+| 48 | `create_time` | `DATETIME` | 是 | `NULL` | `—` | 创建时间 |
+| 49 | `update_by` | `VARCHAR(64)` | 是 | `NULL` | `—` | 更新者 |
+| 50 | `update_time` | `DATETIME` | 是 | `NULL` | `—` | 更新时间 |
 
 索引：
 

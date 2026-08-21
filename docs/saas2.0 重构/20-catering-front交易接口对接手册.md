@@ -334,10 +334,10 @@ FrontRequest<TransferBusinessData> → R<FrontTransResult>
 
 | 原始 key | 类型 | 必填 | 标准来源 | 注释 |
 |---|---|---|---|---|
-| `outAcctId` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
+| `payMemberCode` | String | 是 | `pay.bankEMemberCode` | 付款会员编号（对外语义键，更名自 outAcctId） |
 | `outAcctNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户，Front 加密 |
 | `outAcctName` | String | 是 | `pay.bankAccountName` | 付款户名，Front 加密 |
-| `inAcctId` | String | 是 | `rec.bankEMemberCode` | 收款会员编号 |
+| `recMemberCode` | String | 是 | `rec.bankEMemberCode` | 收款会员编号（对外语义键，更名自 inAcctId） |
 | `inAcctNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户，Front 加密 |
 | `inAcctName` | String | 是 | `rec.bankAccountName` | 收款户名，Front 加密 |
 
@@ -352,18 +352,21 @@ POST /front/v1/transactions/transfer/auth
 FrontRequest<AuthTransferBusinessData> → R<FrontTransResult>
 ```
 
-先调用授权码接口，取得 `smsIdx`，用户输入验证码后再调用本接口。
+先调用授权码接口，取得 `authOrderNo`（授权指令号），用户输入验证码后再调用本接口。
 
-| 原始 key | 类型 | 必填 | 标准来源 | 注释 |
+请求 specialData 使用对外语义键（9 键，银行协议键由 Handle 内部映射）：
+
+| 键 | 类型 | 必填 | 标准来源 | 注释 |
 |---|---|---|---|---|
-| `outMemberCode` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
-| `outAcctNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户 |
-| `outSubAcctName` | String | 是 | `pay.bankAccountName` | 付款户名 |
-| `inMemberCode` | String | 是 | `rec.bankEMemberCode` | 收款会员编号 |
-| `inAcctNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户 |
-| `inSubAcctName` | String | 是 | `rec.bankAccountName` | 收款户名 |
-| `messageOrderNo` | String | 是 | `auth.authOrderNo` | 授权码申请返回的短信指令号，通常使用 `smsIdx` |
-| `messageCheckCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front；Front 加密后上送，禁止记录日志 |
+| `payMemberCode` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
+| `payAccountNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户 |
+| `payName` | String | 是 | `pay.bankAccountName` | 付款户名 |
+| `recMemberCode` | String | 是 | `rec.bankEMemberCode` | 收款会员编号 |
+| `recAccountNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户 |
+| `recName` | String | 是 | `rec.bankAccountName` | 收款户名 |
+| `authType` | String | 是 | `auth.authType` | 授权类型，本期仅 `SMS`（APP 组装/Handle 双层拒绝） |
+| `authOrderNo` | String | 是 | `auth.authOrderNo` | 授权码申请返回的授权指令号，原样回传 |
+| `authCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front；Front 加密后上送，禁止记录日志 |
 
 `bizOrderNo` 和 `amount` 必填，`fee` 空按 0，`remark` 最大 120。
 
@@ -374,7 +377,8 @@ assembler.setPlatformCode("pajzb");
 assembler.setCapability(FrontCapability.TRANSFER_AUTH);
 // pay、rec 同普通转账
 FrontSpecialDataAssembler.Auth auth = assembler.newAuth();
-auth.setAuthOrderNo(smsIdx);
+auth.setAuthType(AuthType.SMS);
+auth.setAuthOrderNo(authOrderNo);   // 接口一返回的 authOrderNo，原样回传
 auth.setAuthCode(userInputCode);
 JSONObject specialData = assembler.assemble();
 ```
@@ -385,30 +389,45 @@ JSONObject specialData = assembler.assemble();
 
 ```text
 POST /front/v1/transactions/transfer/auth-code/resend
-FrontRequest<TransferAuthCodeBusinessData> → R<FrontTransferAuthCodeResult>
+FrontRequest<TransferAuthCodeBusinessData> → R<FrontTransResult>
 ```
 
-“重发”是再次调用相同银行申请接口，每次产生新的 `frontSsn`，不传上一次短信指令号。
+“重发”是再次调用相同银行申请接口，每次产生新的 `frontSsn`，不传上一次授权指令号；发码允许重发
+（每次新 frontSsn 新行，豁免查重，25 号 §3A）。
 
-| 原始 key | 类型 | 必填 | 标准来源 | 注释 |
+请求 specialData 使用对外语义键（3 键）：
+
+| 键 | 类型 | 必填 | 标准来源 | 注释 |
 |---|---|---|---|---|
-| `outAcctId` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
-| `acctNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户 |
-| `intAcctNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户；这是协议原始拼写，不能改为 `inAcctNo` |
+| `payMemberCode` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
+| `payAccountNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户 |
+| `recAccountNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户（Handle 内部映射 reserve intAcctNo，协议原始拼写） |
 
-`bizOrderNo`、`amount` 必填，`remark` 最大 120。
+`bizOrderNo`、`amount` 必填，`remark` 最大 120。组装时 `auth.authType` 必填（SMS），但只作
+组装入参校验、不进 wire specialData。
 
-返回 `FrontTransferAuthCodeResult`：
+返回 `R<FrontTransResult>`（公用，无专用结果对象）：
 
 | 字段 | 说明 |
 |---|---|
-| `frontRespCode/frontRespDesc` | Front 业务结果 |
+| `frontRespCode/frontRespDesc` | Front 业务结果（失败时 desc=银行原文） |
+| `frontStatus` | SUCCESS / UNKNOWN / FAILED |
 | `frontSsn` | 本次授权码申请流水 |
 | `frontQueryId` | 钱包查询关联号 |
-| `specialData.smsIdx` | 银行返回并由 Front 解密后的短信指令号 |
-| `specialData.receiveMobile` | 银行返回并由 Front 解密后的脱敏手机号 |
+| `specialData.authType` | 授权码类型（本期固定 SMS） |
+| `specialData.authOrderNo` | 银行返回并经 Front 解密后的授权指令号（响应 smsIdx 的统一命名，闭环传接口二） |
+| `specialData.receiveMobile` | 银行返回并经 Front 解密后的接收手机号 |
 
-该结果没有 `frontStatus` 字段。
+组装示例：
+
+```java
+assembler.setPlatformCode("pajzb");
+assembler.setCapability(FrontCapability.TRANSFER_AUTH_CODE_RESEND);
+// pay、rec 同普通转账
+FrontSpecialDataAssembler.Auth auth = assembler.newAuth();
+auth.setAuthType(AuthType.SMS);
+JSONObject specialData = assembler.assemble();
+```
 
 ---
 
@@ -507,7 +526,7 @@ FrontRequest<WithdrawBusinessData> → R<FrontTransResult>
 
 | 原始 key | 类型 | 必填 | 标准来源 | 注释 |
 |---|---|---|---|---|
-| `outAcctId` | String | 是 | `pay.bankEMemberCode` | 提现会员编号 |
+| `payMemberCode` | String | 是 | `pay.bankEMemberCode` | 提现会员编号（对外语义键，更名自 outAcctId） |
 | `acctNo` | String | 是 | `pay.bankEAccountId` | 提现见证子账户 |
 | `nameEnc` | String | 是 | `pay.bankAccountName` | 客户户名 |
 | `cardNoEnc` | String | 是 | `pay.bankCard.bankCardNo` | 绑定卡号 |
