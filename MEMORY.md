@@ -117,7 +117,8 @@
 - 代码：`cateringsass/catering-modules/catering-front`（分支 `limeng_front`）；记忆库 `saas2.0-memory-hub`。
 - 范围：8 个交易 API（transfer / transferAuth / resendTransferAuthCode / consume / refund / withdraw /
   platformPay / platformReceive）+ 5 个查询 API（queryAccountStatus / queryAccountBalance /
-  queryTransactionStatus / queryPlatformTransactionDetails / queryTransactionDetails）。
+  queryTransactionStatus / queryPlatformTransactionDetails / queryTransactionDetails）+ 中信不明来款 3 个专项 API
+  （列表分页查询 / 退款、重新匹配、实时清分统一处理 / 状态查询）。
 - 架构：Controller → Application Service → Router/Registry `(BankCode, FrontCapability)` → Handle →
   银行 Channel；LiteFlow 13 条链 + 7 个公共节点；中信编码 `zxegj`、平安编码 `pajzb`。
 - 已落地框架（不要重新设计）：api/common 三模块边界、`R` + `FrontErrorCode`、`baseData + specialData`
@@ -136,6 +137,9 @@
 - 关键结论：中信退款真退款 `/refund + bizFunc=23`（参考 lsym UAT `lsym_20260625_limeng_refundTask`）；
   平安 `platformPay/platformReceive = UNSUPPORTED`；中信明细查询固定 `bizFunc=25/chnlNo=0010`（资金账户）、
   `bizFunc=24/chnlNo=0010`（登记簿），不支持跨日。
+- 中信不明来款是独立特殊能力：最终协议基线为《中信E管家产品V2_不明来账》，固定
+  `2033` 列表、`2025` 退款、`2023` 重新匹配/实时清分、`2087` 状态查询及 `chnlNo=0010`；
+  请求/返回全字段强类型且无 `specialData`，不进入通用 Router/Registry/LiteFlow，只复用租户注入和配置加载。
 - 统一语义：「Slot」在业务代码中指 `FrontFlowContext`（LiteFlow 内部 Slot 不作为业务对象继承）。
 
 ### 5.4 lsym UAT
@@ -192,5 +196,7 @@
 
 ## 更新记录
 
+- 2026-08-24：补充中信不明来款专项协议、SaaS 2.0 独立能力边界及 3 个对外 API；完整对接字段见
+  `docs/saas2.0 重构/27-中信不明来款业务接入手册.md`。
 - 2026-08-16：初版。由本机 Codex（`~/.codex/AGENTS.md`、config.toml、rules、memories）与
   Claude（`~/.claude/CLAUDE.md`、settings.json、plans）及各项目 memory-hub 归纳生成。

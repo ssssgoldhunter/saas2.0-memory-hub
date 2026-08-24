@@ -28,6 +28,7 @@
 | SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`，分支 `limeng_front` | 实际开发目标，以当前代码为准 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
+| 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
 | mdl 参考实现 | `/Users/limeng/workspaces/IdeaProjects_mdl_dep/mdl/fund-catering-front` | 参考真实银行调用和字段映射，不复制旧框架缺陷 |
 | 旧 Front 结构参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-front` | 只参考目录、方法语义和历史实现 |
 | lsym 对象转换参考 | `IdeaProjects_lsym_dep/slhy/fund-catering/fund-catering-consume/fund-catering-consume-service/.../consume/domain/Converter.java` | 只参考“存在哪些 Req/Res ↔ Entity/Vo 转换关系”；它用的是原生 mapstruct `@Mapper` 接口，**新工程不照搬此写法、不引入其依赖**，固定改用 mapstruct-plus 的 `@AutoMapper` + `MapstructUtils.convert`（详见 05 §3.9.1） |
@@ -50,6 +51,7 @@
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
 → 02/03 银行能力汇总
+→ 中信不明来款专项文档（仅实现或维护中信不明来款时）
 → 中信退款最新 lsym UAT 参考代码（仅实现中信 refund 时）
 → 当前 catering-front 代码（与上述契约不一致时按缺陷处理）
 → mdl / 旧 Front 参考代码
@@ -83,11 +85,12 @@ codegraph status               # 索引状态
 
 ### 3.1 当前正式开发与对接手册
 
-以下三份手册面向后续开发人员和 AI，内容以当前源码已实现能力为边界；进行框架扩展或上游对接时应先按任务范围阅读：
+以下四份手册面向后续开发人员和 AI，内容以当前源码已实现能力为边界；进行框架扩展或上游对接时应先按任务范围阅读：
 
 1. [19-catering-front框架与业务功能设计手册](19-catering-front框架与业务功能设计手册.md)：完整了解框架、业务能力、开发规则、约束和新增银行能力案例。
 2. [20-catering-front交易接口对接手册](20-catering-front交易接口对接手册.md)：上游对接 8 个交易接口时使用，包含原始字段、银行差异、流程、返回值和调试案例。
 3. [21-catering-front交易查询接口对接手册](21-catering-front交易查询接口对接手册.md)：上游对接 5 个查询接口时使用，包含请求/响应原始字段、分页明细、银行差异和调试案例。
+4. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：上游接入中信不明来款专项能力时使用，包含 2033 列表、2025 退款、2023 重新匹配/实时清分、2087 状态查询的完整强类型契约。
 
 ### 3.2 设计契约、实施记录与历史资料
 
@@ -141,6 +144,8 @@ codegraph status               # 索引状态
     定稿（语义键 authType/authOrderNo/authCode、payMemberCode、R<FrontTransResult> 公用）。
 29. [26-平安授权转账接口改造-plan](26-平安授权转账接口改造-plan.md)：25 号 spec 的分阶段
     执行计划（T1-T18、波及文件总表、风险与回退）。
+30. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：中信专项能力的最终对接说明；
+    本能力不进入通用 `FrontCapability`，请求/返回均不使用 `specialData`。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -152,7 +157,7 @@ codegraph status               # 索引状态
 - `catering-api-front`：API、请求响应对象、常量和枚举；
 - `catering-common-core`：`R`、Front 错误码、`FrontException` 和 Front 公共配置 key；
 - `catering-front`：Controller、Application Service、Router、Registry、Handle、配置装配、统一异常和日志；
-- 8 个交易 API、5 个查询 API；
+- 8 个通用交易 API、5 个通用查询 API，以及中信不明来款 3 个专项 API；
 - 每个 API 方法在服务内部固定自己的 `FrontCapability`，调用方不能传入或覆盖；Transaction/Query Registry
   已按 `(BankCode, FrontCapability)` 建立不可变映射，同一领域重复复合键会在启动时失败；
 - 中信、平安 Transaction/Query 实现通过 `capabilityDefinitions()` 声明当前银行实际登记的能力；Registry
@@ -170,6 +175,9 @@ codegraph status               # 索引状态
   `bizFunc=24/chnlNo=0010`，两个查询的 specialData Key、交易类型、账户类型和响应字段常量；
 - 中信退款固定为真退款 `/refund + bizFunc=23`，禁止迁移 mdl 的反向转账退款；
 - 中信退款字段已与 lsym UAT 分支 `lsym_20260625_limeng_refundTask` 的真退款 Handle 核对；
+- 中信不明来款专项能力已落地：独立 `CiticUnidentifiedRemittanceApi` 提供列表、统一处理和状态查询，
+  固定使用 `2033/2025/2023/2087 + chnlNo=0010`；请求/返回全字段强类型、无 `specialData`，
+  仅复用租户上下文注入、`tenant_base_config` 和 `TenantBankConfigProvider`；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含

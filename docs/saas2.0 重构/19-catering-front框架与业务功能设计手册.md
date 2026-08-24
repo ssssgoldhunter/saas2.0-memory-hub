@@ -1,7 +1,7 @@
 # Catering Front 框架与后续开发手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-19
+> 核验日期：2026-08-24
 > 适用对象：后续维护 `catering-front` 的开发人员与 AI
 > 最终目的：让没有历史上下文的开发者能够定位代码、理解边界，并按现有框架继续增加银行交易、查询和账户功能
 > 源码优先：本文与代码不一致时，以当前 `limeng_front` 分支源码为准，并将差异视为文档或代码缺陷
@@ -72,14 +72,17 @@ catering-common-core 不能反向依赖 API 或 Front 实现。
 |---|---|
 | 交易 API | `catering-api/.../FrontTransApi.java` |
 | 查询 API | `catering-api/.../FrontQueryApi.java` |
+| 中信不明来款专项 API | `catering-api/.../CiticUnidentifiedRemittanceApi.java` |
 | 请求/响应 | `catering-api/.../model/request`、`model/response` |
 | specialData 标准组装 | `catering-api/.../assemble/FrontSpecialDataAssembler.java` |
 | 交易应用服务 | `catering-front/.../application/FrontTransApplicationService.java` |
 | 查询应用服务 | `catering-front/.../application/FrontQueryApplicationService.java` |
+| 中信不明来款专项应用服务 | `catering-front/.../application/CiticUnidentifiedRemittanceApplicationService.java` |
 | LiteFlow | `catering-front/src/main/resources/liteflow/front-flow.xml` |
 | 路由与注册 | `catering-front/.../route` |
 | Handle SPI | `catering-front/.../handle` |
 | 中信实现 | `catering-front/.../channel/citic` |
+| 中信不明来款专项 Channel | `catering-front/.../channel/citic/unidentified` |
 | 平安实现 | `catering-front/.../channel/pingan` |
 | 钱包公共网关 | `catering-front/.../channel/gateway` |
 | 租户银行配置 | `catering-front/.../config` |
@@ -119,9 +122,46 @@ catering-common-core 不能反向依赖 API 或 Front 实现。
 不得启用 `PingAnQueryHandle` 中账户状态/余额挡板后的不可达草稿。收到新的明确需求后，应重新核对
 平安协议并独立设计，而不是删除 `pendingIntegration()` 就宣称完成。
 
+### 3.3 中信不明来款专项能力
+
+中信不明来款属于任务明确裁决的特殊能力，已提供独立 API，不加入通用 `FrontCapability`，也不经过
+Transaction/Query Router、Registry 或 LiteFlow。这样可避免把仅中信存在的业务字段提升为跨银行模型。
+
+| 专项方法 | 对外路径 | 银行接口 | 固定协议 |
+|---|---|---|---|
+| `queryPages` | `/front/v1/citic/unidentified-remittances/pages` | `query-trans-details` | `bizFunc=2033/chnlNo=0010` |
+| `process` | `/front/v1/citic/unidentified-remittances/process` | `refund` 或 `recharge` | 退款 `2025`；重新匹配/实时清分 `2023` |
+| `queryStatus` | `/front/v1/citic/unidentified-remittances/status` | `query-trans-status` | `bizFunc=2087/chnlNo=0010` |
+
+专项调用链固定为：
+
+```text
+CiticUnidentifiedRemittanceApi
+→ CiticUnidentifiedRemittanceController
+→ CiticUnidentifiedRemittanceApplicationService
+→ TenantBankConfigProvider（tenant_base_config + 中信账户配置）
+→ CiticUnidentifiedRemittanceChannel
+→ RequestMapper / ResponseMapper
+→ BankWalletGateway
+```
+
+设计边界：
+
+- 请求 DTO 直接继承 `BaseRequest`，复用 `tenantId/clientId/platformCode/dataSourceId` 注入与租户配置回填；
+- 请求和返回均为全字段强类型 DTO，不使用 `FrontRequest`、`FrontBaseResult` 或 `specialData`；
+- `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 只在 Front 内部获取或固定；
+- 银行协议以《中信E管家产品V2_不明来账》专项文档为最终基线，lsym UAT 用于核对实际调用形态；
+- 综合文档的 `recharge+24/query-trans-status+123` 不属于该实现，禁止混用；
+- 列表账号和户名按银行原始值返回；调用方不得记录这些敏感字段明文；
+- 处理与状态查询必须复用列表原行定位字段，`2087` 使用 `transJrno/transDate`，不使用处理请求的 `frontSsn`。
+
+对接细节见 [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)。
+
 ---
 
 ## 4. 整体调用链
+
+下图描述跨银行通用交易/查询能力；中信不明来款使用 §3.3 的专项调用链。
 
 ```mermaid
 flowchart LR
@@ -533,6 +573,7 @@ public AccountStatusResult queryAccountStatus(
 
 - 金额全部使用 `Long` 人民币分，禁止浮点数。
 - `specialData` 逐键白名单映射，禁止整体 `putAll` 到银行报文。
+- 中信不明来款按专项强类型 DTO 显式映射，不得为了复用通用链重新包装成 `specialData`。
 - 银行协议 DTO 留在 `catering-front/channel/{bank}/protocol`。
 - 新银行调用统一走 `BankWalletGateway`。
 - 路由依靠 `(BankCode, FrontCapability)`，不增加第二份能力矩阵。
@@ -549,6 +590,7 @@ public AccountStatusResult queryAccountStatus(
 - 在 Controller 或 Application Service 写银行判断、功能码和报文组装。
 - 让调用方传 `bizFunc/chnlNo/url/appKey/accountConfig`。
 - 直接返回银行 DTO、完整 reserve 或原始错误码。
+- 将中信不明来款注册为跨银行 `FrontCapability`，或套用通用 `FrontRequest` 两段式模型。
 - 因 Word 文档存在字段就一次性扩展常量和 DTO。
 - 新建统一渠道交易表、动态表名或跨业务公共 Mapper。
 - 交易超时后自动重发；结果未知必须查询确认。
@@ -577,7 +619,18 @@ public AccountStatusResult queryAccountStatus(
 - [ ] 账户状态/余额等银行原值已有明确归一化策略或明确保留为 specialData。
 - [ ] 不返回原始敏感报文，不模拟银行成功。
 
-### 14.3 提交前静态核验
+### 14.3 中信不明来款专项能力完成标准
+
+- [x] 独立 API、Controller、Application Service、Channel 和银行协议 DTO 边界完整。
+- [x] `2033/2025/2023/2087` 与 `chnlNo=0010` 按专项协议固定，不接受调用方覆盖。
+- [x] 请求和返回使用强类型全字段 DTO，不包含 `specialData`。
+- [x] `tenantId` 必填，其他租户公共字段支持上下文注入和 `tenant_base_config` 回填。
+- [x] 退款、重新匹配、实时清分、客户账条件必填和状态枚举均有测试。
+- [x] `acctNo/userId` 上送前 SM2 加密；列表账号/户名按银行原值返回但不写入日志。
+- [x] `2087` 明确使用列表 `transJrno/transDate` 定位，不误用处理请求 `frontSsn`。
+- [x] Maven Reactor、Checkstyle 和专项单元测试通过。
+
+### 14.4 提交前静态核验
 
 ```bash
 git status --short
