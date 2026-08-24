@@ -1,6 +1,6 @@
 # 平安授权转账接口改造 spec（transferAuth / resendTransferAuthCode）
 
-> 状态：implemented（2026-08-21 用户逐项确认：出参公用化、payMemberCode、authType、authOrderNo/authCode 统一；同日按 26 号 plan T1-T16 实施完毕，待用户 review 后提交）
+> 状态：implemented（2026-08-21 用户逐项确认并按 26 号 plan T1-T16 实施完毕，代码提交 7824a98d；2026-08-24 用户完成开发 review，静态验收 §5 九条全过，T17 编译/T18 联调待授权/环境）
 >
 > 依据：22/23 号 lsym 取证、24 号迁移方案（本文是其可实施契约化）
 >
