@@ -148,7 +148,10 @@ codegraph status               # 索引状态
     执行计划（T1-T18、波及文件总表、风险与回退）。
 30. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：中信专项能力的最终对接说明；
     本能力不进入通用 `FrontCapability`，请求/返回均不使用 `specialData`。
-31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：已批准但尚未实施的全量扁平化目标设计。
+31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：扁平化目标设计
+    （2026-08-25 已在 limeng_front_restruct 分支实施：单节点分域链、三域目录、旧结构全删；
+    含分域注册追加裁决——每域六件套：强类型 Capability 接口/Registry/Execute 节点/链/Slot/
+    Application Service，账户等新域按六件套平行新增）。
 32. [29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)：
     下一位 AI 的唯一活动任务文档；覆盖 22 个通用能力、13 条链、旧结构删除、静态验收与授权门禁。
 
@@ -196,7 +199,8 @@ codegraph status               # 索引状态
   `BankWalletSender` 统一且只记录一次钱包请求/响应/失败，删除旧 Handle/Capability 的重复钱包报文日志；
   除该明确调整外，字段范围和明文/脱敏边界以固定代码基线为准；
 - 当前已提交基线仍使用原 LiteFlow 公共节点、Router/Registry/Handle 和三段式上下文；
-  28 号目标结构尚未实施。2026-08-25 的未提交全面改造已放弃，不能据其声明当前框架已经切换；
+  28 号目标结构已在 `limeng_front_restruct` 分支实施（未提交，等待用户 review 后授权 commit）；
+  分域注册改造（交易/查询各一套 Registry+ExecuteNode+强类型接口）为当前待执行任务；
 - 下一轮按 28/29 号全量迁移：13 条链统一为 `THEN(frontValidate, tenantResolve, bankRoute)`，
   Slot 严格两层，中信/平安全部通用能力按 `channel/{bank}/{capability}` 分组；
   租户配置保留 `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient` 清晰链路，但删除

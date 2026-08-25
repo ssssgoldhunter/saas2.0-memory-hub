@@ -1,5 +1,7 @@
 # Catering Front 全量扁平化迁移 Implementation Plan
 
+> 状态：implemented / pending-review
+
 > **For agentic workers:** 按任务顺序执行并逐项 review；不得从 2026-08-25 已放弃的未提交代码续写。
 
 **Goal:** 在 API、数据表和业务行为不变的前提下，将中信、平安全部通用能力迁移到两层 Slot、三节点薄链和按能力分包的扁平结构。
@@ -13,7 +15,8 @@
 - `catering-api-front`、domain、mapper、VO、XML Mapper、DDL、上游组装契约不改。
 - 中信 11 个、平安 11 个通用能力全部迁移；平安账户状态/余额保留挡板。
 - 平安 `platformPay/platformReceive` 继续不支持，不创建虚假 Capability。
-- 13 条 LiteFlow 链统一为 `THEN(frontBankExecute)`（2026-08-25 用户裁决单节点：路由+配置+执行三合一）。
+- 13 条 LiteFlow 链：交易链 `THEN(frontTransExecute)`、查询链 `THEN(frontQueryExecute)`
+  （2026-08-25 用户裁决：单节点三合一 + 分域注册，每域一套 Registry/Execute 节点/接口）。
 - Slot 只有 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层。
 - `flow` 只分 `slot/node/route`；禁止业务 Context、Router、Dispatch、Handle 继承、BankSupport。
 - 银行能力扩展机制只有 Registry + Route；Validate/TenantResolve 是固定薄前置节点，不建立父类、
@@ -38,7 +41,7 @@ com.chinaums.front
 ├─ application/  保留现有 FrontFlowExecutor / FrontTransApplicationService / FrontQueryApplicationService
 ├─ flow/
 │  ├─ slot/       FrontBaseSlot / FrontTransSlot / FrontQuerySlot
-│  └─ route/      BankCapability / BankCapabilityRegistry / FrontBankExecuteNode（单节点三合一）
+│  └─ route/      BankTransCapability / BankQueryCapability / 两个 Registry / 两个 ExecuteNode（分域注册）
 ├─ channel/
 │  ├─ gateway/    BankWalletGateway / RoutingBankWalletGateway / BankWalletSender / OpenBodySigSigner
 │  ├─ citic/
@@ -85,7 +88,8 @@ com.chinaums.front
 - [ ] Registry/Route 内不存在按具体银行编写的 `if/switch`；新银行 Capability 只靠 `bank()`、
   `capability()` 自描述并通过构造器列表注册。
 - [ ] LiteFlow 节点用无参 `getFirstContextBean()` 取 Slot并明确校验类型。
-- [x] 13 条链全部切换为单节点薄链（frontBankExecute 三合一，FrontException 由该节点收口写 Slot 并结束链）。
+- [x] 13 条链全部切换为单节点薄链（分域：交易 frontTransExecute / 查询 frontQueryExecute，
+      FrontException 由节点收口写 Slot 并结束链）。
 - [ ] 保留当前 13 个 chain id，只替换每条链的节点表达式，不照抄 28 号示意名称改名。
 - [ ] `BankRouteNode` 捕获 `FrontException`、写 Slot 并结束链；`FrontFlowExecutor` 承接结果为空及
   `frontRespCode` 为空的旧 Normalize 兜底，不新增 Dispatch/Normalize 节点。

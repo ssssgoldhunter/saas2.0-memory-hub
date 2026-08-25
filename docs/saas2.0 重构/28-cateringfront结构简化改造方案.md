@@ -1,6 +1,6 @@
 # catering-front 扁平化重构设计（28 号）
 
-> 状态：approved-design / not-implemented
+> 状态：approved-design / implemented
 > 用户确认：2026-08-25
 > 当前实施授权：全量迁移（2026-08-25 用户最新裁决）。
 > 代码基线：`cateringsass/limeng_front@99e696f4e7ab78a1b307b5a2fd3c911698c143fb`。
@@ -13,12 +13,16 @@
 
 1. `catering-api-front` 不修改；对外 API、DTO、返回类型、调用方组装方式均不受影响。
 2. 保留 LiteFlow，但 LiteFlow 只做薄编排，不承载银行业务和层层转发；
-   2026-08-25 用户进一步裁决：每条链收敛为单节点 `THEN(frontBankExecute)`，
-   由 `FrontBankExecuteNode` 三合一（Registry 路由 + 租户配置加载 + 能力执行），
-   校验与响应归一化分别由 Capability 和 FrontFlowExecutor/ApplicationService 承接。
+   2026-08-25 用户进一步裁决收敛为单节点，后又裁决分域注册：交易链挂
+   `frontTransExecute`、查询链挂 `frontQueryExecute`，每域节点三合一
+   （本域 Registry 路由 + 租户配置加载 + 本域能力执行），FrontException 由节点
+   收口写 Slot 并结束链；校验与响应归一化分别由 Capability 和
+   FrontFlowExecutor/ApplicationService 承接。
 3. Slot 参考 lsym UAT `catering-consume` 的命名和继承关系，固定命名为
    `FrontBaseSlot`、`FrontTransSlot`、`FrontQuerySlot`；禁止再引入
    `FrontFlowContext`、`BankRequestContext` 等业务 Context。
+   2026-08-25 追加裁决（分域注册）：将来账户等新域出现时，新 Slot（如
+   `FrontAccountSlot`）直接平级继承 `FrontBaseSlot`，不挂在其他域 Slot 之下。
 4. Slot 继承关系严格只有两层：`FrontBaseSlot`，以及直接继承它的
    `FrontTransSlot`、`FrontQuerySlot`；不得增加第三层或其他业务 Slot。
 5. `flow` 下继续分包：Slot 放在一起，公共节点放在一起，Registry 与 Route 放在一起。
@@ -26,8 +30,12 @@
    `transaction` 交易 / `query` 查询 / `account` 账户；平台收付款属交易域，
    两家银行域结构对称）；真正跨该银行多个能力复用的代码才进入该银行的 `common`。
 7. 每个“银行 × 能力”允许保留自己的组装代码和少量重复，优先保证单个能力从上到下可读。
-8. Front 的银行能力扩展框架只有两项：Registry 注册、Route 路由。请求校验和租户加载只是固定的薄前置节点，
-   不是扩展层；禁止恢复 Router、Dispatch、Handle 继承体系。
+8. Front 的银行能力扩展框架只有两项：Registry 注册、Route 路由。2026-08-25 追加裁决
+   （分域注册）：按业务域拆分——每个域各一套「Capability 接口 + Registry + Execute 节点 +
+   链组 + Slot + Application Service」六件套（当前两域：交易/查询；账户域将来平行新增）。
+   域接口用强类型 Slot 参数（`execute(FrontTransSlot)` / `execute(FrontQuerySlot)`），
+   编译期防错配，禁止父类参数+instanceof 的宽声明。域间零耦合；请求校验和租户加载只是
+   固定的薄前置节点，不是扩展层；禁止恢复 Router、Dispatch、Handle 继承体系。
 9. 钱包业务发送只有 `BankWalletGateway.post` 一个统一出口；允许 Gateway 根据银行选择最终
    `BankWalletSender`，但 Sender 必须直接完成实际 HTTP 调用，不再继续套 Client、Support、Invoker。
 10. 日志参考旧 Front Handle：Capability 记录业务开始、校验、流水状态、结果和异常；钱包请求/响应
@@ -169,7 +177,11 @@ Resolver、Prepare 或 Context 转换体系。
 
 ```xml
 <chain name="chainFrontTransfer">
-    THEN(frontBankExecute);
+    THEN(frontTransExecute);
+</chain>
+
+<chain name="chainFrontQueryAccountStatus">
+    THEN(frontQueryExecute);
 </chain>
 ```
 
@@ -263,15 +275,29 @@ Registry 规则：
 `FrontTransSlot`/`FrontQuerySlot` 而无法覆写：
 
 ```java
-public interface BankCapability {
+public interface BankTransCapability {
     BankCode bank();
     FrontCapability capability();
-    void execute(FrontBaseSlot slot);
+    void execute(FrontTransSlot slot);
+}
+
+public interface BankQueryCapability {
+    BankCode bank();
+    FrontCapability capability();
+    void execute(FrontQuerySlot slot);
 }
 ```
 
-具体 Capability 在 `execute` 第一段使用 `instanceof` 明确取得 `FrontTransSlot` 或
-`FrontQuerySlot`，类型错误立即失败；执行结果写回对应 Slot 的明确结果字段。
+分域注册（2026-08-25 用户裁决）：域接口直接使用强类型 Slot 参数，查询能力无法误注册
+为交易能力（编译期挡住）；Capability 实现零 instanceof 样板。每域一个 Registry
+（`BankTransCapabilityRegistry` / `BankQueryCapabilityRegistry`，结构同构）和
+一个 Execute 节点（`FrontTransExecuteNode` / `FrontQueryExecuteNode`，节点内
+`getFirstContextBean(FrontTransSlot.class)` 强类型取 Slot）。交易链末节点挂
+`frontTransExecute`、查询链挂 `frontQueryExecute`。
+
+新域准入标准（防止域失控）：新能力的 Slot 中间状态/数据形态与现有域不同才开新域
+（如账户域的开户材料/审核状态）；仅能力不同、数据形态相同的并入现有域。域内 Slot
+不再按能力拆分（如 TransferSlot/RefundSlot 禁止）。
 
 `BankRouteNode` 同时承接旧 Dispatch 的必要收口行为，但不增加 Dispatch 层：捕获 Capability 抛出的
 `FrontException`，把错误码写入 Slot 并 `setIsEnd(true)`；其他系统异常继续抛出。
