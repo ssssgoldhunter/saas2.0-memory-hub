@@ -115,7 +115,7 @@ mvn spring-boot:run -Dmaven.repo.local=/Users/limeng/shares/m2saas
 |---|---|---|
 | transfer / consume / transferAuth | pay（下拉一）+ rec（下拉二） | accountNo→bankEAccountId、name→bankAccountName；bankEMemberCode 需手填（租户账户配置可加 `bankEMemberCode` 自动带出） |
 | resendAuth | pay + rec（同一所选账户） | accountNo→bankEAccountId；pay 另填 bankEMemberCode |
-| refund | oriPay（下拉一）+ oriRec（下拉二） | accountNo→bankEAccountId、name→bankAccountName；另手填 originalBusinessDate（yyyyMMdd，中信） |
+| refund | oriPay（下拉一）+ oriRec（下拉二） | accountNo→bankEAccountId、name→bankAccountName；originalBusinessDate 已移至主表单必填项（2026-08-25，不再在折叠区） |
 | withdraw | pay + 卡要素 | accountNo→bankEAccountId、name→bankAccountName、bankCardNo→pay.bankCard.bankCardNo；cardHolderName 手填（平安需要） |
 | platformPay | 仅 rec（下拉） | 平台侧由租户配置隐式定位；contractId 选填 |
 | platformReceive | 仅 pay（下拉） | 同上 |
