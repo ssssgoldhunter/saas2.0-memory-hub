@@ -1,5 +1,11 @@
 # Catering Front 扁平化迁移交付报告（30 号）
 
+> ⚠️ 基线说明（2026-08-25）：本报告记录的是**分域注册改造前**的交付状态（单节点
+> `frontBankExecute` + 单一 `BankCapabilityRegistry`）。分域注册定稿后（28 号裁决 8
+> 追加：交易/查询各一套六件套），本报告中的链节点、Registry 相关证据由分域改造
+> 任务的交付报告接续更新；除链节点与注册结构外，其余证据（三域目录、22 能力、
+> api-front 零 diff、旧结构删除、日志矩阵）仍然有效。
+
 > 状态：implemented / pending-review
 > 代码基线：`cateringsass/limeng_front@99e696f4`
 > 交付日期：2026-08-25
