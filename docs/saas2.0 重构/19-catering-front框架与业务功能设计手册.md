@@ -240,7 +240,7 @@ FeignRequestInterceptor
 
 > 本节首先记录当前已提交基线。全量迁移后的 13 条目标链固定为
 > `THEN(frontValidate, tenantResolve, bankRoute)`，使用两层 Slot 和
-> `BankRouteNode → BankCapabilityRegistry → CiticTransferCapability`；不得继续复制下述旧节点层级。
+> `FrontTransExecuteNode → BankTransCapabilityRegistry → CiticTransferCapability`（分域注册）；不得继续复制下述旧节点层级。
 
 当前 `front-flow.xml` 有 13 条具名链：8 条交易、5 条查询。每条链复用同一组节点：
 
@@ -600,7 +600,9 @@ public AccountStatusResult queryAccountStatus(
 - 银行协议 DTO 留在 `catering-front/channel/{bank}/{capability}`，与使用它的能力相邻；真实跨能力 DTO 才进入银行 `common`。
 - 银行调用统一直接走 `BankWalletGateway.post`，Gateway 只再分派到直接执行 HTTP 的银行 Sender，
   不增加 Sender 后的 WalletHttpClient/Invoker/Facade 包装层。
-- 路由只允许 `BankRouteNode → BankCapabilityRegistry → BankCapability`，按
+- 路由分域（2026-08-25 裁决）：交易链 `FrontTransExecuteNode → BankTransCapabilityRegistry →
+  BankTransCapability`、查询链 `FrontQueryExecuteNode → BankQueryCapabilityRegistry →
+  BankQueryCapability`，按
   `(BankCode, FrontCapability)` 定位，不增加 Router、Dispatch 或第二份能力矩阵。
 - Slot 只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层，禁止新业务 Context。
 - 能力代码按真实执行顺序展开，允许少量重复；禁止 Handle 继承链和 BankSupport God class。

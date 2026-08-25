@@ -20,7 +20,10 @@
 2. **API**：`catering-api-front` 必须零 diff；Controller、Feign、请求 DTO 和返回签名不变。
 3. **Slot**：只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层；禁止新增业务 `*Context`。
 4. **flow 分包**：只按 `slot`、`node`、`route` 分组；Route 只有
-   `BankRouteNode → BankCapabilityRegistry → BankCapability`，禁止 Router、Dispatch 和 Handle 继承体系。
+   分域注册（2026-08-25 裁决）：交易 `FrontTransExecuteNode → BankTransCapabilityRegistry →
+   BankTransCapability`、查询 `FrontQueryExecuteNode → BankQueryCapabilityRegistry →
+   BankQueryCapability`；域接口强类型 Slot 参数，禁止父类参数+instanceof 宽声明；
+   禁止 Router、Dispatch 和 Handle 继承体系。
 5. **channel 分包**：银行下先按能力分包，银行真实共用组件放 `common`；能力包内不得继续拆
    `client/protocol/request/service/support/assembler/mapper`。
 6. **能力代码**：主方法按“校验→组报文→查重/INIT→SENDING→统一发送→响应落库/结果”顺序展开；
@@ -80,7 +83,8 @@
 12. 持久层 Entity ↔ VO/BO 对象转换必须使用 MapStruct（`@AutoMapper` + `MapstructUtils.convert`），
     禁止手写 `setXxx(getXxx())`；依赖经 `catering-common-core` 传递，catering-front 不重复声明（见 §3.9）。
 13. `FrontCapability` 是 API 方法内部固定的业务能力标识，调用方不得传入或覆盖；
-    `BankCapabilityRegistry` 以类型安全的 `(BankCode, FrontCapability)` 精确定位唯一 Capability。
+    `BankTransCapabilityRegistry`/`BankQueryCapabilityRegistry` 各以类型安全的
+    `(BankCode, FrontCapability)` 精确定位唯一 Capability（分域注册）。
     capability 同时用于日志定位和渠道流水记录，但不得用于动态选表或公共 `switch`。
 14. Front 的定位是银行渠道适配层，只校验路由、银行协议、报文组装和本次渠道调用所必需的条件；
     余额、业务资格、原业务状态、累计金额、业务限额等属于业务系统的规则，未被当前银行协议或明确需求
@@ -1411,7 +1415,8 @@ ContractKeys 或补写未启用分支。
 ### E. 路由与能力
 
 - [ ] API 方法内部固定 capability，请求对象和调用方不能传入或覆盖；
-- [ ] 只存在一个 `BankCapabilityRegistry`，不通过 capability 名称、枚举列表或前缀猜测领域；
+- [ ] 分域注册：`BankTransCapabilityRegistry` 与 `BankQueryCapabilityRegistry` 各自存在且
+      结构同构，不通过 capability 名称、枚举列表或前缀猜测领域；
 - [ ] Registry 使用类型安全的 `(BankCode, FrontCapability)` 精确定位唯一 Capability；
 - [ ] Registry 构造器注入 `BankCapability` 列表，重复注册相同“银行 + 能力”时启动失败；
 - [ ] 未解析银行返回 `BANK_NOT_SUPPORTED`，银行下未注册能力返回 `CAPABILITY_NOT_SUPPORTED`，不维护
