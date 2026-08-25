@@ -22,9 +22,9 @@
 4. Slot 继承关系严格只有两层：`FrontBaseSlot`，以及直接继承它的
    `FrontTransSlot`、`FrontQuerySlot`；不得增加第三层或其他业务 Slot。
 5. `flow` 下继续分包：Slot 放在一起，公共节点放在一起，Registry 与 Route 放在一起。
-6. 银行模块先按银行放置，再按业务域分包（2026-08-25 用户裁决四域：
-   `transaction` 交易 / `query` 查询 / `account` 账户 / `clearsettlement` 清结算，
-   中信含全部四域，平安无 clearsettlement）；真正跨该银行多个能力复用的代码才进入该银行的 `common`。
+6. 银行模块先按银行放置，再按业务域分包（2026-08-25 用户裁决三域：
+   `transaction` 交易 / `query` 查询 / `account` 账户；平台收付款属交易域，
+   两家银行域结构对称）；真正跨该银行多个能力复用的代码才进入该银行的 `common`。
 7. 每个“银行 × 能力”允许保留自己的组装代码和少量重复，优先保证单个能力从上到下可读。
 8. Front 的银行能力扩展框架只有两项：Registry 注册、Route 路由。请求校验和租户加载只是固定的薄前置节点，
    不是扩展层；禁止恢复 Router、Dispatch、Handle 继承体系。
@@ -97,8 +97,7 @@ com.chinaums.front
 │  │  └─ OpenBodySigSigner
 │  ├─ citic/
 │  │  ├─ common/          # SequenceGenerator/Sm2Crypto/ResponseChecker/CryptoProperties/WalletHttpClient(最终 Sender)
-│  │  ├─ transaction/     # Transfer/Consume/Refund/Withdraw 四个 Capability
-│  │  ├─ clearsettlement/ # PlatformPay/PlatformReceive 两个 Capability
+│  │  ├─ transaction/     # Transfer/Consume/Refund/Withdraw/PlatformPay/PlatformReceive 六个 Capability
 │  │  ├─ query/           # TransStatus/TransDetail/PlatformDetail 三个 Capability
 │  │  ├─ account/         # AccountStatus/AccountBalance 两个 Capability
 │  │  └─ unidentified/    # 既有专项，当前不动
@@ -118,7 +117,7 @@ com.chinaums.front
 ### 3.1 package 硬约束
 
 - `flow` 只允许 `slot`、`node`、`route` 三个职责包；不得再出现 `flow/context`、`flow/component/dispatch` 等层级。
-- `channel/{bank}` 只允许“四域包（transaction/query/account/clearsettlement）+ common + 已确认的独立专项包”。
+- `channel/{bank}` 只允许“三域包（transaction/query/account）+ common + 已确认的独立专项包”。
 - 能力包内部不再继续拆 `client/config/crypto/protocol/request/service/support/assembler/mapper` 子包。
 - 协议 Request/Response DTO 放在其能力包；确实被同一银行多个能力使用的 DTO 才放该银行 `common`。
 - `common` 不是杂物包。代码只有在至少两个已实现能力真实复用、且不隐藏业务步骤时才能进入。

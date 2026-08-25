@@ -43,7 +43,7 @@ com.chinaums.front
 │  ├─ gateway/    BankWalletGateway / RoutingBankWalletGateway / BankWalletSender / OpenBodySigSigner
 │  ├─ citic/
 │  │  ├─ common/  含直接 HTTP 的 CiticWalletHttpClient
-│  │  ├─ transaction/（4） clearsettlement/（2） query/（3） account/（2）
+│  │  ├─ transaction/（6，含平台收付款） query/（3） account/（2）
 │  │  └─ unidentified/
 │  └─ pingan/
 │     ├─ common/  含直接 HTTP 的 PingAnWalletHttpClient + Crypto/Sequence
