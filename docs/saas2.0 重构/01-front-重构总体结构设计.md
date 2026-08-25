@@ -1,14 +1,15 @@
 # SaaS 2.0 多银行渠道 Front 重构总体结构设计
 
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
-> 状态：current（总体结构讨论稿）
+> 状态：historical-design（总体结构讨论稿）
 > 验证状态：needs-source-check（具体业务字段、银行接口映射待逐业务线确认）
 > 创建日期：2026-07-30
 > 适用项目：SaaS 2.0 多银行渠道支付 Front
 
-> 实施说明：本文保留总体设计和讨论依据；模块、类、DDL、LiteFlow、测试和完成标准以
-> [04-front-service完整重构实施方案.md](./04-front-service完整重构实施方案.md) 为准；代码层级、返回对象、错误码和异常约束以
-> [05-front代码开发约束.md](./05-front代码开发约束.md) 为准。
+> 实施说明：本文只保留总体设计和讨论依据。2026-08-25 起，结构以
+> [28-cateringfront结构简化改造方案](./28-cateringfront结构简化改造方案.md) 为准，当前任务以
+> [29-cateringfront全量扁平化迁移-plan](./29-cateringfront全量扁平化迁移-plan.md)
+> 为准；字段、返回、错误码和数据约束继续以 05/06/09 等契约为准。本文的 Context、Router、Handle 层级不得复制到新实现。
 
 ---
 

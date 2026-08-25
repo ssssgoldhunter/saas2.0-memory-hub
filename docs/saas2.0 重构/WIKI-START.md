@@ -13,7 +13,7 @@
 
 阅读完成后，先向我说明：
 1. 当前代码已经提供哪些框架能力；
-2. 你要实现的方法在新 Handle、旧 Front 和 mdl 中分别对应什么；
+2. 你要实现的方法在 28 号目标 Capability、当前已提交代码、旧 Front 和 mdl 中分别对应什么；
 3. 你准备修改哪些文件；
 4. 哪些字段进入 baseData、specialData、accountConfig、accountSpecialData；
 5. 本次是否收到编写测试或执行编译的明确授权。
@@ -36,7 +36,9 @@
 旧项目不是兼容基线。发生冲突时，优先级固定为：
 
 ```text
-用户已确认并写入本 Wiki/05/字段契约的决策
+用户已确认并写入本 Wiki/28/05/字段契约的决策
+→ 28-cateringfront结构简化改造方案（实施结构简化时）
+→ 29-cateringfront全量扁平化迁移-plan（当前唯一实施任务）
 → 05-front代码开发约束
 → 06-transfer-consume字段契约（实现 transfer/consume 时）
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
@@ -146,6 +148,9 @@ codegraph status               # 索引状态
     执行计划（T1-T18、波及文件总表、风险与回退）。
 30. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：中信专项能力的最终对接说明；
     本能力不进入通用 `FrontCapability`，请求/返回均不使用 `specialData`。
+31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：已批准但尚未实施的全量扁平化目标设计。
+32. [29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)：
+    下一位 AI 的唯一活动任务文档；覆盖 22 个通用能力、13 条链、旧结构删除、静态验收与授权门禁。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -187,14 +192,12 @@ codegraph status               # 索引状态
 - 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
-- `FrontExceptionHandler` 和结构化日志工具；交易链路执行完整日志矩阵，查询链路只强制钱包真正发送前
-  输出完整请求 JSON，查询日志不要求 `capability` 或交易型 metadata；
-- LiteFlow 框架已落地：7 个公共节点（`frontRequestValidate`/`frontTransactionRoute`/
-  `frontQueryRoute`/`bankHandleContextPrepare`/`frontTransactionDispatch`/`frontQueryDispatch`/
-  `frontResponseNormalize`）+ 13 条链（8 交易 + 5 查询）；公共 `frontIdempotencyCheck` 已删除，
-  重复交易检查由具体交易 Handle 使用当前业务固定 Mapper 执行；
-  交易、查询使用各自 Router，不通过 capability 名称猜测领域，也不维护统一能力状态表；
-  `frontTransactionDispatch/frontQueryDispatch` 只执行路由阶段已选中的 `BankCapabilityHandle`；
+- `FrontExceptionHandler` 和结构化日志工具；交易链路记录入口、能力、渠道状态、钱包和异常事件，
+  查询链路在统一 Gateway 发送前记录一次脱敏摘要；任何链路均不得输出完整敏感请求/响应；
+- 当前已提交基线仍使用原 LiteFlow 公共节点、Router/Registry/Handle 和三段式上下文；
+  28 号目标结构尚未实施。2026-08-25 的未提交全面改造已放弃，不能据其声明当前框架已经切换；
+- 下一轮按 28/29 号全量迁移：13 条链统一为 `THEN(frontValidate, tenantResolve, bankRoute)`，
+  Slot 严格两层，中信/平安全部通用能力按 `channel/{bank}/{capability}` 分组；
   唯一规则文件 `resources/liteflow/front-flow.xml`，Nacos `catering-front.yml` 的
   `liteflow.rule-source` 固定为 `liteflow/front-flow.xml`；
 - 渠道流水持久层已落地：10 张表的 Entity/VO/Mapper/XML/Service/ServiceImpl 已搬入 main，
@@ -290,7 +293,7 @@ AbstractBankHandle.prepareContext
   不属于此禁令；
 - 不增加 `FrontResponse`；单条接口返回 `R<具体结果>`，分页明细查询直接返回
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），不再使用 `R` 包裹；
-- API、Controller、Application Service 使用同一方法签名并原样透传；Router 和 Handle 不返回 `R`；
+- API、Controller、Application Service 使用同一方法签名并原样透传；内部 Route 和 Capability 不返回 `R`；
 - 不返回 `null` 或模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
 - 中信退款对外固定使用 `originalBizOrderNo + originalBizSubOrderNo`，映射银行
@@ -298,68 +301,66 @@ AbstractBankHandle.prepareContext
   `ORI_USER_SSN`，也不得为了补齐银行字段查询 Front 本地原交易表；
 - 中信退款的 `ORI_USER_D_ID/ORI_USER_D_NM/ORI_USER_C_ID/ORI_USER_TRANS_DT` 是定位字段之外的
   独立必填协议字段，由上游在请求 `specialData` 中使用银行原始 key 提供；`ORI_USER_C_NM` 按银行协议选填。
-  Handle 必须逐字段校验和映射，禁止整体透传；
+  Capability 必须逐字段校验和映射，禁止整体透传；
 - 中信退款 `FUND_TP` 当前取 `accountSpecialData.default_fund_type`，该配置必须存在；不得取
   `platformUserRole/default_role/self_role`，也不查询原交易进行比对；
 - 不为平安虚构 `platformPay/platformReceive` 等价接口，这两项固定为 `UNSUPPORTED`；
 - 渠道流水必须按银行和交易业务拆表，禁止恢复单一 `front_channel_transaction`；
-- API 方法内部固定 capability，并直接进入 Transaction/Query（后续 Account）领域 Registry；Registry
-  使用 `platformCode → BankCode` 与 capability 的类型安全复合键定位唯一能力 Handler。Handler 使用自己
-  的固定 Repository；禁止统一 Dispatch 再按 capability 选择方法，禁止按 capability 动态选表，也禁止
-  调用方传表名或通过字符串拼接动态 SQL；
+- 28 号全量迁移中，API 方法内部固定 capability 并写入请求域 Slot；银行分发只允许
+  `BankRouteNode → BankCapabilityRegistry → BankCapability`，Registry 按能力类
+  `bank()/capability()` 自描述注册并在启动时拒绝重复键。能力类使用自己的固定渠道表 Mapper；
+  禁止增加 Router/Dispatch/Handle 继承体系，禁止按 capability 动态选表，禁止调用方传表名或拼接动态 SQL；
 - 每张渠道交易表必须保存业务主/子记录关联字段、业务及银行所需明确字段和
   `reserve1/reserve2/reserve3`；不保存报文快照；
-- 渠道表允许保存本系统内部使用的账户、会员、姓名、卡号等原始值，本期不要求数据库字段加密；
-  日志允许明文输出这些值（用户 2026-08-14 确认取消日志敏感值掩码），但普通接口响应仍按各自契约
-  不输出敏感值；
+- 渠道表允许按当前契约保存本系统内部使用的账户、会员、姓名、卡号等原始值，本期不要求数据库字段加密；
+  该规则不放宽日志边界，日志、异常和普通接口响应不得输出密钥、完整账号/卡号、手机号、证件号、姓名或验证码；
 - 本阶段信任边界是内部系统，ShardingSphere 数据源连接配置的加密和安全加固不作为本期开发、验收项；
-  该豁免不影响银行协议要求的签名/加密；日志明文策略以用户 2026-08-14 确认为准；
+  该豁免不影响银行协议要求的签名/加密，也不放宽日志敏感信息保护；
 - `baseData` 只保存内部业务系统公共数据；银行侧账户、会员、姓名、卡号等身份类动态数据均放入
-  请求 `specialData`，由具体银行 Handle 按常量白名单逐字段映射；
+  请求 `specialData`，由具体银行 Capability 按常量白名单逐字段映射；
 - 重复交易校验固定使用当前银行业务表内的
   `tenantId + bizOrderNo + bizSubOrderNo`；命中返回“交易已存在”，不重放旧结果；
 - 不把银行差异字段放入公共 `baseData`；
 - 中信明细查询的单个 `transactionDate`、交易类型、登记簿/账户类型必须放入 `specialData`；业务系统
   不得提交 `TRANS_DATE/PAGE/bizFunc/chnlNo`。中信 24/25 不支持跨日，业务系统按日期多次调用；
-- 所有金额均以人民币分传递，禁止在 Handle 内使用浮点数或擅自转换为元；
+- 所有金额均以人民币分传递，禁止在 Capability 内使用浮点数或擅自转换为元；
 - 不把 `specialData`、`accountSpecialData` 直接 `putAll` 到银行 `reserveMap`；
 - 不允许调用方覆盖 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等银行账户配置；
 - 所有请求、响应、配置、Context、record 组件及枚举值必须有字段级业务注释；
-- 银行常量只保留当前真实 Handle 已映射或本次需求明确确认的字段，禁止把 Word 全字段提前搬入代码；
-- `bizFunc/chnlNo/API path` 在具体银行 Handle 中使用带业务注释的本地常量；字段 key 才进入
+- 银行常量只保留当前真实能力已映射或本次需求明确确认的字段，禁止把 Word 全字段提前搬入代码；
+- `bizFunc/chnlNo/API path` 在具体银行 Capability 中使用带业务注释的本地常量；字段 key 才进入
   `*ContractKeys`，不得在两处重复保存同一调用控制值；
-- `transTime` 每次请求生成，`transSsn` 由具体银行 Handle 按银行规则生成并保存到渠道流水；
+- `transTime` 每次请求生成，`transSsn` 由具体银行 Capability 按银行规则生成并保存到渠道流水；
 - 平安查询流水必须按场景分离：单笔状态查询使用原请求 `frontSsn/front_ssn → oriTransSsn`；
   6073 明细订单补全使用原应答 `queryId/bank_query_id = recordList.frontSeqNo`；
   `bank_user_ssn` 只保存明确返回的 `USER_SSN/ssn`，三者禁止互换；
 - 租户数据源配置是必备前置条件；STANDARD 分片找不到配置、配置解析失败或目标 `ds_x` 不存在时
   必须立即失败，
   禁止默认路由到任意数据库；
-- 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Handle 判定，
+- 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Capability 判定，
   `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
 - 只有 Front 业务成功时顶层 `R.code=200`；银行业务失败时顶层也必须返回失败码，并在 data 内保留
   统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
-- 交易链路按 05 §8 记录 API、Handle、报文组装和钱包访问日志；查询链路只强制钱包真正发送前输出
-  带银行编码和实际接口名的完整请求 JSON，不要求 `capability` 或交易型 metadata；
-- 完整 JSON 保留全部字段和层级，字段值按明文输出（用户 2026-08-14 确认取消日志敏感值掩码）；
-  `Authorization`、签名头和完整银行 URL 不进入报文日志；
+- 交易链路按 05 §8 在 Capability 真实步骤附近记录开始、流水状态、钱包发送、响应和异常；
+  请求/响应只记录脱敏摘要，不输出完整敏感 JSON；`Authorization`、签名头和完整银行 URL不进入日志；
+- 结构简化执行全量迁移，但不得改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
 - 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
 
 ## 7. 后续 AI 的实现单位
 
-每次只领取“一个银行 + 一个能力”，例如“中信 transfer”或“平安 withdraw”。实现步骤固定：
+当前唯一可领取单位是 29 号全量扁平化迁移。实现步骤固定：
 
-1. 在 `04` 中确认新 Handle 方法与旧 Front/mdl 的映射；
-2. 阅读目标银行能力文档并定位 mdl 具体实现类；
-3. 列出公共字段、账户特殊配置和业务 `specialData`；
-4. 只覆盖目标银行具体 Handle 的明确方法；
-5. 通过现有 `BankRequestContext` 读取三段数据，不重新查询配置；
-6. 显式映射银行请求和响应，不透传 JSON；
-7. 按 05 §8 的交易/查询差异日志口径补全必要日志，不为查询复制交易日志矩阵；
-8. 同步更新银行能力文档、总体设计和任务交接说明；
-9. 按用户当次授权决定是否写测试或编译；
-10. 完成代码和文档后先报告差异；只有用户明确确认后才分别 commit/push 代码仓库和记忆体仓库。
+1. 完整阅读 28 号方案，并以当前已提交 HEAD 为实现基线；已放弃的未提交全面改造不得续写或复制；
+2. 在 `04`、`06`、中信能力文档、当前已提交代码、旧 Front 和 mdl 中核对 transfer 行为；
+3. 先列出 API 禁改区、字段来源、账户配置、渠道流水、错误码和日志基线；
+4. 建立两层 Slot、`flow/slot|node|route`，并迁移中信/平安 22 个通用能力；
+5. 每个交易 Capability 按“校验→组报文→查重/INIT→SENDING→统一 Gateway 发送→响应落库/结果”顺序展开；
+6. 不增加业务 Context、Handle 继承、BankSupport、Router、Dispatch 或多层 Wallet Client；
+7. 13 条链全部切换完成后删除旧 Context/Router/Dispatch/Handle 体系；
+8. 按用户当次授权决定是否写测试或编译；未授权时只做静态核验并如实说明；
+9. 完成后提交 22 项能力矩阵、13 条链、删除清单和行为差异给用户 review；
+10. 只有用户明确确认后才分别 commit/push 代码仓库和记忆体仓库。
 
 ## 8. Handle 方法入口
 

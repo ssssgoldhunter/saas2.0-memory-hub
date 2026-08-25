@@ -13,6 +13,10 @@
 > 本文中的阶段勾选、“当前大 Handle”及“尚未实现”等描述是历史过程记录，不代表当前工作区。
 > 当前状态只以 [WIKI-START.md](./WIKI-START.md)、
 > [12-front-implementation-issues/README.md](./12-front-implementation-issues/README.md) 和当前代码为准。
+> 2026-08-25 起本文不再作为结构实施计划。结构目标以
+> [28-cateringfront结构简化改造方案](./28-cateringfront结构简化改造方案.md) 为准，唯一活动任务以
+> [29-cateringfront全量扁平化迁移-plan](./29-cateringfront全量扁平化迁移-plan.md)
+> 为准。本文仅用于核对历史方法、字段和银行行为映射，Router/Handle/Context/全量实施清单全部失效。
 
 ---
 

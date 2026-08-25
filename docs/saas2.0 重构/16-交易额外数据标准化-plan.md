@@ -166,3 +166,16 @@ front 服务零改动，不存在行为切换点。web-test 改造独立 revert�
   （语义键 + Handle 内部协议键映射注记）；07 号契约已按 25 号重写；
 - web-test 组装两步调用已适配：transferAuth/resendAuth Tab 增加 authType 输入（默认 SMS），
   组装入参 `auth.authType` 自动带出；resendAuth 响应展示 authOrderNo/authType（无 smsIdx 硬编码）。
+
+## 28 号结构简化尝试（2026-08-25，已放弃）
+
+> 状态：historical / rejected。下列结论只记录为何放弃，不代表当前代码完成状态，也不得作为续写基线。
+
+- 未提交尝试虽然覆盖全量能力，但结构仍不符合当前定稿，不能继续使用；
+- 该尝试仍存在 `BankSupport` God class、能力代码内部多层 helper、银行包拍平后脱离
+  `com.chinaums.front` 根包等问题，没有达到“参考 consume/旧 Front 顺序式阅读”的目标；
+- 当时的编译和测试报告早于最后一轮包移动，不能证明最终工作区状态，本记录不再声明编译或测试通过；
+- 当前通用能力实现数应按真实注册和源码核对，禁止继续引用“23 个能力类”这一错误计数；
+- 新目标设计及唯一实施范围见
+  [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)。下一位 AI 必须从已提交代码基线重新开始，
+  按 28/29 号从已提交 HEAD 重新全量迁移；清理未提交代码属于破坏性操作，需用户另行确认。

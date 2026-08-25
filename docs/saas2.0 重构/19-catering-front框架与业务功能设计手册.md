@@ -1,5 +1,10 @@
 # Catering Front 框架与后续开发手册
 
+> **结构状态（2026-08-25）**：本文主体记录当前已提交基线，便于 P0 核对业务行为；28 号扁平化设计已经
+> 用户批准但尚未实施，2026-08-25 的未提交全面改造已放弃。下一轮执行中信、平安 22 个通用能力与
+> 13 条链的全量迁移，步骤见 29 号 plan。凡本文 Router/Handle/Context/银行 Client 的开发模板与 28 号冲突，
+> 结构上以 28 号、29 号和 05 §0 为准。
+
 > 状态：current / verified-against-source
 > 核验日期：2026-08-24
 > 适用对象：后续维护 `catering-front` 的开发人员与 AI
@@ -159,7 +164,7 @@ CiticUnidentifiedRemittanceApi
 
 ---
 
-## 4. 整体调用链
+## 4. 当前已提交基线调用链（P0 对照）
 
 下图描述跨银行通用交易/查询能力；中信不明来款使用 §3.3 的专项调用链。
 
@@ -230,6 +235,10 @@ FeignRequestInterceptor
 
 ## 5. LiteFlow、路由与执行器
 
+> 本节首先记录当前已提交基线。全量迁移后的 13 条目标链固定为
+> `THEN(frontValidate, tenantResolve, bankRoute)`，使用两层 Slot 和
+> `BankRouteNode → BankCapabilityRegistry → CiticTransferCapability`；不得继续复制下述旧节点层级。
+
 当前 `front-flow.xml` 有 13 条具名链：8 条交易、5 条查询。每条链复用同一组节点：
 
 ```text
@@ -299,6 +308,9 @@ front api 请求都用 tenantId 从 `tenant_base_config` 一次查询取出
 
 ## 7. 银行钱包网关
 
+> 28 号目标中，Capability 直接调用 `BankWalletGateway.post` 这一唯一业务发送出口；禁止新增银行级
+> WalletHttpClient、Invoker、Facade 或 `BankSupport.invokeBank` 包装层。下文其余内容用于核对既有行为。
+
 所有新增银行接口统一走：
 
 ```java
@@ -319,8 +331,8 @@ JSONObject response = walletGateway.post(
 4. 使用该银行 `ResponseChecker` 将原始响应映射为 `FrontErrorCode`。
 5. 在对应 Handle 的 `capabilityDefinitions()` 注册精确能力。
 
-新增银行还需实现一个 `BankWalletSender`。不得重新建立 `SaasXxxInterService` 式的“每个银行接口一个
-公共方法”封装层。
+不得重新建立 `SaasXxxInterService` 式的“每个银行接口一个公共方法”封装层，也不得为新银行再增加一层
+业务 WalletSender；银行选择、连接和 HTTP 细节统一收口在现有 Gateway 内。
 
 ---
 
@@ -418,6 +430,8 @@ DDL 变更必须联动 Entity、VO、Mapper XML、Mapper、Service、Handle、�
 
 ## 10. 后续开发标准流程
 
+> 当前执行 28/29 号全量结构迁移，但不新增银行或改变能力支持状态。
+
 ### 10.1 新增银行
 
 1. 核对真实银行协议、签名、加密、成功码和错误语义。
@@ -459,9 +473,9 @@ DDL 变更必须联动 Entity、VO、Mapper XML、Mapper、Service、Handle、�
 
 ---
 
-## 11. 已实现案例：中信账户状态查询
+## 11. 已提交基线案例：中信账户状态查询（historical template）
 
-以下代码来自当前已实现路径，用于说明“账户类查询”如何接入；它不是伪造的新银行功能。
+以下代码来自当前已提交路径，用于 P0 理解业务行为；其 Handle/Registry 结构不是 28 号新能力模板。
 
 ### 11.1 注册能力
 
@@ -574,9 +588,12 @@ public AccountStatusResult queryAccountStatus(
 - 金额全部使用 `Long` 人民币分，禁止浮点数。
 - `specialData` 逐键白名单映射，禁止整体 `putAll` 到银行报文。
 - 中信不明来款按专项强类型 DTO 显式映射，不得为了复用通用链重新包装成 `specialData`。
-- 银行协议 DTO 留在 `catering-front/channel/{bank}/protocol`。
-- 新银行调用统一走 `BankWalletGateway`。
-- 路由依靠 `(BankCode, FrontCapability)`，不增加第二份能力矩阵。
+- 银行协议 DTO 留在 `catering-front/channel/{bank}/{capability}`，与使用它的能力相邻；真实跨能力 DTO 才进入银行 `common`。
+- 银行调用统一直接走 `BankWalletGateway.post`，不增加 WalletHttpClient/Invoker/Facade 包装层。
+- 路由只允许 `BankRouteNode → BankCapabilityRegistry → BankCapability`，按
+  `(BankCode, FrontCapability)` 定位，不增加 Router、Dispatch 或第二份能力矩阵。
+- Slot 只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层，禁止新业务 Context。
+- 能力代码按真实执行顺序展开，允许少量重复；禁止 Handle 继承链和 BankSupport God class。
 - 不支持、未接入、结果未知要使用不同错误或状态明确表达。
 - 渠道表字段命名使用 `pay/rec/withdraw/bank_card`，禁止 `payer/payee`。
 - Entity ↔ VO/BO 转换使用项目 mapstruct-plus 范式。
@@ -588,6 +605,7 @@ public AccountStatusResult queryAccountStatus(
 - 返回 `null`、空壳或模拟成功。
 - 用反向转账冒充退款。
 - 在 Controller 或 Application Service 写银行判断、功能码和报文组装。
+- 为结构复用建立业务父类、多层 helper、Router/Dispatch 或 BankSupport God class。
 - 让调用方传 `bizFunc/chnlNo/url/appKey/accountConfig`。
 - 直接返回银行 DTO、完整 reserve 或原始错误码。
 - 将中信不明来款注册为跨银行 `FrontCapability`，或套用通用 `FrontRequest` 两段式模型。
@@ -599,6 +617,19 @@ public AccountStatusResult queryAccountStatus(
 ---
 
 ## 14. Definition of Done
+
+### 14.0 全量扁平化迁移完成标准
+
+- [ ] 中信 11 个、平安 11 个通用能力与 13 条链全部迁移。
+- [ ] `catering-api-front` 零 diff，domain/mapper/DDL/不明来款未改。
+- [ ] `flow` 只按 slot/node/route 分组，Slot 继承严格两层。
+- [ ] 所有银行能力按 `channel/{bank}/{capability}` 分包；银行 common 只有真实复用。
+- [ ] 任一 Capability 均可按顺序读完本能力主流程。
+- [ ] 无新增业务 Context、Handle 父类、Router、Dispatch、BankSupport 或多层 Wallet Client。
+- [ ] 钱包业务发送只直接调用 `BankWalletGateway.post`。
+- [ ] 日志只含脱敏摘要，不输出密钥或完整敏感字段。
+- [ ] 未获授权时未新增/运行测试、未执行编译；获授权后只引用本次改动后的真实结果。
+- [ ] 旧 Context/Router/Dispatch/Handle 已删除，完成后等待用户 review。
 
 ### 14.1 新银行完成标准
 
