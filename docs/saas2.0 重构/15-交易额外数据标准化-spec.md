@@ -1,5 +1,10 @@
 # 交易额外数据（specialData）标准化 Spec
 
+> 结构同步（2026-08-25）：本文的组装输入、输出协议键和字段矩阵继续有效；文中“front 服务零改动”、
+> `Handle/BankRequestContext/TransactionHandle` 是本 spec 当时的实施记录，不是当前框架模板。三域结构下，
+> 组装结果由 Transaction/Query/Account Capability 从所属域 Slot 读取；直传白名单校验由具体 Capability
+> 保留。API 和调用方组装方式仍不变。
+
 > Wiki 入口：[WIKI-START.md](./WIKI-START.md)
 > 状态：approved-for-implementation（2026-08-17 用户逐条确认；同日两次架构修正：
 > ①组装位置改为 catering-consume 的 flow 节点两步调用；②最终形态为 **catering-api-front 实例工具类**

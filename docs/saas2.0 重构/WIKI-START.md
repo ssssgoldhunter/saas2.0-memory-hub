@@ -40,6 +40,9 @@
 → 28-cateringfront结构简化改造方案（实施结构简化时）
 → 29-cateringfront全量扁平化迁移-plan（当前唯一实施任务）
 → 05-front代码开发约束
+→ 01-front-重构总体结构设计
+→ 04-front-service完整重构实施方案
+→ 19-catering-front框架与业务功能设计手册
 → 06-transfer-consume字段契约（实现 transfer/consume 时）
 → 07-transferAuth-resendTransferAuthCode字段契约（实现平安授权转账/验证码时）
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
@@ -49,18 +52,16 @@
 → 09-final-rebuild-all-tables.sql（全量重建：DROP + CREATE + 分区，目标环境一次性建表用）
 → 10-transaction-query-field-contract（实现交易状态或交易明细查询时）
 → 11-catering-common-framework-catalog（需要确认公共框架已有能力时）
-→ 00-任务交接说明
-→ 01-front-重构总体结构设计
-→ 04-front-service完整重构实施方案
 → 02/03 银行能力汇总
+→ 00-任务交接说明（仅追溯历史）
 → 中信不明来款专项文档（仅实现或维护中信不明来款时）
 → 中信退款最新 lsym UAT 参考代码（仅实现中信 refund 时）
 → 当前 catering-front 代码（与上述契约不一致时按缺陷处理）
 → mdl / 旧 Front 参考代码
 ```
 
-`00` 和 `04` 保留历史交接、设计过程与目标说明，不再承担当前完成状态。凡是其中出现的“已实现/未实现”与
-当前代码或 Issue 清单冲突，一律以当前代码、本文、05 和 12 为准。
+`00` 保留历史交接，不承担当前完成状态。01、04、19 已同步为三域现行设计；实际完成状态仍必须核对
+当前代码和 29 号任务清单，不得仅凭设计文档的目标描述判断已经实现。
 
 ## 2.1 代码扫描优先使用 CodeGraph（2026-08-14 约定）
 
@@ -91,7 +92,8 @@ codegraph status               # 索引状态
 
 1. [19-catering-front框架与业务功能设计手册](19-catering-front框架与业务功能设计手册.md)：完整了解框架、业务能力、开发规则、约束和新增银行能力案例。
 2. [20-catering-front交易接口对接手册](20-catering-front交易接口对接手册.md)：上游对接 8 个交易接口时使用，包含原始字段、银行差异、流程、返回值和调试案例。
-3. [21-catering-front交易查询接口对接手册](21-catering-front交易查询接口对接手册.md)：上游对接 5 个查询接口时使用，包含请求/响应原始字段、分页明细、银行差异和调试案例。
+3. [21-catering-front交易查询接口对接手册](21-catering-front交易查询接口对接手册.md)：上游对接
+   3 个 Query 域接口和 2 个 Account 域接口时使用，包含请求/响应原始字段、分页明细、银行差异和调试案例。
 4. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：上游接入中信不明来款专项能力时使用，包含 2033 列表、2025 退款、2023 重新匹配/实时清分、2087 状态查询的完整强类型契约。
 
 ### 3.2 设计契约、实施记录与历史资料
@@ -101,8 +103,8 @@ codegraph status               # 索引状态
 3. 本次领取的 Issue 子文件及其直接引用的字段契约：先核验当前代码，再决定是否修改。
 4. `cateringsass/catering-modules/catering-front/README.md` 和当前代码：确认实际实现，不依赖历史完成声明。
 5. [01-front-重构总体结构设计](01-front-重构总体结构设计.md)：理解模块、请求、配置、路由和响应边界。
-6. [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)：只查看目标流程和 Handle 映射；
-   其中历史实施进度不作为当前状态。
+6. [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)：当前三域 Service 文件职责、
+   22 个 Capability 归域、13 条链和实施/验收顺序。
 7. [02-中信银行接口能力汇总](02-中信银行接口能力汇总.md)：实现中信能力时必读。
 8. [03-平安银行接口能力汇总](03-平安银行接口能力汇总.md)：实现平安能力时必读。
 9. [06-transfer-consume字段契约](06-transfer-consume字段契约.md)：实现 transfer/consume 时必须完整阅读。
@@ -186,7 +188,7 @@ codegraph status               # 索引状态
 - 中信退款字段已与 lsym UAT 分支 `lsym_20260625_limeng_refundTask` 的真退款 Handle 核对；
 - 中信不明来款专项能力已落地：独立 `CiticUnidentifiedRemittanceApi` 提供列表、统一处理和状态查询，
   固定使用 `2033/2025/2023/2087 + chnlNo=0010`；请求/返回全字段强类型、无 `specialData`，
-  仅复用租户上下文注入、`tenant_base_config` 和 `TenantBankConfigProvider`；
+  仅复用租户上下文注入、`tenant_base_config`、`TenantBankConfigLoader` 和统一 Gateway/Sender；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含

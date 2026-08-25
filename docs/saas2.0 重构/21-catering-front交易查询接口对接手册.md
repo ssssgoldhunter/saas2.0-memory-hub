@@ -1,10 +1,10 @@
 # Catering Front 交易查询接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-19
+> 核验日期：2026-08-25
 > 适用对象：调用 `catering-front` 查询能力的业务上游开发人员
-> 覆盖范围：当前 `FrontQueryApi` 的 5 个查询接口及完整请求、返回字段
-> 不覆盖：银行 Handle 开发和交易发起；分别见 19、20 号手册
+> 覆盖范围：当前 `FrontQueryApi` 的 5 个接口（3 个 Query 域 + 2 个 Account 域）及完整请求、返回字段
+> 不覆盖：银行 Capability 开发和交易发起；分别见 19、20 号手册
 
 ---
 
@@ -19,6 +19,8 @@
 - 平安交易状态、平台明细、账户明细已实现；账户状态和余额固定返回 `F200003`。
 - 明细金额统一返回人民币分；查询条件中的日期统一 `yyyyMMdd`。
 - `frontStatus` 在交易状态查询中是内部三态 `S/P/F/null`，与交易接口的枚举不是同一类型。
+- API 名称和签名不变，但内部执行域已明确：交易状态/两类明细走 Query；账户状态/余额走 Account。
+  调用方无需感知 `FrontQuerySlot` 或 `FrontAccountSlot`。
 
 ### 1.1 支持矩阵
 
@@ -207,7 +209,7 @@ FrontRequest<AccountStatusQueryData> → R<AccountStatusResult>
 | 中信 | `acctNo` | String | 是 | 被查询用户编号；Front 加密后调用 `2058` |
 | 平安 | — | — | — | 当前适配器未接入，调用固定失败 |
 
-旧文档中“账户状态 specialData 传空对象”的说法已经过期。中信当前 Handle 明确校验
+旧文档中“账户状态 specialData 传空对象”的说法已经过期。中信当前 Account Capability 明确校验
 `specialData.acctNo`。
 
 ### 5.2 `AccountStatusResult` 完整字段
@@ -271,7 +273,7 @@ FrontRequest<AccountBalanceQueryData> → R<AccountBalanceResult>
 | `acctNo` | String | 中信必填 | 被查询用户/账户编号 |
 | `registerAttr` | String | 选填 | 功能登记簿类型；有值时映射银行 `reserve.registerAttr` |
 
-当前 Handle 对 `registerAttr` 不做必填或白名单校验；缺失时直接由银行决定是否拒绝。常用类型定义为：
+当前 Account Capability 对 `registerAttr` 不做必填或白名单校验；缺失时直接由银行决定是否拒绝。常用类型定义为：
 
 | 值 | 注释 |
 |---|---|
@@ -295,9 +297,9 @@ FrontRequest<AccountBalanceQueryData> → R<AccountBalanceResult>
 | `accountId` | String | 失败时可能为空 | 回显 `acctNo` |
 | `balance` | Long | 是 | 账户总余额，人民币分 |
 | `previousBalance` | Long | 是 | 上一日余额，人民币分；当前主要由中信 46 的 `preAmount` 映射 |
-| `availableBalance` | Long | 是 | 可用余额；当前中信 Handle 未赋值 |
+| `availableBalance` | Long | 是 | 可用余额；当前中信 Account Capability 未赋值 |
 | `withdrawableBalance` | Long | 是 | 可提现余额，人民币分；中信 46 返回 |
-| `frozenBalance` | Long | 是 | 冻结余额；当前中信 Handle 未赋值 |
+| `frozenBalance` | Long | 是 | 冻结余额；当前中信 Account Capability 未赋值 |
 
 中信当前金额映射：
 
@@ -439,7 +441,7 @@ FrontRequest<PlatformDetailQueryData> → TableDataInfo<PlatformTransDetailItem>
 | `transDate` | String | 是 | 单个交易日 `yyyyMMdd`；Front 对外不提供跨日范围 |
 | `transType` | String | 是 | `01` 转账入金 / `02` 退汇 / `03` 支付渠道入金 |
 
-中信和平安使用相同 Front 对外 key，Handle 再映射各自银行协议。
+中信和平安使用相同 Front 对外 key，Query Capability 再映射各自银行协议。
 
 ### 8.3 银行分页行为
 
@@ -557,7 +559,7 @@ FrontRequest<AccountDetailQueryData> → TableDataInfo<AccountTransDetailItem>
 | 原始 key | 类型 | 中信 | 平安 | 注释 |
 |---|---|---|---|---|
 | `acctNo` | String | 必填 | 必填 | 被查用户/见证子账户号 |
-| `mchntMbrId` | String | 不使用 | Assembler 必填 | 平安会员编号；6073 当前 Handle 不消费，但标准组装器保留 |
+| `mchntMbrId` | String | 不使用 | Assembler 必填 | 平安会员编号；6073 当前 Query Capability 不消费，但标准组装器保留 |
 | `transDate` | String | 必填 | 必填 | 单日 `yyyyMMdd` |
 | `transType` | String | 必填 | 必填 | 对外只允许 `04` 提现手续费 |
 | `accountType` | String | 选填 | 忽略且不输出 | 中信映射银行 `registerAttr` |
@@ -751,8 +753,9 @@ if (page.getTotalPage() != null && pageNo < page.getTotalPage()) {
 - 中信行级 `GOAC/OANM`；
 - 任意完整 `specialData`。
 
-调用方不得把这些值明文写日志、异常消息或监控标签。日志只保留必要定位字段，例如租户、业务订单号、
-`frontSsn`、查询类型、日期、页码、Front 错误码和耗时。
+调用方不得把这些值明文写日志、异常消息或监控标签。调用方日志只保留必要定位字段，例如租户、业务订单号、
+`frontSsn`、查询类型、日期、页码、Front 错误码和耗时。Front 最终 Sender 按内部统一口径记录完整明文
+钱包请求/响应 body；上游不得复制该日志。
 
 ---
 

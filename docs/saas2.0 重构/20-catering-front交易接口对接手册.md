@@ -1,10 +1,10 @@
 # Catering Front 交易接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-19
+> 核验日期：2026-08-25
 > 适用对象：调用 `catering-front` 的业务上游开发人员
 > 覆盖范围：当前 `FrontTransApi` 已定义的 8 个交易接口
-> 不覆盖：银行 Handle 开发、账户查询、交易查询；这些内容分别见 19、21 号手册
+> 不覆盖：银行 Capability 开发、账户查询、交易查询；这些内容分别见 19、21 号手册
 
 ---
 
@@ -18,6 +18,8 @@
 - 业务上游推荐使用 `FrontSpecialDataAssembler` 生成银行协议原始 key，避免手写两套映射。
 - 只有 `R.code == 200 && data.frontRespCode == "200"` 才是 Front 业务成功。
 - `UNKNOWN`、`ACCEPTED`、`PROCESSING` 不是最终成功，必须调用交易状态查询确认。
+- Front 内部三域改造不改变本手册任何 API：8 个方法仍由 Transaction 域处理，调用方无需感知
+  `FrontTransSlot/frontTransExecute/BankTransCapabilityRegistry`。
 
 ### 1.1 当前银行支持矩阵
 
@@ -314,7 +316,7 @@ FrontRequest<TransferBusinessData> → R<FrontTransResult>
 
 | 项目 | 中信 | 平安 |
 |---|---|---|
-| `businessDate/businessTime` | 必填，`yyyyMMdd/HHmmss` | 当前 Handle 不要求 |
+| `businessDate/businessTime` | 必填，`yyyyMMdd/HHmmss` | 当前平安 Capability 不要求 |
 | `bizSubOrderNo` | 必填 | 选填；有值时上送 `orderId` |
 | `remark` 最大长度 | 256 | 256 |
 | 同步成功状态 | `SUCCESS` | `SUCCESS` |
@@ -341,7 +343,7 @@ FrontRequest<TransferBusinessData> → R<FrontTransResult>
 | `inAcctNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户，Front 加密 |
 | `inAcctName` | String | 是 | `rec.bankAccountName` | 收款户名，Front 加密 |
 
-`mrchCode/txnClientNo/stlAcctNo/functionFlag/transType` 等由 Front 配置或 Handle 固定，调用方不要传。
+`mrchCode/txnClientNo/stlAcctNo/functionFlag/transType` 等由 Front 配置或 Capability 固定，调用方不要传。
 
 ---
 
@@ -354,7 +356,7 @@ FrontRequest<AuthTransferBusinessData> → R<FrontTransResult>
 
 先调用授权码接口，取得 `authOrderNo`（授权指令号），用户输入验证码后再调用本接口。
 
-请求 specialData 使用对外语义键（9 键，银行协议键由 Handle 内部映射）：
+请求 specialData 使用对外语义键（9 键，银行协议键由 Capability 内部映射）：
 
 | 键 | 类型 | 必填 | 标准来源 | 注释 |
 |---|---|---|---|---|
@@ -364,9 +366,9 @@ FrontRequest<AuthTransferBusinessData> → R<FrontTransResult>
 | `recMemberCode` | String | 是 | `rec.bankEMemberCode` | 收款会员编号 |
 | `recAccountNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户 |
 | `recName` | String | 是 | `rec.bankAccountName` | 收款户名 |
-| `authType` | String | 是 | `auth.authType` | 授权类型，本期仅 `SMS`（APP 组装/Handle 双层拒绝） |
+| `authType` | String | 是 | `auth.authType` | 授权类型，本期仅 `SMS`（APP 组装/Capability 双层拒绝） |
 | `authOrderNo` | String | 是 | `auth.authOrderNo` | 授权码申请返回的授权指令号，原样回传 |
-| `authCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front；Front 加密后上送，禁止记录日志 |
+| `authCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front；Front 加密后上送，上游/Capability 禁止记录输入明文 |
 
 `bizOrderNo` 和 `amount` 必填，`fee` 空按 0，`remark` 最大 120。
 
@@ -401,7 +403,7 @@ FrontRequest<TransferAuthCodeBusinessData> → R<FrontTransResult>
 |---|---|---|---|---|
 | `payMemberCode` | String | 是 | `pay.bankEMemberCode` | 付款会员编号 |
 | `payAccountNo` | String | 是 | `pay.bankEAccountId` | 付款见证子账户 |
-| `recAccountNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户（Handle 内部映射 reserve intAcctNo，协议原始拼写） |
+| `recAccountNo` | String | 是 | `rec.bankEAccountId` | 收款见证子账户（Capability 内部映射 reserve intAcctNo，协议原始拼写） |
 
 `bizOrderNo`、`amount` 必填，`remark` 最大 120。组装时 `auth.authType` 必填（SMS），但只作
 组装入参校验、不进 wire specialData。
@@ -652,7 +654,8 @@ if (result.getFrontStatus() != FrontTransactionStatus.SUCCESS) {
 - [ ] 需要子订单号的接口已填写 `bizSubOrderNo`。
 - [ ] specialData 由每次新建的 Assembler 生成，或严格使用本文原始 key 白名单。
 - [ ] 未传 `bizFunc/chnlNo/path/appKey/stlAcctNo` 等 Front 内部值。
-- [ ] 未在日志记录账号、卡号、姓名、手机号、验证码、证件号、密钥或完整 specialData。
+- [ ] 调用方业务日志未记录账号、卡号、姓名、手机号、验证码、证件号、密钥或完整 specialData；
+      Front 最终 Sender 的完整明文钱包 body 日志属于服务内部既定口径，不要求上游复制。
 - [ ] 同时判断 `R.code`、`frontRespCode` 和 `frontStatus`。
 - [ ] 已保存 `frontSsn/frontQueryId`。
 - [ ] `ACCEPTED/PROCESSING/UNKNOWN` 已进入查询确认流程，没有直接重发。

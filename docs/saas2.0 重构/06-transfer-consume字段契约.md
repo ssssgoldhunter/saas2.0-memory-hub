@@ -1,6 +1,6 @@
 # transfer / consume 字段契约
 
-> 状态：中信、平安首版字段边界已确认，可作为后续 Handle 实现基线  
+> 状态：中信、平安首版字段边界已确认，可作为 Transaction Capability 实现基线
 > 范围：普通转账 `transfer`、消费 `consume`  
 > 银行：中信 `zxegj`、平安 `pajzb`  
 > 组装注记（2026-08-17）：业务方可经 `FrontSpecialDataAssembler` 组装工具类获取下述协议键
@@ -22,7 +22,7 @@
    `chnlNo=0001` 设计；
 3. 请求仍只有 `baseData + specialData` 两段；租户银行配置由 Front 内部加载；
 4. 所有金额使用人民币分，Java 公共对象使用 `Long`；
-5. 钱包原始响应码只用于 Handle 判定，业务系统只接收统一
+5. 钱包原始响应码只用于 Capability 判定，业务系统只接收统一
    `frontRespCode/frontRespDesc`；
 6. 银行特殊返回字段进入返回对象的 `specialData: JSONObject`。
 
@@ -36,7 +36,7 @@ FrontRequest<T>
 └─ specialData: JSONObject
 ```
 
-`specialData` 是当前“银行 + 具体业务方法”的动态业务扩展字段，不是钱包 `reserve` 本身。Handle 必须按
+`specialData` 是当前“银行 + 具体业务方法”的动态业务扩展字段，不是钱包 `reserve` 本身。Capability 必须按
 白名单逐字段解析并映射，禁止 `walletReserve.putAll(specialData)`。
 
 ### 2.2 transfer 基础对象
@@ -74,18 +74,21 @@ ConsumeBusinessData extends BaseTransactionBusinessData
 | `baseData.amount` | 人民币分 | 平安 `transAmt` | 金额包含手续费 |
 | `baseData.fee` | 人民币分 | 平安 `fee` | 无手续费传 0；不能小于 0 |
 
-不得在某个 Handle 内把分转换成元，也不得使用浮点数保存金额。
+不得在某个 Capability 内把分转换成元，也不得使用浮点数保存金额。
 
-## 3. Handle 内部上下文
+## 3. Transaction Slot 内部数据
 
 ```text
-BankRequestContext<T>
-├─ baseData
-├─ specialData
+FrontTransSlot extends FrontBaseSlot
+├─ request/baseData/specialData
+├─ capability
 └─ accountConfig
    ├─ appId / appKey / url / mchntId / mchntMbrId
    └─ accountSpecialData
 ```
+
+`FrontTransSlot` 由 `FrontTransApplicationService` 创建，`FrontTransExecuteNode` 加载配置后交给本域
+Registry 选中的强类型 Capability；不再转换为 `BankRequestContext`。
 
 字段来源固定：
 
@@ -95,8 +98,8 @@ BankRequestContext<T>
 | 银行账户静态特殊字段 | `accountSpecialData` | 否 |
 | 收付款、金额、订单、门店 | `baseData` | 按公共 DTO 提交 |
 | 当前银行、当前能力的动态扩展 | `specialData` | 只能按契约白名单解析 |
-| `transSsn/transTime/laasSsn` | 当前银行 Handle 生成 | 否 |
-| `bizFunc/chnlNo` | 当前银行 Handle 常量 | 否 |
+| `transSsn/transTime/laasSsn` | 当前银行 Capability 生成 | 否 |
+| `bizFunc/chnlNo` | 当前银行 Capability 常量 | 否 |
 
 ## 4. 中信 transfer / consume
 
@@ -106,15 +109,15 @@ BankRequestContext<T>
 |---|---|---|
 | `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
 | `mchntId/mchntMbrId` | 租户银行通用配置 | 中信平台商户配置 |
-| `transTime` | 中信 Handle | 每次请求生成 |
-| `transSsn` | 中信 Handle | 按中信规则生成、落渠道交易表并回传 `frontSsn` |
-| `bizFunc` | Handle 常量 `27` | 禁止业务系统覆盖 |
-| `chnlNo` | Handle 常量 `0010` | 禁止业务系统覆盖 |
-| `ccy` | Handle 常量 `CNY` | 当前中信普通支付固定人民币 |
+| `transTime` | 中信 Capability | 每次请求生成 |
+| `transSsn` | 中信 Capability | 按中信规则生成、落渠道交易表并回传 `frontSsn` |
+| `bizFunc` | Capability 常量 `27` | 禁止业务系统覆盖 |
+| `chnlNo` | Capability 常量 `0010` | 禁止业务系统覆盖 |
+| `ccy` | Capability 常量 `CNY` | 当前中信普通支付固定人民币 |
 | `transAmt` | `baseData.amount` | 单位为分，必须大于 0 |
 | `outAcctNo` | `specialData.outAcctNo` | 付款钱包账号，按中信协议加密 |
 | `inAcctNo` | `specialData.inAcctNo` | 收款钱包账号，按中信协议加密 |
-| `remark` | `baseData.remark` | Handle 校验银行长度；最大 256（C 256 O），已从 Word 协议确认 |
+| `remark` | `baseData.remark` | Capability 校验银行长度；最大 256（C 256 O），已从 Word 协议确认 |
 
 ### 4.2 中信 reserve 映射
 
@@ -123,21 +126,21 @@ BankRequestContext<T>
 | `USER_D_NM` | `specialData.USER_D_NM` | 付款用户名称 |
 | `USER_C_NM` | `specialData.USER_C_NM` | 收款用户名称 |
 | `USER_C_AMT` | `baseData.amount` | 收款用户入账金额，单位为分，必须大于 0 |
-| `P_SELF_FLAG` | Handle 固定值 `N` | 当前普通 transfer/consume 无平台自有资金动账 |
-| `P_SELF_AMT` | Handle 固定值 `0` | 单位为分，与 `P_SELF_FLAG=N` 配套 |
+| `P_SELF_FLAG` | Capability 固定值 `N` | 当前普通 transfer/consume 无平台自有资金动账 |
+| `P_SELF_AMT` | Capability 固定值 `0` | 单位为分，与 `P_SELF_FLAG=N` 配套 |
 | `BUSS_ID` | `baseData.bizOrderNo` | 商户业务主订单号，必填，最大 64（C64 M） |
 | `BUSS_SUB_ID` | `baseData.bizSubOrderNo` | 商户业务子订单号，必填，最大 64（C64 M） |
 | `TRANS_DT` | `baseData.businessDate` | `yyyyMMdd` |
 | `TRANS_TM` | `baseData.businessTime` | `HHmmss` |
 | `FUND_TP` | 中信账户配置 | 当前取 `default_fund_type` |
-| `MEMO` | Handle 固定值 `API转账` | 与当前 mdl transfer/consume 实际映射保持一致 |
-| `laasSsn` | 中信 Handle | 外联平台流水号，Handle 生成并保证不重复 |
+| `MEMO` | Capability 固定值 `API转账` | 与当前 mdl transfer/consume 实际映射保持一致 |
+| `laasSsn` | 中信 Capability | 外联平台流水号，Capability 生成并保证不重复 |
 
 当前 mdl 的 `ZxTransTransferHandle/ZxTransConsumeHandle` 没有映射 `USER_SHARE_*` 和
 `REQ_RESERVED`，因此本阶段不把这些 Word 字段声明为活动常量，也不开放这些字段。
 中信普通 transfer/consume 请求 `specialData` 当前只允许
 `outAcctNo/inAcctNo/USER_D_NM/USER_C_NM`；以后确认分润或自有资金场景后，必须
-先明确业务来源、条件校验和真实 Handle 映射，再扩展契约。
+先明确业务来源、条件校验和真实 Capability 映射，再扩展契约。
 
 中信账户配置中的 `default_role/default_fund_type/self_role/self_fund_type/self_dealType/`
 `self_store_no/self_store_id` 仍是账户静态特定配置，不属于单次交易 `specialData`。当前普通
@@ -162,7 +165,7 @@ errCode == D5000000
 | `USER_TRANS_TM` | `frontTransTime` |
 | `USER_SSN` | `specialData.USER_SSN` |
 
-`USER_SSN` 是中信分配的银行交易流水，不能覆盖 Handle 已生成并落渠道流水的 `frontSsn`。
+`USER_SSN` 是中信分配的银行交易流水，不能覆盖 Capability 已生成并落渠道流水的 `frontSsn`。
 
 ## 5. 平安 transfer / consume
 
@@ -173,16 +176,16 @@ errCode == D5000000
 | `appId/appKey/url` | 租户银行通用配置 | `appKey` 禁止写日志 |
 | `mchntId` | 租户银行通用配置 | 接入方编号 |
 | `mchntMbrId` | `specialData.payMemberCode` | 当前会员间交易的付款方商户会员编号（对外语义键，更名自 outAcctId，2026-08-21） |
-| `transTime` | 平安 Handle | 每次请求生成，格式按协议 |
-| `transSsn` | 平安 Handle | 按平安规则生成、落渠道交易表并回传 `frontSsn` |
-| `bizFunc` | Handle 常量 `01` | 禁止业务系统覆盖 |
-| `chnlNo` | Handle 常量 `0001` | 禁止业务系统覆盖 |
+| `transTime` | 平安 Capability | 每次请求生成，格式按协议 |
+| `transSsn` | 平安 Capability | 按平安规则生成、落渠道交易表并回传 `frontSsn` |
+| `bizFunc` | Capability 常量 `01` | 禁止业务系统覆盖 |
+| `chnlNo` | Capability 常量 `0001` | 禁止业务系统覆盖 |
 | `outAcctNo` | `specialData.outAcctNo` | 付款见证子账户，按协议加密 |
 | `inAcctNo` | `specialData.inAcctNo` | 收款见证子账户，按协议加密 |
 | `transAmt` | `baseData.amount` | 单位为分，包含手续费 |
 | `fee` | `baseData.fee` | 单位为分，无手续费传 0 |
 | `ccy` | `baseData.currency` | 当前默认 CNY |
-| `remark` | `baseData.remark` | Handle 校验银行长度；平安最大 256（C 256 O） |
+| `remark` | `baseData.remark` | Capability 校验银行长度；平安最大 256（C 256 O） |
 
 ### 5.2 平安 reserve 映射
 
@@ -191,15 +194,15 @@ errCode == D5000000
 | `mrchCode` | `accountSpecialData.mrchCode` | 平台号，禁止业务系统覆盖 |
 | `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务系统覆盖 |
 | `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，进入请求前加密，禁止记录明文 |
-| `functionFlag` | 平安 Handle 场景策略 | lsym 生产代码：transfer=`9`；consume 默认/`0109`=`9`；特殊 `0107`=`7` |
+| `functionFlag` | 平安 Capability 场景策略 | lsym 生产代码：transfer=`9`；consume 默认/`0109`=`9`；特殊 `0107`=`7` |
 | `outAcctId` | `specialData.payMemberCode` | 转出方商户会员编号（reserve 协议键；来源为对外语义键 payMemberCode，2026-08-21 更名） |
 | `outAcctName` | `specialData.outAcctName` | 转出方户名，按协议加密 |
 | `inAcctId` | `specialData.recMemberCode` | 转入方商户会员编号（reserve 协议键；来源为对外语义键 recMemberCode，2026-08-21 更名） |
 | `inAcctName` | `specialData.inAcctName` | 转入方户名，按协议加密 |
-| `transType` | Handle 常量 `01` | 普通交易 |
+| `transType` | Capability 常量 `01` | 普通交易 |
 | `orderId` | `baseData.bizSubOrderNo` | 订单号，选填，最大 30；有值时按业务规则保证唯一 |
 | `orderInfo` | consume 的 `baseData.orderInfo` 或 transfer 专用白名单 | 订单内容，可选 |
-`functionFlag` 不能由业务系统随意提交一个银行原值。lsym 生产 Handle 没有使用 `6`；当前新 Front
+`functionFlag` 不能由业务系统随意提交一个银行原值。lsym 生产参考实现没有使用 `6`；当前新 Front
 只实现 `9`，尚未覆盖旧 `0107 → 7` 场景。是否保留 `0107` 由平安接口重新核对后确认；确认前不得
 开放原始 `functionFlag`，也不得把所有消费静默默认为同一场景。
 
@@ -239,7 +242,7 @@ R.data.specialData
 只有 Front 业务成功时顶层 `R.code=200`。银行明确失败或钱包业务失败时顶层也使用失败码（当前
 公共 `R.FAIL=500`），并通过 `data.frontRespCode/frontRespDesc/frontStatus` 保留具体业务原因。
 
-所有具体结果都继承 `FrontBaseResult`。Handle 应调用：
+所有具体结果都继承 `FrontBaseResult`。Capability 应调用：
 
 ```java
 result.applyFrontResponse(FrontErrorCode.SUCCESS);
@@ -281,7 +284,8 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 - `queryId`：写渠道交易流水，并映射公共 `frontQueryId`；
 - 具备公共语义的银行字段：映射强类型结果字段；
 - 只有某家银行存在且业务系统确实需要的字段：按常量白名单写入 `specialData`；
-- 完整 `reserve`、密钥、账户明文、签名和敏感信息：禁止返回，也禁止完整写日志。
+- 完整 `reserve`、密钥、账户明文、签名和敏感信息：禁止额外返回或由 Capability/上游重复写日志；
+  最终 Sender 按统一规则记录实际钱包请求/响应 body，非报文凭证仍排除。
 
 ### 6.4 成功响应示例
 
@@ -323,7 +327,7 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 }
 ```
 
-示例中的 `frontSsn` 是 Handle 生成并保存的 Front 渠道交易流水；`queryId` 和中信 `USER_SSN`
+示例中的 `frontSsn` 是 Capability 生成并保存的 Front 渠道交易流水；`queryId` 和中信 `USER_SSN`
 分别保留自己的语义，不能互相覆盖。
 
 ## 7. common-core 常量入口
@@ -355,22 +359,23 @@ catering-common/catering-common-core/src/main/java/com/chinaums/common/core/cons
 
 业务系统组装 `specialData/accountSpecialData` 或读取响应 `specialData` 时，应引用这些对外字段 key，
 不得在业务模块重新定义同名字符串。`bizFunc/chnlNo/API path` 及 Front 固定上送的类型码、标志位、
-默认备注属于具体 Handle 内部实现，不作为业务系统可传参数，也不放入公共 ContractKeys。
-协议文档中存在但当前实际 Handle 未使用的字段，不得仅为“以后可能使用”而提前加入常量类。
+默认备注属于具体 Capability 内部实现，不作为业务系统可传参数，也不放入公共 ContractKeys。
+协议文档中存在但当前实际 Capability 未使用的字段，不得仅为“以后可能使用”而提前加入常量类。
 
-## 8. 后续 Handle 实现要求
+## 8. 后续 Capability 实现要求
 
 每次只实现“一个银行 + 一个能力”。提交实现前必须确认：
 
 1. `baseData` 必填字段和单位；
 2. `specialData` 白名单、必填条件和长度；
 3. 账户配置字段与单次业务扩展没有混用；
-4. `bizFunc/chnlNo/transSsn/transTime/laasSsn` 全部由 Handle 控制；
+4. `bizFunc/chnlNo/transSsn/transTime/laasSsn` 全部由 Capability 控制；
 5. 请求发送前已落渠道交易流水；
 6. 中信 5 位成功码和平安 6 位成功码没有混用；
 7. `frontRespCode/frontRespDesc` 只取 `FrontErrorCode`；
 8. 返回 `specialData` 只含响应白名单字段；
-9. 日志覆盖开始、路由、配置加载、请求发送、响应判定、落库、结束和异常，但不输出敏感报文。
+9. Capability 记录业务步骤但不重复钱包报文；最终 Sender 唯一记录完整明文请求/响应 body，
+   `appKey`、私钥、签名材料和认证 Header 等非业务报文凭证不得入日志。
 
 落库表固定为：
 
