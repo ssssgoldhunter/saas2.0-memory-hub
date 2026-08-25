@@ -8,41 +8,47 @@
 
 ## 1. 全局约束
 
-- 从 `limeng_front` 当前已提交 HEAD 的隔离 worktree 开始，不清理原脏工作区。
+- 从 `cateringsass/limeng_front@99e696f4e7ab78a1b307b5a2fd3c911698c143fb`
+  建立隔离 worktree，不清理原工作区。
 - `catering-api-front`、domain、mapper、VO、XML Mapper、DDL、上游组装契约不改。
 - 中信 11 个、平安 11 个通用能力全部迁移；平安账户状态/余额保留挡板。
 - 平安 `platformPay/platformReceive` 继续不支持，不创建虚假 Capability。
-- 13 条 LiteFlow 链统一为 `THEN(frontValidate, tenantResolve, bankRoute)`。
+- 13 条 LiteFlow 链统一为 `THEN(frontBankExecute)`（2026-08-25 用户裁决单节点：路由+配置+执行三合一）。
 - Slot 只有 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层。
 - `flow` 只分 `slot/node/route`；禁止业务 Context、Router、Dispatch、Handle 继承、BankSupport。
+- 银行能力扩展机制只有 Registry + Route；Validate/TenantResolve 是固定薄前置节点，不建立父类、
+  Resolver、Prepare 节点或 Context 转换体系。
 - 银行按能力分包，真复用放银行 `common`；能力内允许组装代码重复。
+- 框架必须支持“只增加银行、复用既有能力”：新增银行 Capability/Sender 后由现有列表注册自动进入 Route，
+  不修改 Controller、Application Service、LiteFlow 链、Registry 或 BankRouteNode。
 - Capability 主方法顺序固定：校验 → 组报文 → 查重/INIT → SENDING → Gateway 发送 → 响应落库/结果。
 - 纯查询能力没有渠道流水步骤，不为统一模板制造空持久化。
 - 钱包业务发送只直接调用 `BankWalletGateway.post`。
-- 未经用户明确授权，不新增/运行测试、不执行编译；代码 commit/push 同样另行确认。
+- Gateway 只允许再分派到一个按银行实现的 `BankWalletSender`，Sender 直接完成 HTTP 调用；
+  禁止 `Gateway → Sender → Client → Support/Invoker` 继续加层。
+- 日志采用用户确认的 B 方案：Capability 记录业务步骤；钱包完整请求/响应只由最终 Sender 各记录一次，
+  删除 Capability 中重复报文日志，其他 payload 字段范围和明文/脱敏行为保持基线。
+- 用户已明确本轮不新增/运行测试、不执行编译；代码完成后提供静态证据等待用户 review，commit/push 另行确认。
 
 ## 2. 目标文件结构
 
 ```text
 com.chinaums.front
 ├─ controller/
-├─ service/
+├─ application/  保留现有 FrontFlowExecutor / FrontTransApplicationService / FrontQueryApplicationService
 ├─ flow/
 │  ├─ slot/       FrontBaseSlot / FrontTransSlot / FrontQuerySlot
-│  ├─ node/       FrontValidateNode / TenantResolveNode
-│  └─ route/      BankCapability / BankCapabilityRegistry / BankRouteNode
+│  └─ route/      BankCapability / BankCapabilityRegistry / FrontBankExecuteNode（单节点三合一）
 ├─ channel/
-│  ├─ gateway/    BankWalletGateway 统一发送
+│  ├─ gateway/    BankWalletGateway / RoutingBankWalletGateway / BankWalletSender / OpenBodySigSigner
 │  ├─ citic/
-│  │  ├─ common/
-│  │  ├─ transfer/ consume/ withdraw/ refund/ platformpay/ platformreceive/
-│  │  ├─ accountstatus/ accountbalance/ transstatus/ transdetail/ platformdetail/
+│  │  ├─ common/  含直接 HTTP 的 CiticWalletHttpClient
+│  │  ├─ transaction/（4） clearsettlement/（2） query/（3） account/（2）
 │  │  └─ unidentified/
 │  └─ pingan/
-│     ├─ common/
-│     ├─ transfer/ consume/ withdraw/ refund/ transferauth/ resendauthcode/
-│     └─ accountstatus/ accountbalance/ transstatus/ transdetail/ platformdetail/
-├─ config/
+│     ├─ common/  含直接 HTTP 的 PingAnWalletHttpClient + Crypto/Sequence
+│     ├─ transaction/（6） query/（3） account/（2，挡板）
+├─ config/        TenantBankConfigLoader / TenantBankAccountConfig / TenantBaseInfo
 ├─ domain/
 └─ mapper/
 ```
@@ -53,7 +59,8 @@ com.chinaums.front
 
 ### Task 1：P0 基线快照
 
-- [ ] 使用 `superpowers:using-git-worktrees` 从已提交 HEAD 建立隔离 worktree。
+- [ ] 使用原生 `git worktree add --detach <path> 99e696f4e7ab78a1b307b5a2fd3c911698c143fb`
+  建立隔离 worktree，再从该提交创建本次迁移分支。
 - [ ] 完整阅读 WIKI、28、05、02、03、06、07、08、09、10、19。
 - [ ] 用 CodeGraph 加 `git show HEAD:<path>` 记录 13 个 API 的当前调用链、字段、固定值、响应和日志行为。
 - [ ] 建立 22 项能力迁移矩阵；每项记录来源 Handle 方法、请求 DTO、Mapper/渠道表、Gateway 路径和结果类型。
@@ -61,13 +68,27 @@ com.chinaums.front
 
 ### Task 2：公共框架一次建立
 
-- [ ] 移动 Application Service 与 FlowExecutor 到 `service`，Controller 只更新 import。
+- [ ] 保留现有 `application` package，不移动 Application Service 与 FlowExecutor，Controller import 不变。
 - [ ] 新建严格两层 Slot；一次请求全程只传一个 Slot。
 - [ ] 新建 `FrontValidateNode`、`TenantResolveNode`、`BankRouteNode`。
-- [ ] 新建最小 `BankCapability`：只含 `bank()`、`capability()`、`execute(FrontBaseSlot)`。
+- [ ] 配置调用链固定为
+  `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`。
+- [ ] Loader 使用一个具体类直接查询和构造 `TenantBankAccountConfig`；中信/平安特殊字段各用一个平铺私有
+  组装方法，不再调用第二层 helper。
+- [ ] Loader 公共方法只保留 `loadTenantBaseInfo(tenantId)` 与
+  `loadBankAccountConfig(tenantId, bankCode, tenantBaseInfo)`；不增加配置 Bundle/Result/Context。
+- [ ] 删除 Provider 接口/实现、AssemblerRouter、Assembler 接口/抽象父类及两个银行 Assembler，
+  同时删除旧 `bankHandleContextPrepare` 路径。
+- [ ] 新建最小 `BankCapability`：只含 `bank()`、`capability()`、
+  `void execute(FrontBaseSlot)`；具体能力第一段用 `instanceof` 取得 Trans/Query Slot，结果写回 Slot 明确字段。
 - [ ] Registry 使用 `EnumMap<BankCode, Map<FrontCapability, BankCapability>>`，重复键启动失败。
+- [ ] Registry/Route 内不存在按具体银行编写的 `if/switch`；新银行 Capability 只靠 `bank()`、
+  `capability()` 自描述并通过构造器列表注册。
 - [ ] LiteFlow 节点用无参 `getFirstContextBean()` 取 Slot并明确校验类型。
-- [ ] 13 条链全部切换为三节点薄链。
+- [x] 13 条链全部切换为单节点薄链（frontBankExecute 三合一，FrontException 由该节点收口写 Slot 并结束链）。
+- [ ] 保留当前 13 个 chain id，只替换每条链的节点表达式，不照抄 28 号示意名称改名。
+- [ ] `BankRouteNode` 捕获 `FrontException`、写 Slot 并结束链；`FrontFlowExecutor` 承接结果为空及
+  `frontRespCode` 为空的旧 Normalize 兜底，不新增 Dispatch/Normalize 节点。
 
 ### Task 3：中信交易能力（6 项）
 
@@ -104,11 +125,20 @@ com.chinaums.front
 
 ### Task 7：银行 common 与统一 Gateway
 
-- [ ] 中信/平安各自的序列号、SM2、签名、响应判断、配置属性移入银行 `common`。
+- [ ] 中信/平安各自的序列号、SM2、响应判断、配置属性移入银行 `common`；跨银行共用的
+  OPEN-BODY-SIG 放 Gateway 基础设施。
 - [ ] 只有至少两个已迁移能力真实复用的组件进入 `common`。
 - [ ] Capability 只直接调用 `BankWalletGateway.post`，不得再包 Support/Invoker/Facade。
-- [ ] Gateway 内部连接、银行 Sender 和 HTTP 细节可保留为基础设施，但业务代码看不到第二发送入口。
-- [ ] 中信不明来款保持独立 API/链路，只调整 package 与 common 引用，不接入通用 Registry。
+- [ ] 保留现有两个 `*WalletHttpClient implements BankWalletSender` 作为最终 HTTP 实现，只移动到对应银行
+  `common`，不新建 `CiticBankWalletSender/PingAnBankWalletSender`。
+- [ ] Gateway 内不存在按具体银行编写的 `if/switch`；新银行 Sender 只靠 `bankCode()` 自描述并通过
+  构造器列表注册。
+- [ ] 把 `CiticOpenBodySigSigner` 中性化为 Gateway 的 `OpenBodySigSigner`，两个最终 Sender 复用，
+  平安不再引用中信 package。
+- [ ] 删除依赖 `BankRequestContext` 的共享 `QueryTransStatusRequest`；两家 transstatus Capability 各自组装。
+- [ ] 中信不明来款保持独立 API/package/链路，不接入通用 Registry；其 Application Service 仅把
+  `TenantBankConfigProvider` 依赖替换为同一个 `TenantBankConfigLoader`，其余只允许共享组件移动导致的
+  import 调整，不改专项校验、Channel 和银行业务。
 
 ### Task 8：删除旧结构
 
@@ -121,28 +151,40 @@ com.chinaums.front
 ### Task 9：全量静态验收
 
 ```bash
-git diff -- catering-api/catering-api-front
+git diff --exit-code 99e696f4e7ab78a1b307b5a2fd3c911698c143fb -- catering-api/catering-api-front
 rg "FrontFlowContext|BankRequestContext|AbstractBankHandle|BankTransHandle|BankQueryHandle" \
   catering-modules/catering-front/src/main/java/com/chinaums/front
 rg "class .*Router|class .*Dispatch|BankSupport" \
   catering-modules/catering-front/src/main/java/com/chinaums/front
+rg "TenantBankConfigProvider|BankAccountConfigAssembler" \
+  catering-modules/catering-front/src/main/java/com/chinaums/front
 rg "package (citic|pingan);" catering-modules/catering-front/src/main/java
-rg "walletGateway\.post|bankWalletGateway\.post" \
+rg "HttpRequest\.post" catering-modules/catering-front/src/main/java/com/chinaums/front/channel
+rg "wallet_request_sending|wallet_response_received|发送钱包请求|银行响应" \
   catering-modules/catering-front/src/main/java/com/chinaums/front/channel
 ```
 
 - [ ] api-front diff 为空。
 - [ ] 旧 Context/Handle/Router/Dispatch/BankSupport 零残留。
+- [ ] Provider/AssemblerRouter/Assembler 配置链零残留。
 - [ ] 所有 package 位于 `com.chinaums.front`。
 - [ ] 通用能力类精确为 22：中信 11 + 平安 11。
 - [ ] LiteFlow 链精确为 13，均使用三节点。
 - [ ] 交易能力固定 Mapper、查询能力无伪流水。
-- [ ] 中信不明来款仍为独立 API/链路。
+- [ ] 中信不明来款仍为独立 API/链路，且已使用 `TenantBankConfigLoader`，不存在已删除 Provider 的残留依赖。
+- [ ] `HttpRequest.post` 只存在于中信、平安两个最终 Sender；业务代码只依赖 `BankWalletGateway.post`。
+- [ ] Capability 无完整钱包请求/响应日志；每次银行调用只在最终 Sender 出现一次 request 和一次 response；
+  其余日志 payload 字段范围和明文/脱敏行为保持基线。
+- [ ] Capability 有开始、关键步骤、完成和业务异常日志；最终 Sender 有发送前、响应后和通信异常日志，
+  异常日志保留堆栈。
+- [ ] API、TenantBankConfigLoader、Registry/Route 分别保留入口收口、配置加载和路由结果/异常日志；
+  各层记录自己的事件，但不重复打印 Sender 的钱包请求/响应报文。
+- [ ] 通过静态结构确认：未来新银行复用既有能力只需扩展 BankCode、Loader 平级分支、新银行 Sender 和
+  已支持 Capability，不需要改 API 入口、LiteFlow、Registry 或 Route；本次不创建示例银行代码。
 
 ### Task 10：授权验证与交付
 
-- [ ] 未获授权时明确记录“未新增测试、未运行测试、未执行编译”。
-- [ ] 获得编译授权后才执行最终代码状态的 Maven 命令；测试需单独授权。
+- [ ] 明确记录“用户裁决本轮未新增测试、未运行测试、未执行编译，结果仅经过静态 review”。
 - [ ] 提交 22 项能力矩阵、13 条链、删除清单、行为差异和静态证据给用户 review。
 - [ ] 未获用户确认前不 commit、不 push。
 
@@ -157,4 +199,7 @@ Flow 公共节点 = 3
 LiteFlow chain = 13
 业务 Context / Handle 继承 / Router / Dispatch / BankSupport = 0
 业务钱包发送出口 = 1
+钱包请求/响应日志位置 = 最终 Sender 唯一一处
+Provider/AssemblerRouter/Assembler 链 = 0
+新增银行对 API 方法/路径/DTO/返回签名及 LiteFlow/Registry/Route 的结构性修改 = 0
 ```

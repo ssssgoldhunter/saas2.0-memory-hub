@@ -4,6 +4,9 @@
 > 用户批准但尚未实施，2026-08-25 的未提交全面改造已放弃。下一轮执行中信、平安 22 个通用能力与
 > 13 条链的全量迁移，步骤见 29 号 plan。凡本文 Router/Handle/Context/银行 Client 的开发模板与 28 号冲突，
 > 结构上以 28 号、29 号和 05 §0 为准。
+> 本次结构迁移日志执行用户确认的 B 方案：Capability 记录业务步骤，最终 `BankWalletSender` 统一且只
+> 记录一次钱包请求/响应/失败，删除旧 Handle/Capability 的重复钱包报文日志；其余字段范围和安全边界以
+> `cateringsass/limeng_front@99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 为准。
 
 > 状态：current / verified-against-source
 > 核验日期：2026-08-24
@@ -144,7 +147,7 @@ Transaction/Query Router、Registry 或 LiteFlow。这样可避免把仅中信�
 CiticUnidentifiedRemittanceApi
 → CiticUnidentifiedRemittanceController
 → CiticUnidentifiedRemittanceApplicationService
-→ TenantBankConfigProvider（tenant_base_config + 中信账户配置）
+→ TenantBankConfigProvider（当前基线；目标替换为 TenantBankConfigLoader）
 → CiticUnidentifiedRemittanceChannel
 → RequestMapper / ResponseMapper
 → BankWalletGateway
@@ -278,7 +281,12 @@ front api 请求都用 tenantId 从 `tenant_base_config` 一次查询取出
 
 ---
 
-## 6. 租户银行配置
+## 6. 当前基线的租户银行配置
+
+> 下述 Provider/Assembler 是待迁移基线，不是新增代码模板。28/29 号目标只保留
+> `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`；Loader 具体类直接查询并
+> 扁平组装，只暴露 `loadTenantBaseInfo` 与 `loadBankAccountConfig`。中信不明来款 Application Service
+> 同样改用该 Loader，不改变专项业务链。
 
 `AbstractBankHandle.prepareContext()` 固定执行：
 
@@ -308,8 +316,9 @@ front api 请求都用 tenantId 从 `tenant_base_config` 一次查询取出
 
 ## 7. 银行钱包网关
 
-> 28 号目标中，Capability 直接调用 `BankWalletGateway.post` 这一唯一业务发送出口；禁止新增银行级
-> WalletHttpClient、Invoker、Facade 或 `BankSupport.invokeBank` 包装层。下文其余内容用于核对既有行为。
+> 28 号目标中，Capability 直接调用 `BankWalletGateway.post` 这一唯一业务发送出口；Gateway 只再分派到
+> 直接完成 HTTP 调用的银行 `BankWalletSender`，禁止 Sender 后继续增加 WalletHttpClient、Invoker、Facade
+> 或 `BankSupport.invokeBank`。下文其余内容用于核对既有行为。
 
 所有新增银行接口统一走：
 
@@ -437,7 +446,7 @@ DDL 变更必须联动 Entity、VO、Mapper XML、Mapper、Service、Handle、�
 1. 核对真实银行协议、签名、加密、成功码和错误语义。
 2. 增加 `BankCode`。
 3. 增加账户配置 key、配置组装策略。
-4. 增加银行 `WalletHttpClient implements BankWalletSender`。
+4. 增加银行 `BankWalletSender` 实现，并在该实现中直接完成 HTTP 调用，不再委托第二层 Client。
 5. 增加银行 `ResponseChecker`、序列号和加密组件。
 6. 按实际支持能力实现 `BankTransHandle` / `BankQueryHandle`。
 7. 每项能力在 `capabilityDefinitions()` 中单独注册。
@@ -589,7 +598,8 @@ public AccountStatusResult queryAccountStatus(
 - `specialData` 逐键白名单映射，禁止整体 `putAll` 到银行报文。
 - 中信不明来款按专项强类型 DTO 显式映射，不得为了复用通用链重新包装成 `specialData`。
 - 银行协议 DTO 留在 `catering-front/channel/{bank}/{capability}`，与使用它的能力相邻；真实跨能力 DTO 才进入银行 `common`。
-- 银行调用统一直接走 `BankWalletGateway.post`，不增加 WalletHttpClient/Invoker/Facade 包装层。
+- 银行调用统一直接走 `BankWalletGateway.post`，Gateway 只再分派到直接执行 HTTP 的银行 Sender，
+  不增加 Sender 后的 WalletHttpClient/Invoker/Facade 包装层。
 - 路由只允许 `BankRouteNode → BankCapabilityRegistry → BankCapability`，按
   `(BankCode, FrontCapability)` 定位，不增加 Router、Dispatch 或第二份能力矩阵。
 - Slot 只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层，禁止新业务 Context。
@@ -626,9 +636,11 @@ public AccountStatusResult queryAccountStatus(
 - [ ] 所有银行能力按 `channel/{bank}/{capability}` 分包；银行 common 只有真实复用。
 - [ ] 任一 Capability 均可按顺序读完本能力主流程。
 - [ ] 无新增业务 Context、Handle 父类、Router、Dispatch、BankSupport 或多层 Wallet Client。
+- [ ] 租户配置调用链固定为 `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`；
+      旧 `Provider → AssemblerRouter → Assembler` 及抽象/继承层级已删除，Loader 直接查询并扁平组装。
 - [ ] 钱包业务发送只直接调用 `BankWalletGateway.post`。
-- [ ] 日志只含脱敏摘要，不输出密钥或完整敏感字段。
-- [ ] 未获授权时未新增/运行测试、未执行编译；获授权后只引用本次改动后的真实结果。
+- [ ] Capability 业务日志位于真实步骤附近；最终 Sender 唯一记录钱包请求/响应/失败，无重复报文日志。
+- [ ] 本轮未新增/运行测试、未执行编译；静态 review 结果未被表述为测试或编译通过。
 - [ ] 旧 Context/Router/Dispatch/Handle 已删除，完成后等待用户 review。
 
 ### 14.1 新银行完成标准

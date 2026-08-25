@@ -27,12 +27,22 @@
    允许能力间保留少量重复，不得用多层 helper、父类或 Support 隐藏业务步骤。
 7. **common 准入**：只有至少两个已实现能力真实复用的序列号、加密、响应判断或配置对象可以进入；
    禁止聚合校验、组装、持久化、发送和结果映射的 `CiticBankSupport/PingAnBankSupport`。
-8. **发送**：业务能力只直接调用一次 `BankWalletGateway.post`；禁止再套 WalletHttpClient、Invoker、Facade。
+8. **发送**：业务能力只直接调用 `BankWalletGateway.post`；Gateway 只再分派到最终
+   `BankWalletSender`，Sender 直接完成 HTTP 调用，禁止继续套 Client、Support、Invoker、Facade。
 9. **代码层级**：Capability 只实现一个接口，不继承业务父类；私有业务 helper 最多一层并紧邻主流程。
    文件数和类行数不是指标，“打开能力类能读完主流程”才是验收标准。
 10. **package**：所有类必须位于 `com.chinaums.front...`，禁止 `package citic;`、`package pingan;`。
-11. **日志**：真实步骤附近记录脱敏摘要和状态；禁止密钥、完整账号/卡号、手机号、证件号、姓名、验证码和完整敏感报文。
-12. **验证**：全量切换后删除旧 Context/Router/Dispatch/Handle；未获明确授权不得新增/运行测试或执行编译。
+11. **日志**：采用用户确认的 B 方案。Capability 只记录业务步骤和状态变化；最终
+    `BankWalletSender` 统一且只记录一次钱包请求、响应或失败日志；迁移时删除旧 Handle/Capability 中
+    对同一钱包报文的重复日志，不增加日志包装层。
+12. **租户配置**：保留清晰调用链，但彻底压缩层级：
+    `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`。Loader 是具体类，直接查询并
+    组装；禁止保留 `Provider → AssemblerRouter → Assembler`、抽象父类或银行组装器继承链。
+13. **验证**：全量切换后删除旧 Context/Router/Dispatch/Handle；本轮用户明确要求不新增/运行测试、
+    不执行编译，仅做静态 review，不得把静态检查表述为测试或编译通过。
+14. **新银行扩展**：复用已有 FrontCapability 时，保留原 API、Application Service 与 LiteFlow 链；只增加
+    `BankCode` 枚举项、Loader 平级组装分支、该银行最终 Sender 和真实支持的扁平 Capability。
+    Registry/Route/Gateway 依赖实现自描述与列表注册，不得增加具体银行 `if/switch`。
 
 完整设计、目录和全量验收标准见
 [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)。
@@ -304,7 +314,14 @@ Handle 的业务校验边界固定为“能否组装并发出当前银行接口�
   `ADAPTER_NOT_READY`；
 - 禁止在 Registry 之外、公共校验节点或公共 Dispatch 中维护第二份支持矩阵。
 
-### 3.5 Handle 统一父类与配置端口
+### 3.5 已提交基线的 Handle 与配置端口（仅用于迁移核对）
+
+> 本节以下内容描述 `99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 已提交基线，不是目标实现模板。
+> 28/29 号迁移必须删除 `AbstractBankHandle` 和 `TenantBankConfigProvider`，目标调用链固定为
+> `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`。Node 只负责流程编排，
+> 具体 Loader 直接完成两次配置查询、校验和账户配置组装。Loader 只暴露
+> `loadTenantBaseInfo(tenantId)` 与 `loadBankAccountConfig(tenantId, bankCode, tenantBaseInfo)` 两个方法，
+> 不新增配置 Bundle/Result/Context；中信不明来款 Application Service 也直接复用该 Loader。
 
 中信、平安的 Transaction/Query 能力 Handler 必须复用统一的 `AbstractBankHandle` 配置装配能力。统一
 父类负责：
@@ -352,7 +369,12 @@ Provider、执行上下文、日志、Entity 或 DDL 中恢复该字段；本流
 - 接受调用方通过 `specialData` 覆盖配置；
 - 输出完整配置或密钥字段日志。
 
-### 3.6 银行账户配置组装
+### 3.6 已提交基线的银行账户配置组装（仅用于迁移核对）
+
+> 以下 `AssemblerRouter → AbstractAssembler → 银行 Assembler` 是待删除基线。目标实现不再建立配置
+> Provider 接口、路由器、抽象组装器或银行组装器类；`TenantBankConfigLoader` 在一个具体类中完成公共字段
+> 复制，并通过两个平级私有方法组装中信/平安 `accountSpecialData`。私有方法不得再调用组装 helper，
+> 从而保留银行差异的可读性，同时避免再次形成嵌套层级。
 
 账户配置组装固定使用以下分层：
 
@@ -751,8 +773,9 @@ catering-api-front 的实例工具类 `FrontSpecialDataAssembler`（标准账户
 - 不得覆盖 `tenantId/platformCode/channelNo/bizFunc/path` 以及
   `txnClientNo/mrchCode/stlAcctNo` 等账户配置字段；
 - 不得传密钥、私钥、完整银行配置；
-- API、Capability 和钱包调用日志只记录白名单脱敏摘要；`specialData` 中的完整账号、姓名、卡号、手机号、
-  证件号、验证码以及密钥不得明文输出，也不得直接序列化整个 `specialData`。
+- 日志采用 B 方案：Capability 记录业务步骤，最终 Sender 统一且只记录一次钱包请求/响应/失败；
+  删除旧 Handle 或 Capability 对同一钱包报文的重复输出。除这项明确调整外，不扩大 payload 字段范围，
+  不借结构迁移改变 `specialData` 的既有明文/脱敏边界。
 
 **常量类命名规范**：
 - Java 变量名用 `PAY_`/`REC_` 前缀（付款 PAY_/收款 REC_），如 `PAY_ACCOUNT_NO`/`REC_ACCOUNT_NO`/`PAY_NAME`/`REC_NAME`；
@@ -1103,22 +1126,22 @@ LiteFlow 链内节点（`flow/component/*Cmp`）遇到 §7.1 所列的可预期�
 
 ## 8. 日志约束
 
-Front 交易链路日志必须结构化、可关联且默认脱敏。日志用于定位阶段和状态，不用于保存完整业务请求或
-银行原始报文；不得因追求“完整”输出密钥、完整账号/卡号、手机号、证件号、姓名或验证码。
+本节执行用户确认的 B 方案：业务过程日志参考旧 Front Handle，放在 Capability 的真实步骤附近；
+钱包报文日志统一下沉到最终 `BankWalletSender`，一次调用只允许一个 Sender 记录请求以及对应的响应或失败。
+除去重和位置调整外，仍以 `99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 的字段范围与安全边界为基线。
 
 交易链路必须记录以下阶段：
 
-1. **API 请求入口**：记录 `front_request_received/front_response_returning/front_request_failed`，包含方法名、
-   traceId、tenantId、业务主/子流水和结果状态，不记录完整请求体。
-2. **Capability 执行前后**：记录 `capability_started/capability_completed/capability_failed`，包含银行、能力、
-   frontSsn、recordId、阶段和耗时；真实步骤附近直接记录，不依赖多层 AOP 还原流程。
-3. **渠道流水变化**：记录 INIT、SENDING、最终状态、recordId 和明确未发送标志，不记录 Entity 全量 JSON。
-4. **钱包访问前后**：统一 `BankWalletGateway.post` 边界记录
-   `wallet_request_sending/wallet_response_received/wallet_request_failed`，包含银行、apiName、frontSsn、
-   HTTP 状态、耗时和脱敏摘要，不记录完整原始请求/响应。
+1. **API 请求入口**：保留现有入口、返回和异常定位日志，但不得重复打印钱包请求或响应报文。
+2. **Capability 执行前后**：把原 Handle 的业务步骤、渠道流水和结果日志随代码移动到对应 Capability；
+   Capability 不记录完整钱包请求/响应，不为日志增加 AOP、Support 或包装 Service。
+3. **渠道流水变化**：INIT、SENDING、最终状态及异常日志随固定 Mapper 的业务代码一起迁移。
+4. **钱包访问前后**：统一业务入口为 `BankWalletGateway.post`；最终 `BankWalletSender` 在直接执行 HTTP 时
+   唯一记录 `wallet_request_sending`，并记录一次对应的 `wallet_response_received` 或
+   `wallet_request_failed`。Gateway、Capability 和旧 Handle 均不得重复输出同一钱包报文。
 
-查询链路同样在统一 Gateway 边界记录一次脱敏请求摘要，不要求交易型定位字段，也不得为采集日志使用反射
-或字段猜测。Capability 不重复打印同一请求报文。
+查询链路执行同一规则：Capability 记录查询业务步骤，最终 Sender 记录唯一钱包报文日志；不为采集日志
+增加反射、字段猜测或额外包装层。
 
 上述交易 API、Capability 和钱包日志应从请求 `baseData` 提取并以独立 JSON 字段携带以下定位数据；
 字段无值时也应保留 key 并记录 `null`，便于检索同一条调用链：
@@ -1132,12 +1155,8 @@ Front 交易链路日志必须结构化、可关联且默认脱敏。日志用�
 - 银行编码；
 - 有值时同时记录 `frontSsn`、`capability`、`storeId`、Front 归一化状态和耗时。
 
-结构化日志规则：
-
-- 每条业务日志必须是合法 JSON，并包含 `event`、`methodName/apiName`、定位字段、状态和耗时；
-- payload 只允许白名单摘要，敏感值脱敏或不记录；禁止对整个请求、Slot、账户配置、银行报文直接序列化；
-- `appKey`、密钥、签名头、`Authorization`、完整 URL、完整账号/卡号、手机号、证件号、姓名和验证码不得入日志；
-- 银行拒绝描述若含敏感值，写日志前必须脱敏；对外返回仍按既有错误契约处理。
+除 B 方案明确要求的报文日志下沉、去重外，结构化日志字段、级别和明文/脱敏边界以固定代码基线为准；
+发现其他既有日志问题时单独报告，不在结构迁移中顺手扩展范围。
 
 其他必须记录的信息：
 
@@ -1236,14 +1255,15 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 ## 10. 当前实施顺序：全量扁平化迁移
 
-1. 以当前已提交 HEAD 为实现基线；已放弃的未提交全面改造不得续写。
+1. 以已提交基线 `99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 为实现基线；
+   已放弃的未提交全面改造不得续写。
 2. 核对中信 transfer 的 API、字段、配置、渠道流水、错误码、日志和钱包调用行为。
 3. 确认 `catering-api-front`、domain、mapper、DDL、不明来款专项为禁改区。
 4. 建立两层 Slot、`flow/slot|node|route` 和 13 条三节点薄链。
 5. 按 `channel/{bank}/{capability}` 迁移中信 11 个、平安 11 个通用能力，真复用进入银行 common。
 6. 交易 Capability 按校验、组报文、查重/INIT、SENDING、`BankWalletGateway.post`、响应落库/结果顺序展开；查询不造空流水。
 7. 全量切换后删除旧 Context、Handle、Router、Dispatch、BankSupport 和多层钱包包装。
-8. 只有用户明确要求时才新增/运行测试或执行编译；验证结果必须产生于本次最终代码状态。
+8. 本轮按用户裁决不新增/运行测试、不执行编译，只做静态 review，不得声明测试或编译通过。
 9. 更新 22 项能力矩阵、13 条链和删除清单后等待用户 review。
 
 本次只迁移现有能力，不新增银行协议或改变支持矩阵。
@@ -1464,19 +1484,20 @@ ContractKeys 或补写未启用分支。
 - [ ] 银行原始响应码不作 `R.code/frontRespCode`；
 - [ ] 交易 API 入口记录方法、traceId、定位字段和状态，不记录完整 `FrontRequest`；
 - [ ] 交易 Capability 存在 `capability_started`、`capability_completed/capability_failed` 独立日志点；
-- [ ] 统一 Gateway 存在 `wallet_request_sending`、`wallet_response_received/wallet_request_failed` 独立日志点；
+- [ ] 最终 `BankWalletSender` 存在唯一的 `wallet_request_sending`、
+      `wallet_response_received/wallet_request_failed` 日志点；Gateway/Capability 不重复输出同一报文；
 - [ ] 交易 API、Capability 和钱包日志均携带 `bizOrderNo/bizSubOrderNo/tenantId/platformCode/dataSourceId`
       以及实际方法名、银行编码；无值时保留 key 并记录 `null`；
-- [ ] 查询在统一 Gateway 发送前记录一次脱敏请求摘要；Query Capability 不重复打印同一报文，
+- [ ] 查询由最终 Sender 记录一次请求及一次响应/失败；Query Capability 不重复打印同一报文，
       不通过反射采集 metadata，不要求 `capability` 或交易型定位字段；
-- [ ] 请求、组装报文和响应日志只输出白名单脱敏摘要，不直接序列化整个对象；
+- [ ] 最终 Sender 的钱包请求/响应日志内容遵循固定基线的字段范围和安全边界；
 - [ ] 密钥、完整账号/卡号、手机号、证件号、姓名、验证码、签名头、`Authorization` 和完整银行 URL
       均不进入日志；Capability 开始日志不打印完整 `accountConfig/accountSpecialData`。
 
 ### K. DDL 变更同步（见 §10.5）
 
 - [ ] DDL 变更已同步 11 项（Entity/VO/Mapper XML/Mapper 接口/Service/Handle/列名常量类/银行协议常量类/DDL 文档/字段目录/编译验证）；
-- [ ] 已记录本次是否获得编译授权；获得授权时编译通过，未授权时没有执行编译。
+- [ ] 本轮按用户裁决未新增/运行测试、未执行编译，只提交静态 review 证据且未声称编译通过。
 
 ### L. 文档
 

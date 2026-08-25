@@ -192,12 +192,19 @@ codegraph status               # 索引状态
 - 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
-- `FrontExceptionHandler` 和结构化日志工具；交易链路记录入口、能力、渠道状态、钱包和异常事件，
-  查询链路在统一 Gateway 发送前记录一次脱敏摘要；任何链路均不得输出完整敏感请求/响应；
+- `FrontExceptionHandler` 和结构化日志工具；28/29 号日志采用 B 方案：Capability 记录业务步骤，最终
+  `BankWalletSender` 统一且只记录一次钱包请求/响应/失败，删除旧 Handle/Capability 的重复钱包报文日志；
+  除该明确调整外，字段范围和明文/脱敏边界以固定代码基线为准；
 - 当前已提交基线仍使用原 LiteFlow 公共节点、Router/Registry/Handle 和三段式上下文；
   28 号目标结构尚未实施。2026-08-25 的未提交全面改造已放弃，不能据其声明当前框架已经切换；
 - 下一轮按 28/29 号全量迁移：13 条链统一为 `THEN(frontValidate, tenantResolve, bankRoute)`，
   Slot 严格两层，中信/平安全部通用能力按 `channel/{bank}/{capability}` 分组；
+  租户配置保留 `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient` 清晰链路，但删除
+  `Provider → AssemblerRouter → Assembler` 及相关抽象/继承；Loader 直接查询并扁平组装，只保留
+  `loadTenantBaseInfo` 与 `loadBankAccountConfig` 两个公共方法；中信不明来款也直接复用该 Loader；
+- 目标框架仍保留 LiteFlow + 注册式 Route 扩展能力：未来新银行复用现有 capability 时，只增加银行枚举、
+  Loader 平级分支、该银行 Sender 与实际支持的扁平 Capability，不修改 API 入口、LiteFlow、Registry
+  或 Route；
   唯一规则文件 `resources/liteflow/front-flow.xml`，Nacos `catering-front.yml` 的
   `liteflow.rule-source` 固定为 `liteflow/front-flow.xml`；
 - 渠道流水持久层已落地：10 张表的 Entity/VO/Mapper/XML/Service/ServiceImpl 已搬入 main，
@@ -342,23 +349,24 @@ AbstractBankHandle.prepareContext
   `frontRespCode/frontRespDesc` 必须统一取 `FrontErrorCode`；
 - 只有 Front 业务成功时顶层 `R.code=200`；银行业务失败时顶层也必须返回失败码，并在 data 内保留
   统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
-- 交易链路按 05 §8 在 Capability 真实步骤附近记录开始、流水状态、钱包发送、响应和异常；
-  请求/响应只记录脱敏摘要，不输出完整敏感 JSON；`Authorization`、签名头和完整银行 URL不进入日志；
+- 交易链路按 05 §8 执行 B 方案：Capability 保留真实业务步骤日志，最终 Sender 唯一记录钱包
+  请求/响应/失败，迁移时删除重复报文日志；其余字段范围及明文/脱敏边界保持固定代码基线；
 - 结构简化执行全量迁移，但不得改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
-- 未收到用户明确要求时，不新增测试类、不运行测试、不执行编译。
+- 本轮用户已明确：不新增或运行测试、不执行编译，只做静态 review，禁止据此声明测试或编译通过。
 
 ## 7. 后续 AI 的实现单位
 
 当前唯一可领取单位是 29 号全量扁平化迁移。实现步骤固定：
 
-1. 完整阅读 28 号方案，并以当前已提交 HEAD 为实现基线；已放弃的未提交全面改造不得续写或复制；
+1. 完整阅读 28 号方案，并以已提交基线
+   `99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 为实现基线；已放弃的未提交全面改造不得续写或复制；
 2. 在 `04`、`06`、中信能力文档、当前已提交代码、旧 Front 和 mdl 中核对 transfer 行为；
 3. 先列出 API 禁改区、字段来源、账户配置、渠道流水、错误码和日志基线；
 4. 建立两层 Slot、`flow/slot|node|route`，并迁移中信/平安 22 个通用能力；
 5. 每个交易 Capability 按“校验→组报文→查重/INIT→SENDING→统一 Gateway 发送→响应落库/结果”顺序展开；
 6. 不增加业务 Context、Handle 继承、BankSupport、Router、Dispatch 或多层 Wallet Client；
 7. 13 条链全部切换完成后删除旧 Context/Router/Dispatch/Handle 体系；
-8. 按用户当次授权决定是否写测试或编译；未授权时只做静态核验并如实说明；
+8. 本轮不写/不运行测试、不执行编译，只做静态核验并如实说明；
 9. 完成后提交 22 项能力矩阵、13 条链、删除清单和行为差异给用户 review；
 10. 只有用户明确确认后才分别 commit/push 代码仓库和记忆体仓库。
 
