@@ -18,7 +18,7 @@
 
 - 状态：`CLOSED`（2026-08-19 用户裁决）——交易状态和两类明细已实现；
   账户状态/余额不再安排接入，固定保留 `ADAPTER_NOT_READY` 挡板
-- 代码入口：`PingAnQueryHandle`
+- 代码入口：`channel/pingan/account/PingAnAccountStatusCapability` 与 `PingAnAccountBalanceCapability`（三域收口后类名）
 - 当前行为：账户状态、账户余额两个公开查询方法在银行调用前抛出 `ADAPTER_NOT_READY`（交易状态/24明细/25明细已启用）
 
 ### 保留挡板原因
@@ -92,8 +92,8 @@
 |---|---|---|
 | 组装器 | `FrontSpecialDataAssembler`、`PingAnSpecialDataAssembler` | 退款仅保留可选备注；`withdraw()` 与退款 Javadoc 均已恢复、修正 |
 | 银行请求对象 | `PingAnRefundRequest` | 顶层原流水/日期/金额/手续费已明确；`oriOrderId` 当前不发送 |
-| Handle 实现 | `PingAnTransHandle` | `bizFunc=02`、两表精确查询、`frontSsn`、账号加密、原记录/日期校验和单实例查重均已闭环 |
-| 渠道落库 | `PingAnTransHandle#insertRefundInitRecord` | 本次业务字段、原渠道三项关联及原账户字段完整落库 |
+| Handle 实现 | `PingAnTransHandle`（现 `PingAnRefundCapability`） | `bizFunc=02`、两表精确查询、`frontSsn`、账号加密、原记录/日期校验和单实例查重均已闭环 |
+| 渠道落库 | `PingAnTransHandle#insertRefundInitRecord`（现 PingAnRefundCapability 内） | 本次业务字段、原渠道三项关联及原账户字段完整落库 |
 | 字段常量 | `PingAnRefundContractKeys` | key 与来源、加密及不发送字段的注释已统一 |
 | 引用文档 | 03、05、08、13、15、16、WIKI、Issue 索引 | 设计边界、实现状态和 `originalBizTransactionId` 选填/DDL 可空口径已统一 |
 
@@ -107,7 +107,7 @@
 - 状态：`DEFERRED`（2026-08-19 用户裁决：暂时不做）
 - 已完成边界：当前银行、当前能力业务表内已按
   `tenantId + bizOrderNo + bizSubOrderNo` 精确检查，`FRONT-P1-012` 按当前部署边界保持 `CLOSED`。
-- 当前行为：`CiticTransHandle` 和 `PingAnTransHandle` 只查当前银行/能力业务表，
+- 当前行为：各银行交易 Capability（`channel/{bank}/transaction/`，三域收口后替代原 TransHandle）只查当前银行/能力业务表，
   不调用 report 查询接口或统一交易表。
 - 暂缓约束：不主动开发 Provider、Mapper、Feign 或 report 查询逻辑；不因此重新打开
   `FRONT-P1-012`。

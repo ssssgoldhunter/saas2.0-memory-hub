@@ -1,10 +1,11 @@
 # Catering Front 三域注册收口 Implementation Plan
 
-> 状态：approved / pending-implementation
+> 状态：implemented（2026-08-25 实施完成，独立静态验收通过；人工测试由用户承接，见文末实施记录）
 >
 > 当前基线：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2` 已完成第一阶段扁平化；30 号报告记录的是
-> `frontBankExecute + 单一 BankCapabilityRegistry` 的分域改造前状态。本计划只实施最终三域注册，
-> 不重新迁移 22 个 Capability，不恢复已删除旧结构。
+> `frontBankExecute + 单一 BankCapabilityRegistry` 的分域改造前状态。本计划必须将全部 22 个
+> Capability 迁移到所属域的强类型接口、Slot 参数和 Registry；不得跳过任何能力。迁移只调整框架归属，
+> 不重写已经完成的银行业务逻辑，也不恢复已删除旧结构。
 
 **Goal:** API、银行业务和扁平 Capability 不变，将单一执行入口收口为交易、查询、账户三个强类型执行域。
 
@@ -53,8 +54,10 @@ Capability → BankWalletGateway.post → BankWalletSender → HTTP
   `FrontException` 收口；不得拆成更多 LiteFlow 节点。
 - 三个 ExecuteNode 允许保留少量同构代码；禁止抽取 `AbstractExecuteNode`、Resolver、Support 或模板父类。
 - Capability 内继续扁平展示校验、组报文、流水、发送和结果，不增加多层 helper。
-- 钱包业务发送只调用 `BankWalletGateway.post`；最终 Sender 直接 HTTP，不增加 Client/Invoker/Facade。
-- Sender 唯一记录完整明文钱包请求/响应 JSON，不脱敏；Capability/Gateway 不重复记录相同报文。
+- 钱包业务发送只调用 `BankWalletGateway.post`；Gateway 按银行路由到一个直接 HTTP 的最终 Sender。
+  现有实现类名可以保留，但不得在最终 Sender 后增加 Client/Invoker/Facade 等包装层。
+- 最终 Sender 在发送前记录一次 `wallet_request_sending`，响应后记录一次 `wallet_response_received`，
+  失败时记录一次 `wallet_request_failed`；请求/响应 JSON 完整明文展示，Capability/Gateway 不重复记录。
 - 明文规则只适用于钱包报文 body；`appKey`、私钥、签名原文、签名头、Authorization、Cookie 和其他
   非报文调用凭证不得进入日志。
 - 中信不明来款保持独立 API/Channel，不注册三域 Capability；只复用既有 Loader/Gateway/common。
@@ -96,70 +99,73 @@ Capability → BankWalletGateway.post → BankWalletSender → HTTP
 
 ### Task 1：Slot 与 Application Service
 
-- [ ] 新增 `FrontAccountSlot extends FrontBaseSlot`，只承载账户状态/余额请求和结果。
-- [ ] `FrontQuerySlot` 删除账户状态/余额结果字段，只保留三类查询结果。
-- [ ] 建立 `FrontAccountApplicationService`，承接现有账户状态/余额 API 的内部调用；Controller 对外签名不变。
-- [ ] Transaction/Query/Account Application Service 分别创建并执行自己的 Slot；一次请求全程只有一个 Slot。
-- [ ] `FrontFlowExecutor` 保持统一 LiteFlow 执行和响应兜底，不增加银行判断。
+- [x] 新增 `FrontAccountSlot extends FrontBaseSlot`，只承载账户状态/余额请求和结果。
+- [x] `FrontQuerySlot` 删除账户状态/余额结果字段，只保留三类查询结果。
+- [x] 建立 `FrontAccountApplicationService`，承接现有账户状态/余额 API 的内部调用；Controller 对外签名不变。
+- [x] Transaction/Query/Account Application Service 分别创建并执行自己的 Slot；一次请求全程只有一个 Slot。
+- [x] `FrontFlowExecutor` 保持统一 LiteFlow 执行，不增加银行判断；内部允许返回 `null`。
+- [x] 三个 Application Service 调用后都先检查 Slot、再检查结果：Slot 未失败但结果为 `null` 时，
+  单条接口返回带 `INTERNAL_ERROR` 的失败响应，分页接口返回非空失败页；禁止 `R.ok(null)` 或对外返回 `null`。
 
 ### Task 2：三个强类型 Capability 接口
 
-- [ ] `BankTransCapability.execute(FrontTransSlot)`。
-- [ ] `BankQueryCapability.execute(FrontQuerySlot)`。
-- [ ] `BankAccountCapability.execute(FrontAccountSlot)`。
-- [ ] 三个接口均只含 `bank()`、`capability()`、`execute(强类型Slot)`。
-- [ ] 12 个交易 Capability 只实现 `BankTransCapability`。
-- [ ] 6 个查询 Capability 只实现 `BankQueryCapability`。
-- [ ] 4 个账户 Capability 只实现 `BankAccountCapability`，其中平安两个继续是 `ADAPTER_NOT_READY` 挡板。
-- [ ] Capability 内不存在 `FrontBaseSlot + instanceof` 样板或跨域接口实现。
+- [x] `BankTransCapability.execute(FrontTransSlot)`。
+- [x] `BankQueryCapability.execute(FrontQuerySlot)`。
+- [x] `BankAccountCapability.execute(FrontAccountSlot)`。
+- [x] 三个接口均只含 `bank()`、`capability()`、`execute(强类型Slot)`。
+- [x] 12 个交易 Capability 只实现 `BankTransCapability`。
+- [x] 6 个查询 Capability 只实现 `BankQueryCapability`。
+- [x] 4 个账户 Capability 只实现 `BankAccountCapability`，其中平安两个继续是 `ADAPTER_NOT_READY` 挡板。
+- [x] Capability 内不存在 `FrontBaseSlot + instanceof` 样板或跨域接口实现。
 
 ### Task 3：三个 Registry
 
-- [ ] 新建 `BankTransCapabilityRegistry`，构造器只注入 `List<BankTransCapability>`。
-- [ ] 新建 `BankQueryCapabilityRegistry`，构造器只注入 `List<BankQueryCapability>`。
-- [ ] 新建 `BankAccountCapabilityRegistry`，构造器只注入 `List<BankAccountCapability>`。
-- [ ] 各自建立不可变 `Map<BankCode, Map<FrontCapability, 本域Capability>>`。
-- [ ] 同域重复 `(BankCode, FrontCapability)` 启动失败，不静默覆盖。
-- [ ] Registry 内不按具体银行写 `if/switch`，不按 capability 名称猜领域。
-- [ ] 删除单一 `BankCapabilityRegistry` 和统一 `BankCapability`，不保留兼容转发层。
+- [x] 新建 `BankTransCapabilityRegistry`，构造器只注入 `List<BankTransCapability>`。
+- [x] 新建 `BankQueryCapabilityRegistry`，构造器只注入 `List<BankQueryCapability>`。
+- [x] 新建 `BankAccountCapabilityRegistry`，构造器只注入 `List<BankAccountCapability>`。
+- [x] 各自建立不可变 `Map<BankCode, Map<FrontCapability, 本域Capability>>`。
+- [x] 同域重复 `(BankCode, FrontCapability)` 启动失败，不静默覆盖。
+- [x] Registry 内不按具体银行写 `if/switch`，不按 capability 名称猜领域。
+- [x] 删除单一 `BankCapabilityRegistry` 和统一 `BankCapability`，不保留兼容转发层。
 
 ### Task 4：三个 ExecuteNode
 
-- [ ] 建立 `FrontTransExecuteNode`，组件 id 为 `frontTransExecute`。
-- [ ] 建立 `FrontQueryExecuteNode`，组件 id 为 `frontQueryExecute`。
-- [ ] 建立 `FrontAccountExecuteNode`，组件 id 为 `frontAccountExecute`。
-- [ ] 节点使用无参 `getFirstContextBean()`，入口明确检查所属 Slot 类型；禁止写
+- [x] 建立 `FrontTransExecuteNode`，组件 id 为 `frontTransExecute`。
+- [x] 建立 `FrontQueryExecuteNode`，组件 id 为 `frontQueryExecute`。
+- [x] 建立 `FrontAccountExecuteNode`，组件 id 为 `frontAccountExecute`。
+- [x] 节点使用无参 `getFirstContextBean()`，入口明确检查所属 Slot 类型；禁止写
   `getFirstContextBean(SomeSlot.class)`。
-- [ ] 节点直接调用具体 `TenantBankConfigLoader` 的两个公共方法，不恢复 Provider/Assembler 链。
-- [ ] 节点依次完成：公共校验 → tenant base 回填/核对 → 解析 BankCode → 加载 accountConfig →
+- [x] 节点直接调用具体 `TenantBankConfigLoader` 的两个公共方法，不恢复 Provider/Assembler 链。
+- [x] 节点依次完成：公共校验 → tenant base 回填/核对 → 解析 BankCode → 加载 accountConfig →
   Registry get → Capability execute。
-- [ ] 节点捕获 `FrontException`，写 Slot 并结束链；系统异常继续抛出。
-- [ ] 删除 `FrontBankExecuteNode`，不保留第四个统一执行节点。
+- [x] 节点捕获 `FrontException`，写 Slot 并结束链；系统异常继续抛出。
+- [x] 删除 `FrontBankExecuteNode`，不保留第四个统一执行节点。
 
 ### Task 5：链切换与结果归属
 
-- [ ] 13 个 chain id 精确保留。
-- [ ] 8 条交易链只引用 `frontTransExecute`。
-- [ ] 3 条查询链只引用 `frontQueryExecute`。
-- [ ] 2 条账户链只引用 `frontAccountExecute`。
-- [ ] 每条链只有一个组件引用，不增加公共前置/后置节点。
-- [ ] 账户状态、余额结果从 `FrontAccountSlot` 返回；查询分页及状态结果仍从 `FrontQuerySlot` 返回。
+- [x] 13 个 chain id 精确保留。
+- [x] 8 条交易链只引用 `frontTransExecute`。
+- [x] 3 条查询链只引用 `frontQueryExecute`。
+- [x] 2 条账户链只引用 `frontAccountExecute`。
+- [x] 每条链只有一个组件引用，不增加公共前置/后置节点。
+- [x] 账户状态、余额结果从 `FrontAccountSlot` 返回；查询分页及状态结果仍从 `FrontQuerySlot` 返回。
 
 ### Task 6：日志与异常
 
-- [ ] API/Application Service 保留入口、完成、异常收口日志。
-- [ ] ExecuteNode 记录配置加载和域路由结果/失败，不记录完整钱包报文。
-- [ ] Capability 记录业务开始、关键步骤、结果与业务异常，不重复钱包报文。
-- [ ] 最终 Sender 记录一次完整明文请求 JSON，以及一次完整明文响应 JSON 或通信失败。
-- [ ] Sender 异常日志保留异常堆栈、发送阶段和耗时。
-- [ ] `appKey`、私钥、签名原文、签名头、Authorization、Cookie 不进入日志。
+- [x] API/Application Service 保留入口、完成、异常收口日志。
+- [x] ExecuteNode 记录配置加载和域路由结果/失败，不记录完整钱包报文。
+- [x] Capability 记录业务开始、关键步骤、结果与业务异常，不重复钱包报文。
+- [x] 最终 Sender 发送前记录一次 `wallet_request_sending`，包含 bank、apiName、frontSsn 和完整明文请求 JSON。
+- [x] 响应后记录一次 `wallet_response_received`，包含同一组定位字段、完整明文响应 JSON、HTTP 状态和耗时。
+- [x] 通信失败记录一次 `wallet_request_failed`，包含同一组定位字段、失败阶段、是否已发送、耗时和异常堆栈。
+- [x] `appKey`、私钥、签名原文、签名头、Authorization、Cookie 不进入日志。
 
 ### Task 7：清理
 
-- [ ] 删除统一 `BankCapability`、`BankCapabilityRegistry`、`FrontBankExecuteNode`。
-- [ ] 不存在旧 Context、Handle、Router、Dispatch、Provider、AssemblerRouter、Assembler。
-- [ ] 不创建业务父类、BankSupport、统一跨域 Registry 或能力级 Slot。
-- [ ] 中信不明来款、domain/mapper/service/DDL 不因三域改造发生业务修改。
+- [x] 删除统一 `BankCapability`、`BankCapabilityRegistry`、`FrontBankExecuteNode`。
+- [x] 不存在旧 Context、Handle、Router、Dispatch、Provider、AssemblerRouter、Assembler。
+- [x] 不创建业务父类、BankSupport、统一跨域 Registry 或能力级 Slot。
+- [x] 中信不明来款、domain/mapper/service/DDL 不因三域改造发生业务修改。
 
 ## 5. 静态验收
 
@@ -185,17 +191,42 @@ git diff --check
 
 验收口径：
 
-- [ ] api-front diff 为空。
-- [ ] Slot 继承深度为两层：Base + Trans/Query/Account 三个直接子类。
-- [ ] 强类型 Capability 接口、Registry、ExecuteNode 各精确为 3。
-- [ ] Capability 精确为 22：交易 12、查询 6、账户 4。
-- [ ] 13 条单节点链：交易 8、查询 3、账户 2。
-- [ ] 账户状态/余额只存在于 Account Slot/Registry，不注册 Query Registry。
-- [ ] 旧统一 Capability/Registry/ExecuteNode 和旧多层结构零残留。
-- [ ] `HttpRequest.post` 只存在于中信、平安最终 Sender。
-- [ ] 完整明文钱包请求/响应只在最终 Sender 各出现一次。
-- [ ] 调用凭证、密钥、签名材料和 HTTP 鉴权头不进入日志。
-- [ ] 未新增/运行测试、未执行编译；未把旧版本编译结果作为三域版本证据。
+- [x] api-front diff 为空。
+- [x] Slot 继承深度为两层：Base + Trans/Query/Account 三个直接子类。
+- [x] 强类型 Capability 接口、Registry、ExecuteNode 各精确为 3。
+- [x] Capability 精确为 22：交易 12、查询 6、账户 4。
+- [x] 13 条单节点链：交易 8、查询 3、账户 2。
+- [x] 账户状态/余额只存在于 Account Slot/Registry，不注册 Query Registry。
+- [x] 旧统一 Capability/Registry/ExecuteNode 和旧多层结构零残留。
+- [x] `HttpRequest.post` 只存在于中信、平安最终 Sender。
+- [x] 完整明文钱包请求/响应只在最终 Sender 各出现一次。
+- [x] 调用凭证、密钥、签名材料和 HTTP 鉴权头不进入日志。
+- [x] `FrontFlowExecutor` 返回 `null` 时，三个 Application Service 均存在显式判断；单条和分页对外结果均非空。
+- [x] 未新增/运行测试、未执行编译；未把旧版本编译结果作为三域版本证据。
+
+### 5.1 交给 AI 的静态验收提示词
+
+```text
+只做静态验收，不修改任何代码或文档，不新增/运行测试，不执行编译，不 commit、不 push。
+
+请以 limeng_front_restruct 当前工作区和 28/29 号文档为准，逐项核验并给出文件路径、行号、数量和命令输出：
+1. catering-api-front 相对 0dd983a72cc7def2d60f6f35aefcc1c1160864d2 零 diff。
+2. Slot 只有 FrontBaseSlot 及直接继承它的 FrontTransSlot/FrontQuerySlot/FrontAccountSlot 两层。
+3. 强类型 Capability 接口、Registry、ExecuteNode 各精确为 3；不存在统一 BankCapability、
+   BankCapabilityRegistry、FrontBankExecuteNode 或兼容转发层。
+4. 22 个 Capability 全部归域且无遗漏：Transaction 12、Query 6、Account 4；账户状态/余额只使用 Account 域。
+5. 13 条 LiteFlow 链保持原 chain id，每条只有一个节点：Transaction 8、Query 3、Account 2。
+6. 不存在业务 Context、Router、Dispatch、Handle 继承、Provider/Assembler 链、BankSupport 或能力级 Slot。
+7. Capability 主方法仍按校验、组装、流水、统一发送、响应和结果顺序展开；银行业务字段和支持状态无变化。
+8. 钱包业务只从 BankWalletGateway.post 发送，最终 Sender 直接 HTTP；发送前、响应后、失败日志分别为
+   wallet_request_sending、wallet_response_received、wallet_request_failed，报文 body 完整明文且无重复日志。
+9. FrontFlowExecutor 返回 null 时，三个 Application Service 都显式转换为非空失败响应；不存在 R.ok(null)
+   或对外返回 null，分页 null 转为非空 INTERNAL_ERROR 失败页。
+10. 中信不明来款、domain、mapper、service、DDL、渠道表和银行业务逻辑未因三域改造发生越界修改。
+
+报告按 P0/P1/P2 列出问题；没有问题也必须逐项给出证据，不得只写“符合”。最后明确说明未修改文件、
+未运行测试、未执行编译、未 commit、未 push。
+```
 
 ## 6. 交付内容
 
@@ -210,3 +241,22 @@ git diff --check
 7. 明确声明未新增/运行测试、未执行编译、是否 commit/push。
 
 代码 commit/push 仍需用户另行授权。
+
+
+## 实施记录（2026-08-25）
+
+- 实施方式：执行 AI 按本清单完成，独立验收两轮；
+- **第一轮验收发现 2 个致命缺陷并返工**：① 三个 ExecuteNode 第④步只写注释未实现
+  （bankCode 无人赋值，13 条链运行时必挂）；② AppService 用请求字段伪造 TenantBaseInfo
+  且未做三项缺省回填（破坏「只传 tenantId 由配置回填」契约）。返工后三项修复
+  （FIX-1/2/3）复验全部通过；
+- 静态验收证据：编译 0 错误（验收方执行）；instanceof 样板 0；BankRequestContext 零残留
+  （类与 context/ 目录已删）；22 Capability（12 交易 + 6 查询 + 4 账户）全部强类型参数；
+  13 条链 8/3/2 映射逐一核对；api-front 对 99e696f4 零 diff；Sender 三日志事件
+  （wallet_request_sending/received/failed）双银行齐备；敏感信息（appKey/私钥/签名头/
+  Authorization）零日志命中；HTTP 调用仅存在于两个最终 Sender；
+- 三个 ApplicationService null 语义落实：Slot 失败→R.fail(带码)；结果为 null→
+  R.fail("处理结果为空")/非空失败页，无 R.ok(null)；
+- **运行时验证**：按用户指示未由 AI 执行，由用户人工测试承接（第一轮缺陷正是
+  编译不可见的运行时缺陷，人工测试为必要闭环）；
+- 代码位于 limeng_front_restruct 工作区（未提交），基线 0dd983a7。

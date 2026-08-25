@@ -13,12 +13,14 @@
 
 阅读完成后，先向我说明：
 1. 当前代码已经提供哪些框架能力；
-2. 你要实现的方法在 28 号目标 Capability、当前已提交代码、旧 Front 和 mdl 中分别对应什么；
+2. 29 号三域注册任务在 28 号目标设计、当前已提交代码和 30 号历史快照中分别对应什么；
 3. 你准备修改哪些文件；
 4. 哪些字段进入 baseData、specialData、accountConfig、accountSpecialData；
 5. 本次是否收到编写测试或执行编译的明确授权。
 
-确认上述信息后，只实现我指定的一个银行或一个能力，并同步更新记忆体文档。
+确认上述信息后，完整执行 29 号三域注册收口：将 22 个通用 Capability 按 Transaction 12、Query 6、
+Account 4 归域，将 13 条 LiteFlow 链按 8/3/2 切换到三个强类型单节点入口，并同步更新记忆体文档。
+不得借此重写银行业务逻辑、改变能力支持状态或扩大到 29 号之外的任务。
 ```
 
 ## 2. 仓库与参考项目
@@ -199,7 +201,8 @@ codegraph status               # 索引状态
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
 - `FrontExceptionHandler` 和结构化日志工具；日志采用 B 方案：Capability 只记录业务步骤，最终
-  `BankWalletSender` 统一且只记录一次钱包请求、响应和失败，body 使用完整明文 JSON、不做字段脱敏；
+  `BankWalletSender` 在发送前记录一次 `wallet_request_sending`、响应后记录一次
+  `wallet_response_received`、失败时记录一次 `wallet_request_failed`，body 使用完整明文 JSON、不做字段脱敏；
   `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie` 等非业务报文凭证禁止进入日志；
 - 已有扁平化第一阶段是三域改造的代码起点；30 号报告只记录三域裁决之前的单一 Registry 快照，
   不是最终验收结论；
@@ -218,13 +221,13 @@ codegraph status               # 索引状态
 - ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
   `TenantDataSourceShardingAlgorithm` 直接把 `data_source_id` 的值拼成 `ds_x` 路由（不查配置中心）；
   `data_source_id` 由业务请求方在 `baseData` 传入，请求头同名字段用于跨服务透传与落库记录；
-  `data_source_id` 缺失时先由链路前置节点 `tenantBaseConfigResolve` 从
+  `data_source_id` 缺失时先由域 ExecuteNode 第④步从
   `tenant_base_config` 回填（2026-08-20 起，调用方最少只需传 tenantId + clientId）；
   回填后仍为空、或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
   禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
 - 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；每个请求由
-  `tenantBaseConfigResolve` 节点用 tenantId 从 `tenant_base_config` 一次查询取出
+  域 ExecuteNode 第③步用 tenantId 从 `tenant_base_config` 一次查询取出
   clientId/platformCode/dataSourceId/supportBankConfig，缺省回填前三者（显式传入优先，
   调用方最少只需传 tenantId），银行配置加载复用 supportBankConfig 免二次查询：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
@@ -287,7 +290,8 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 - 不增加 `FrontResponse`；单条接口返回 `R<具体结果>`，分页明细查询直接返回
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），不再使用 `R` 包裹；
 - API、Controller、Application Service 使用同一方法签名并原样透传；内部 Route 和 Capability 不返回 `R`；
-- 不返回 `null` 或模拟成功；
+- `FrontFlowExecutor` 内部允许返回 `null`，但三个 Application Service 必须立即转换为非空失败响应；
+  禁止 `R.ok(null)`、空分页响应或对外返回 `null`，也不得模拟成功；
 - 不允许通过反向转账模拟退款；中信退款必须调用真实 `/refund + bizFunc=23`；
 - 中信退款对外固定使用 `originalBizOrderNo + originalBizSubOrderNo`，映射银行
   `ORI_BUSS_ID + ORI_BUSS_SUB_ID`；不得把 Front 的 `orgFrontSsn/transSsn` 当成中信
@@ -339,7 +343,8 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
   统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
 - 交易链路按 05 §8 执行 B 方案：Capability 保留真实业务步骤日志，最终 Sender 唯一记录钱包
   请求/响应/失败，body 使用完整明文 JSON、不脱敏；迁移时删除重复报文日志，并继续排除非报文凭证；
-- 三域注册增量不得重做第一阶段迁移，也不得改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
+- 三域注册增量必须迁移全部 22 个 Capability 的强类型接口、Slot 参数和 Registry 归属，不得跳过任何
+  能力；不得重写第一阶段已经完成的银行业务逻辑，也不得改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
 - 本轮用户已明确：不新增或运行测试、不执行编译，只做静态 review，禁止据此声明测试或编译通过。
 
 ## 7. 后续 AI 的实现单位
@@ -356,8 +361,9 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 7. 删除单一 `BankCapability`、单一 Registry、通用 ExecuteNode 及兼容转发层，不恢复 Context、Handle、
    BankSupport、Router、Dispatch 或多层 Wallet Client；
 8. Sender 唯一记录完整明文请求/响应 body；Capability 不重复打印钱包报文，认证凭证不得入日志；
-9. 本轮不写/不运行测试、不执行编译，只做静态核验并如实说明；
-10. 完成后提交三域矩阵、13 条链、删除清单和行为差异给用户 review；代码 commit/push 需另行明确授权。
+9. 三个 Application Service 显式处理 `FrontFlowExecutor` 返回的 `null`，转为非空失败响应；
+10. 本轮不写/不运行测试、不执行编译，只做静态核验并如实说明；
+11. 完成后提交三域矩阵、13 条链、删除清单和行为差异给用户 review；代码 commit/push 需另行明确授权。
 
 ## 8. Handle 方法入口
 

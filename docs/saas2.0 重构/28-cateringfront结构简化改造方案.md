@@ -1,6 +1,6 @@
 # catering-front 扁平化重构设计（28 号）
 
-> 状态：approved-design / partially-implemented（既有扁平化已完成，三域注册待实施）
+> 状态：implemented（2026-08-25 三域注册收口完成并静态验收通过，运行验证由用户人工测试承接；实施与验收记录见 29 号文末）
 > 用户确认：2026-08-25
 > 当前实施范围：只在 `cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
 > 已提交扁平代码上完成三域注册增量。
@@ -111,13 +111,13 @@ com.chinaums.front
 │  │  ├─ BankWalletSender
 │  │  └─ OpenBodySigSigner
 │  ├─ citic/
-│  │  ├─ common/          # SequenceGenerator/Sm2Crypto/ResponseChecker/CryptoProperties/WalletHttpClient(最终 Sender)
+│  │  ├─ common/          # SequenceGenerator/Sm2Crypto/ResponseChecker/CryptoProperties/最终 Sender 实现（直接 HTTP）
 │  │  ├─ transaction/     # Transfer/Consume/Refund/Withdraw/PlatformPay/PlatformReceive 六个 Capability
 │  │  ├─ query/           # TransStatus/TransDetail/PlatformDetail 三个 Capability
 │  │  ├─ account/         # AccountStatus/AccountBalance 两个 Capability
 │  │  └─ unidentified/    # 既有专项，当前不动
 │  └─ pingan/
-│     ├─ common/          # WalletHttpClient(最终 Sender)/ResponseChecker/CryptoProperties/Sm2Crypto/SequenceGenerator
+│     ├─ common/          # 最终 Sender 实现（直接 HTTP）/ResponseChecker/CryptoProperties/Sm2Crypto/SequenceGenerator
 │     ├─ transaction/     # Transfer/Consume/Refund/Withdraw/TransferAuth/ResendAuthCode 六个 Capability
 │     ├─ query/           # TransStatus/TransDetail/PlatformDetail 三个 Capability
 │     └─ account/         # AccountStatus/AccountBalance 两个 Capability（挡板）
@@ -236,8 +236,10 @@ FrontAccountExecuteNode
 公共校验、租户加载、路由和异常收口只在这一个域节点中按顺序出现，不再拆节点或建立父类。三个域允许
 保留少量相同编排代码，禁止为了消除这点重复再创建 `AbstractExecuteNode`、Resolver 或 Support。
 
-`FrontFlowExecutor` 在链结束后承接旧 Normalize 的兜底：结果为空或单条结果缺少 `frontRespCode` 时按
-现有语义补 `INTERNAL_ERROR`；分页结果仍按原 API 契约返回。
+`FrontFlowExecutor` 统一执行 LiteFlow，内部允许在 Slot 业务中断或结果为空时返回 `null`；单条非空结果
+缺少 `frontRespCode` 时仍按现有语义补 `INTERNAL_ERROR`。三个 Application Service 必须在调用后先检查
+Slot、再检查结果：Slot 未标记失败但结果为 `null` 时，单条接口返回带 `INTERNAL_ERROR` 的失败响应，
+分页接口返回非空的 `INTERNAL_ERROR` 失败页；禁止形成 `R.ok(null)` 或向 Controller 返回 `null`。
 
 ### 5.2 扁平租户配置加载
 
@@ -354,8 +356,9 @@ JSONObject response = bankWalletGateway.post(
 约束：
 
 - `BankWalletGateway.post` 是业务代码唯一的钱包发送位置。
-- Gateway 后只保留一个直接执行 HTTP 的银行 `BankWalletSender`；不再增加
-  `WalletHttpClient`、`Invoker`、`ClientFacade`、`Support.invokeBank` 包装层。
+- Gateway 按银行路由到一个最终 `BankWalletSender` 实现，该实现直接执行 HTTP。现有实现类可以保留
+  `WalletHttpClient` 名称，类名不是验收指标；但它本身必须就是最终 Sender，后面不得再增加
+  `WalletHttpClient`、`Invoker`、`ClientFacade`、`Support.invokeBank` 等包装层。
 - 连接、统一签名、HTTP、超时和底层响应读取属于 Gateway 基础设施，其中最终银行 Sender 直接执行 HTTP；
   能力专属的 apiName、bizFunc、chnlNo 和请求字段仍在 Capability 明示。
 - Capability 只记录业务步骤和渠道流水，不记录钱包请求/响应报文；最终 Sender 分别记录一次完整明文
@@ -371,11 +374,13 @@ JSONObject response = bankWalletGateway.post(
 2. 租户加载与 Route：配置加载开始/完成/失败、路由选中/未注册/重复注册均有日志，不打印配置密钥。
 3. Capability 开始：bank、capability、tenantId、业务主/子流水。
 4. Capability 过程：关键校验、报文组装完成、渠道流水 INIT/SENDING/最终状态及 recordId。
-5. 钱包发送前：只由最终 Sender 记录一次 apiName、frontSsn 和完整明文请求 JSON，不脱敏。
-6. 钱包响应后：只由最终 Sender 记录一次完整明文响应 JSON、HTTP 状态和耗时，不脱敏；Capability
-   只记录归一化结果。
-7. 异常：Capability 记录业务执行阶段、recordId、状态和异常；最终 Sender 记录发送阶段、是否已发送、
-   耗时和通信异常。异常必须保留堆栈，不得只打印异常 message。
+5. 钱包发送前：只由最终 Sender 记录一次 `wallet_request_sending`，明确包含 bank、apiName、frontSsn
+   和完整明文请求 JSON，不脱敏。
+6. 钱包响应后：只由最终 Sender 记录一次 `wallet_response_received`，明确包含同一组定位字段、完整明文
+   响应 JSON、HTTP 状态和耗时，不脱敏；Capability 只记录归一化结果。
+7. 异常：Capability 记录业务执行阶段、recordId、状态和异常；最终 Sender 记录一次
+   `wallet_request_failed`，明确包含同一组定位字段、失败阶段、是否已经发出请求、耗时和通信异常。
+   异常必须保留堆栈，不得只打印异常 message。
 
 旧 Handle/Capability 中与 Sender 重复的“发送钱包请求/银行响应”日志必须删除。钱包报文 body 按用户
 裁决完整明文记录；调用凭证、密钥、签名材料和 HTTP 鉴权头仍禁止记录。日志不得依赖多层 AOP 才能理解
@@ -404,7 +409,8 @@ JSONObject response = bankWalletGateway.post(
 ## 10. 三域注册增量范围
 
 1. 以 `cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
-   已提交扁平代码为唯一实现起点，不重做第一阶段迁移。
+   已提交扁平代码为唯一实现起点；全部 22 个 Capability 都必须完成三域接口、Slot 参数和 Registry
+   归属迁移，但不得重写第一阶段已经完成的银行业务逻辑。
 2. 建立 `FrontAccountSlot` 和 `FrontAccountApplicationService`；已有 Trans/Query 与新增 Account Slot
    均直接继承 `FrontBaseSlot`。
 3. 把既有 22 个通用 Capability 改为实现所属域强类型接口：Transaction 12、Query 6、Account 4；
@@ -448,7 +454,8 @@ LiteFlow 单节点薄链 = 13（交易 8 + 查询 3 + 账户 2）
 ### 11.3 行为验收
 
 - 所有已支持能力的请求字段、固定值、加密、签名、响应码、查询回查和渠道流水行为不变。
-- 不支持与待接入状态不变；禁止返回 null 或模拟成功。
+- 不支持与待接入状态不变；`FrontFlowExecutor` 内部 `null` 必须由 Application Service 转成失败响应，
+  对外禁止返回 null 或模拟成功。
 - 日志满足 §8：业务日志就地，完整明文钱包请求/响应只在最终 Sender 各出现一次；密钥、签名材料和
   HTTP 鉴权头不进入日志。
 - 仅新增一家银行并复用既有能力时，不需要修改 Controller、Application Service、API 方法/路径/DTO/

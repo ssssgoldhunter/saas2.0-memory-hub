@@ -73,7 +73,7 @@ private final FrontTransApi frontTransApi;
 ### 2.3 实际对接顺序
 
 1. 确认租户已配置目标银行，并能提供正确 `platformCode`。
-2. 最少准备 `tenantId/clientId/storeId`；`platformCode/dataSourceId` 可省略，Front 链路前置节点（`tenantBaseConfigResolve`）会从租户基础配置回填。
+2. 最少准备 `tenantId/storeId`；`clientId/platformCode/dataSourceId` 可省略，Front 域 ExecuteNode 第④步会从租户基础配置回填（回填后仍缺失则请求失败）。
 3. 准备业务唯一号、主子订单号、金额和日期时间。
 4. 从账户/企业/绑卡等上游 check 结果取得标准账户要素。
 5. 每笔请求新建 `FrontSpecialDataAssembler` 并生成 `specialData`。

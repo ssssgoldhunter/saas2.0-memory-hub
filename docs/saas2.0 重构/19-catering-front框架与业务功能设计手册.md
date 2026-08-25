@@ -143,6 +143,8 @@ FrontRequest<T>
 - 顶层 `R.code=200` 只表示 Front 业务成功；业务失败必须返回失败码。
 - data 内的 `frontRespCode/frontRespDesc` 使用统一 Front 错误码。
 - 银行原始码只用于 Capability 判定与渠道审计，不直接对外。
+- `FrontFlowExecutor` 内部允许返回 `null`；Application Service 必须先检查 Slot、再检查结果。Slot 未失败但
+  结果为 `null` 时，单条返回带 `INTERNAL_ERROR` 的失败响应，分页返回非空失败页；禁止 `R.ok(null)`。
 
 ## 6. 租户与银行配置
 
@@ -183,7 +185,8 @@ Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账�
 - 能力专属组装留在能力类或一层私有方法；允许少量重复。
 - 真正被同一银行多个已实现能力复用的序列、加密、响应判断等才进入 `common`。
 - 禁止业务父类、Handle、Router、Dispatch、BankSupport God class、跨域 switch 和动态表名。
-- 未支持能力不注册；待接入能力返回 `ADAPTER_NOT_READY`，不返回 null 或模拟成功。
+- 未支持能力不注册；待接入能力返回 `ADAPTER_NOT_READY`。`FrontFlowExecutor` 内部 `null` 由
+  Application Service 转换为失败响应，对外不返回 null 或模拟成功。
 
 ## 8. 交易流水规则
 
@@ -206,15 +209,20 @@ Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账�
 
 ## 10. Gateway、Sender 和日志
 
-`BankWalletGateway.post` 是 Capability 唯一的钱包发送方法。Gateway 根据银行选择 Sender；最终 Sender 直接签名并执行 HTTP，不再套 WalletHttpClient/Invoker/Facade。
+`BankWalletGateway.post` 是 Capability 唯一的钱包发送方法。Gateway 根据银行选择最终 Sender；该 Sender
+直接签名并执行 HTTP。现有实现类可以保留 `WalletHttpClient` 名称，类名不是验收指标；但该类本身必须
+就是最终 Sender，后面不得再套 WalletHttpClient/Invoker/Facade。
 
 日志采用 B 方案：
 
 1. API/Application Service：入口、完成、异常收口。
 2. ExecuteNode：租户加载、BankCode 和本域路由结果。
 3. Capability：业务开始、字段校验、流水状态、银行判定和异常。
-4. Sender：唯一记录一次完整明文请求 JSON、一次完整明文响应 JSON 或通信失败。
+4. Sender：发送前唯一记录一次 `wallet_request_sending`；响应后唯一记录一次
+   `wallet_response_received`；通信失败唯一记录一次 `wallet_request_failed`。
 
+发送前日志包含 bank、apiName、frontSsn 和完整明文请求 JSON；响应后日志包含同一组定位字段、完整明文
+响应 JSON、HTTP 状态和耗时；失败日志包含同一组定位字段、失败阶段、是否已发送、耗时和异常堆栈。
 钱包请求/响应 body 不脱敏。Capability/Gateway 不得重复打印同一报文。
 `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie` 等非业务报文凭证不得进入日志、异常或普通响应。
 

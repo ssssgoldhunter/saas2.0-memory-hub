@@ -17,8 +17,9 @@
 
 ## 0. 28 号三域注册增量强制结构约束
 
-1. **范围**：在既有扁平代码上将中信、平安 22 个通用能力归入三域，并切换 13 条 LiteFlow 单节点链；
-   不重做第一阶段迁移，支持状态和业务行为不变。
+1. **范围**：在既有扁平代码上将中信、平安全部 22 个通用 Capability 迁移到所属域的强类型接口、
+   Slot 参数和 Registry，并切换 13 条 LiteFlow 单节点链；不得跳过任何能力。只调整框架归属，
+   不重写第一阶段已经完成的银行业务逻辑，支持状态和业务行为不变。
 2. **API**：`catering-api-front` 必须零 diff；Controller、Feign、请求 DTO 和返回签名不变。
 3. **Slot**：只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot/FrontAccountSlot` 两层；
    禁止新增业务 `*Context` 或能力级 Slot。
@@ -35,13 +36,15 @@
 7. **common 准入**：只有至少两个已实现能力真实复用的序列号、加密、响应判断或配置对象可以进入；
    禁止聚合校验、组装、持久化、发送和结果映射的 `CiticBankSupport/PingAnBankSupport`。
 8. **发送**：业务能力只直接调用 `BankWalletGateway.post`；Gateway 只再分派到最终
-   `BankWalletSender`，Sender 直接完成 HTTP 调用，禁止继续套 Client、Support、Invoker、Facade。
+   `BankWalletSender`，Sender 直接完成 HTTP 调用。现有实现类名可以保留，但该类本身必须就是最终
+   Sender，后面禁止继续套 Client、Support、Invoker、Facade。
 9. **代码层级**：Capability 只实现一个接口，不继承业务父类；私有业务 helper 最多一层并紧邻主流程。
    文件数和类行数不是指标，“打开能力类能读完主流程”才是验收标准。
 10. **package**：所有类必须位于 `com.chinaums.front...`，禁止 `package citic;`、`package pingan;`。
 11. **日志**：采用用户确认的 B 方案。Capability 只记录业务步骤和状态变化；最终
-    `BankWalletSender` 统一且只记录一次完整明文钱包请求 JSON、完整明文响应 JSON 或通信失败日志，
-    不做字段脱敏；迁移时删除其他层对同一报文的重复日志。`appKey`、私钥、签名原文/签名头、
+    `BankWalletSender` 在发送前统一记录一次 `wallet_request_sending`，响应后记录一次
+    `wallet_response_received`，失败时记录一次 `wallet_request_failed`；请求/响应 JSON 完整明文展示，
+    迁移时删除其他层对同一报文的重复日志。`appKey`、私钥、签名原文/签名头、
     Authorization、Cookie 等非报文调用凭证仍禁止入日志。
 12. **租户配置**：保留清晰调用链，但彻底压缩层级：
     三个 ExecuteNode 均直接调用 `TenantBankConfigLoader → RemoteConfigServiceClient`。Loader 是具体类，
@@ -71,13 +74,15 @@
    - **无返回体操作类**：返回 `R<Void>`。
 5. API、Controller、Application Service 均使用同一个返回签名；Controller 只透传
    Application Service 返回值。内部 Route 和 Capability 不返回 `R`；**分页 Capability 直接返回
-   `TableDataInfo<具体行>`**（含 code/msg/rows/total/totalPage，业务失败 Handle 内填
-   `code=500` + 空 rows + 安全 msg），Application Service 对分页结果**纯透传**，
-   不做二次转换；**禁止引入 `FrontPageResult` 等分页中间承接对象**（2026-08-19 用户裁决，
+   `TableDataInfo<具体行>`**（含 code/msg/rows/total/totalPage，业务失败 Capability 内填
+   `code=500` + 空 rows + 安全 msg）。非空分页结果由 Application Service 纯透传；仅当
+   `FrontFlowExecutor` 返回 `null` 时，Application Service 负责构造非空的 `INTERNAL_ERROR` 失败页。
+   **禁止引入 `FrontPageResult` 等分页中间承接对象**（2026-08-19 用户裁决，
    原内部承接层废除）。
 6. LiteFlow 节点遇可预期业务失败时写 Slot 后中断；非 LiteFlow 路径抛 `FrontException`；
    系统异常继续抛出，由 `FrontExceptionHandler` 收口。
-7. 不支持、未接入和结果未知必须显式表达，禁止返回 `null` 或模拟成功。
+7. 不支持、未接入和结果未知必须显式表达。`FrontFlowExecutor` 内部允许返回 `null`，但三个
+   Application Service 必须立即判断并转换为失败响应；Controller 和最终 API 禁止返回 `null` 或模拟成功。
 8. 对外请求固定为 `baseData + specialData` 两段；进入链路后由所属域 ExecuteNode 调用具体 Loader，
    将 `accountConfig` 写入同一个 Slot，不再转换为三段式 Context。
 9. 租户银行配置只能由 Front 使用 `tenantId + bankCode` 查询，禁止由调用方传入或由具体银行
@@ -262,15 +267,16 @@ Application Service 禁止：
 - 直接执行签名、加密或 HTTP 调用；
 - 使用 `instanceof` 判断具体银行实现。
 
-### 3.3 Router 与 Registry
+### 3.3 分域 Registry（28 号三域定稿）
 
-交易、查询和后续账户必须使用各自独立的 Registry：
+交易、查询、账户三个域各自拥有强类型 Registry（无独立 Router 类，路由在域 ExecuteNode 第⑥步内完成）：
 
 ```text
-TransactionHandlerRegistry.route(bankCode, capability)
-QueryHandlerRegistry.route(bankCode, capability)
-AccountHandlerRegistry.route(bankCode, capability)   # 后续账户维护能力启用时增加
+BankTransCapabilityRegistry.get(bankCode, capability)
+BankQueryCapabilityRegistry.get(bankCode, capability)
+BankAccountCapabilityRegistry.get(bankCode, capability)
 ```
+（银行未注册 → BANK_NOT_SUPPORTED；能力未注册 → CAPABILITY_NOT_SUPPORTED，均默认统一文案）
 
 API/Controller/Application Service 已经表达所属领域，禁止统一 Router 再根据 capability 名称、枚举集合或
 `TRANSFER` 前缀猜测 Transaction/Query/Account。进入正确领域后，Registry 必须读取 API 内部固定的
@@ -508,7 +514,8 @@ channel/pingan
 - `send_started_at`/`completed_at` — 只要 3 个时间（create/update/respond）。
 
 渠道表允许保存本系统内部使用的账户号、会员编号、姓名和银行卡号原始值，本期不要求数据库字段加密。
-这只放宽数据库落库方式，不放宽日志和接口边界：日志、异常消息、普通查询响应仍不得输出这些敏感值。
+最终 Sender 的钱包请求/响应 body 按用户裁决允许完整明文记录；除此之外，这只放宽数据库落库方式，
+其他日志、异常消息和普通查询响应仍不得额外输出这些敏感值。
 本阶段按内部系统信任边界处理，ShardingSphere 数据源连接配置的加密和安全加固暂不纳入开发与验收；
 银行协议要求的签名、传输/字段加密仍必须保留。
 
@@ -606,8 +613,8 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 分片键 `data_source_id` 自动路由。
 
 - **分片键**：`data_source_id`（每条渠道流水 SQL 自带，由业务请求方在 `baseData.dataSourceId`
-  传入——缺失时链路前置节点 `tenantBaseConfigResolve` 用 tenantId 从 `tenant_base_config`
-  缺省回填，显式传入优先——经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到
+  传入——缺失时域 ExecuteNode 第④步用 tenantId 从 `tenant_base_config`
+  缺省回填（三域收口后无独立前置节点），显式传入优先——经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到
   Entity 的 `data_source_id` 列）；
 - **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
   1. 从 SQL 的 `data_source_id` 值拿到数据源编号（如 `"2"`）；
@@ -617,7 +624,7 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config-${spring.profiles.active:dev}.yaml`；
 - **新增库**：在 `shardingsphere-config-*.yaml` 加 `ds_3` 数据源，业务请求方传 `data_source_id=3`
   即可路由到新库，不改代码；
-- **失败策略**：`tenantBaseConfigResolve` 回填后 `data_source_id` 仍为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
+- **失败策略**：域 ExecuteNode 第④步回填后 `data_source_id` 仍为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
   系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源或广播到其他租户数据库；
 - **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
   SQL 的 `data_source_id` 自动触发分片路由；
@@ -936,7 +943,8 @@ TableDataInfo<AccountTransDetailItem> / TableDataInfo<PlatformTransDetailItem>
 - 直接返回银行响应 DTO；
 - 返回 `Map<String, Object>`；
 - 再创建一套 Front 专用顶层响应类替代 `R`；
-- 返回 `null`。
+- Controller、Application Service 或最终 API 对外返回 `null`。`FrontFlowExecutor` 内部返回 `null` 时，
+  必须由外层 Application Service 立即转换为失败响应。
 
 ### 5.2 两层语义
 
@@ -1112,8 +1120,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 
 1. 把 `FrontErrorCode` 的 `code/msg` 写入当前域 Slot 的 `frontRespCode/frontRespDesc`；
 2. 调用 `this.setIsEnd(true)`（LiteFlow 视为用户主动结束，`response.isSuccess` 仍为 `true`）；
-3. `FrontFlowExecutor` 执行后返回带 Front 错误码的结果，Application Service 检查 Slot 并返回
-   `R.fail(message, FrontBaseResult)`。
+3. `FrontFlowExecutor` 执行后允许返回 `null`；Application Service 必须先检查 Slot 的业务失败状态，
+   再检查执行结果。Slot 已标记失败时返回对应 `R.fail`/失败页；Slot 未失败但结果为 `null` 时，返回
+   `INTERNAL_ERROR`，不得形成 `R.ok(null)` 或空分页响应。
 
 不设置统一的能力预验证。交易、交易查询、账户分别进入自己的 Registry，并按
 `(BankCode, FrontCapability)` 直接取得具体 Capability；未注册当前复合键时返回
@@ -1130,7 +1139,8 @@ ExecuteNode 调用期间抛出 `FrontException`，该节点必须只捕获该类
 - 禁止用 `RuntimeException("字符串")` 表达已知业务失败；
 - 禁止 catch 后忽略异常；
 - 禁止 catch 后返回 `R.ok`；
-- 禁止返回 `null`；
+- 禁止 Capability、Application Service 和 Controller 把 `null` 作为最终结果返回；仅允许
+  `FrontFlowExecutor` 内部返回 `null`，并由外层 Application Service 当场转换为失败响应；
 - 禁止把未接入能力伪造成成功；
 - 资金交易超时或无响应不得直接重试，应进入 `UNKNOWN` 并通过查询确认。
 
@@ -1244,7 +1254,7 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - 不静默覆盖重复银行 Capability；
 - 不在渠道流水表 Entity 或数据库列使用 `payer`/`payee` 命名——付款统一 `pay_`、收款统一 `rec_`、提现统一 `withdraw_`（见 §8.5）；
 - 不返回银行原始 DTO、原始错误码或敏感报文；
-- 不返回 `null` 或模拟成功；
+- `FrontFlowExecutor` 内部 `null` 必须由 Application Service 转换为失败响应；对外不返回 `null` 或模拟成功；
 - 不在未确认字段时猜测银行协议；
 - 持久层 Entity ↔ VO/BO 转换不手写 `setXxx(getXxx())`，必须用 `@AutoMapper` + `MapstructUtils.convert`（见 §3.9）；
 - 不在 catering-front `pom.xml` 重复声明 MapStruct 依赖，统一走 `catering-common-core` 传递；
@@ -1267,7 +1277,8 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 ## 10. 当前实施顺序：三域注册收口
 
-1. 以 `limeng_front_restruct` 已完成的初版扁平结构为当前代码起点，不重做 22 个 Capability。
+1. 以 `limeng_front_restruct` 已完成的初版扁平结构为当前代码起点，将全部 22 个 Capability 迁移到
+   所属域的强类型接口、Slot 参数和 Registry；不得跳过任何能力，也不得重写其银行业务逻辑。
 2. 确认 `catering-api-front`、domain、mapper、DDL、不明来款业务为禁改区。
 3. 建立 `FrontAccountSlot`、`FrontAccountApplicationService`，把账户状态/余额从 Query 域迁到 Account 域。
 4. 建立交易、查询、账户三套强类型 Capability 接口、Registry 和 ExecuteNode；删除统一接口、Registry、
@@ -1377,9 +1388,9 @@ ContractKeys 或补写未启用分支。
 ### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
 
 - [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
-- [ ] platformCode/dataSourceId 缺失时由 catering-front 链路节点 `tenantBaseConfigResolve`
-      用 tenantId 从 `tenant_base_config` 缺省回填（2026-08-20 起，调用方最少只需传
-      tenantId + clientId）；显式传入优先，回填查询失败不中断链路；
+- [ ] clientId/platformCode/dataSourceId 缺失时由域 ExecuteNode 第④步用 tenantId 从
+      `tenant_base_config` 缺省回填（三域收口后调用方最少只需传 tenantId + 业务必填字段）；
+      显式传入优先；回填后仍缺失（dataSourceId/platformCode）按 INVALID_REQUEST 中断；
 - [ ] `FeignRequestInterceptor`（common-feign 发送端）逐个解析 4 个值：header 优先，
       header 缺失时从 `RequestContext` 补齐；非 Web/Feign 异步线程不得因没有
       `HttpServletRequest` 就提前返回；

@@ -254,7 +254,7 @@ catering-front (实际业务服务)
 
 > 最小调用方形态（2026-08-20 用户要求）：web-test 调 front 的 header 只封装
 > `tenantId + clientId` 两字段；请求体 baseData 只带 `tenantId/storeId` 等业务字段，
-> 不填 platformCode/dataSourceId——由 front 链路节点 `tenantBaseConfigResolve` 从
+> 不填 platformCode/dataSourceId——由 front 域 ExecuteNode 第④步从
 > `tenant_base_config` 缺省回填（见 19 号手册）。specialData 组装仍按开发手册两步
 > 调用：先调 `/assemble/special-data`（本地 `FrontSpecialDataAssembler`，组装输入的
 > platformCode/dataSourceId 来自本地租户配置），确认后再发起交易/查询。
