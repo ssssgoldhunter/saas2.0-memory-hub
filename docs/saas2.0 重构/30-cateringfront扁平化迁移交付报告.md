@@ -1,13 +1,13 @@
 # Catering Front 扁平化迁移交付报告（30 号）
 
-> ⚠️ 基线说明（2026-08-25）：本报告记录的是**分域注册改造前**的交付状态（单节点
-> `frontBankExecute` + 单一 `BankCapabilityRegistry`）。分域注册定稿后（28 号裁决 8
-> 追加：交易/查询各一套六件套），本报告中的链节点、Registry 相关证据由分域改造
-> 任务的交付报告接续更新；除链节点与注册结构外，其余证据（三域目录、22 能力、
-> api-front 零 diff、旧结构删除、日志矩阵）仍然有效。
+> ⚠️ 基线说明（2026-08-25）：本报告记录的是**三域注册改造前**的历史快照（单节点
+> `frontBankExecute` + 单一 `BankCapabilityRegistry`）。最终裁决是 Transaction、Query、Account
+> 三个执行域各自拥有强类型 Capability、Registry、ExecuteNode 和 Slot，见 28、29 号文档。
+> 本报告不得作为三域最终验收证据；其中未被三域增量触及的能力清单、API 零差异和发送出口信息，
+> 也必须在最终实现后重新静态核验，不能直接沿用结论。
 
-> 状态：implemented / pending-review
-> 代码基线：`cateringsass/limeng_front@99e696f4`
+> 状态：superseded-baseline / pre-three-domain-registry
+> 历史代码参照：`99e696f4`（仅用于本报告当时的 diff 对照，不是三域实现基线）
 > 交付日期：2026-08-25
 
 ## 一、22 项能力矩阵
@@ -39,29 +39,30 @@
 
 ## 二、删除清单
 
-对照基线 `99e696f4`，共删除 **48 个源文件**（`git diff --name-status --diff-filter=D`）：
+对照基线 `99e696f4` 的代表性删除项如下。本报告没有附完整原始 diff，且原有分组标题数量与列项
+存在不一致，因此不再把“48 个源文件”作为有效验收数字；最终删除清单必须由三域实现提交重新生成。
 
-### flow/component（9 文件）
+### flow/component（代表项）
 - `AbstractFrontNode` / `BankHandleContextPrepareNode` / `FrontQueryDispatchNode` / `FrontQueryRouteNode`
 - `FrontRequestValidateNode` / `FrontResponseNormalizeNode` / `FrontTransactionDispatchNode`
 - `FrontTransactionRouteNode` / `TenantBaseConfigResolveNode`
 
-### flow/context（3 文件）
+### flow/context（代表项）
 - `FrontExecutionInfo` / `FrontExecutionStage` / `FrontFlowContext`
 
-### handle（5 文件）
+### handle（代表项）
 - `AbstractBankHandle` / `BankCapabilityDefinition` / `BankCapabilityHandle`
 - `BankHandle` / `BankQueryHandle` / `BankTransHandle`
 
-### route（5 文件）
+### route（代表项）
 - `BankCapabilityKey` / `QueryHandleRegistry` / `QueryRouter` / `TransactionHandleRegistry` / `TransactionRouter`
 
-### Provider/Assembler 链（7 文件）
+### Provider/Assembler 链（代表项）
 - `TenantBankConfigProvider` / `RemoteTenantBankConfigProvider`
 - `AbstractBankAccountConfigAssembler` / `BankAccountConfigAssembler` / `BankAccountConfigAssemblerRouter`
 - `CiticBankAccountConfigAssembler` / `PingAnBankAccountConfigAssembler`
 
-### 旧银行 Handle + 子包（14 文件）
+### 旧银行 Handle + 子包（代表项）
 - `citic/CiticQueryHandle` / `citic/CiticTransHandle`
 - `citic/client/CiticBankResponseChecker` / `citic/client/CiticWalletHttpClient`
 - `citic/config/CiticCryptoProperties` / `citic/crypto/CiticOpenBodySigSigner` / `citic/crypto/CiticSm2Crypto`
@@ -70,7 +71,7 @@
 - `pingan/client/PingAnBankResponseChecker` / `pingan/client/PingAnWalletHttpClient`
 - `pingan/config/PingAnCryptoProperties` / `pingan/crypto/PingAnSm2Crypto` / `pingan/PingAnSequenceGenerator`
 
-### 文档（1 文件）
+### 文档（代表项）
 - `docs/REVIEW_REPORT.md`
 
 ## 三、静态验收证据
@@ -81,10 +82,10 @@ $ git diff --exit-code 99e696f4 -- catering-api/catering-api-front
 EXIT_CODE=0（无输出）
 ```
 
-### 3.2 旧结构零残留
+### 3.2 旧结构残留检查（历史结果，未达到最终零残留）
 ```
 # FrontFlowContext/BankRequestContext/AbstractBankHandle/BankTransHandle/BankQueryHandle
-→ 仅 context/BankRequestContext.java（独立 context 模块，非旧 handle 结构）
+→ 仍存在 context/BankRequestContext.java；无论当时如何分类，它都不能作为最终三域“无业务 Context”证据
 → TenantBankConfigLoader.java 注释提及旧 Provider 名称
 → FrontInvocationLogAspect.java 注释提到 BankHandle 已删除
 
@@ -106,7 +107,7 @@ $ grep -rl "HttpRequest\.post" $F/channel
 → 恰好 2 个 Sender 文件
 ```
 
-### 3.4 数量验收
+### 3.4 数量验收（三域裁决前）
 ```
 $ find $F/channel -name "*Capability.java" | wc -l
   22
@@ -116,11 +117,18 @@ $ grep -c "THEN(frontBankExecute)" front-flow.xml
   14（含 1 条在注释中，13 条实际链定义）
 ```
 
-### 3.5 编译
+上述单一 `frontBankExecute` 统计已经被三域裁决替代。最终应重新核验：交易 8 条映射
+`frontTransExecute`、交易查询 3 条映射 `frontQueryExecute`、账户 2 条映射 `frontAccountExecute`，
+每条链只有一个节点。
+
+### 3.5 历史编译记录（不作为三域证据）
 ```
 $ mvn compile -pl catering-modules/catering-front -q
 BUILD SUCCESS（无输出，零错误）
 ```
+
+该命令发生在三域增量之前，且当前三域任务明确不执行编译，因此只能保留为历史记录，不能据此声明
+最终三域版本编译通过。
 
 ## 四、行为差异声明
 
@@ -142,8 +150,11 @@ BUILD SUCCESS（无输出，零错误）
 | 变更 | 说明 |
 |------|------|
 | 新增（12 交易 Capability） | `银行调用完成` info 日志在 invokeBank 返回后、slot.setTransResult 之前 |
-| 删除（5 查询类） | 业务 catch 块中的手动 `slot.markBusinessFail` + `log.warn` 已删除，由 FrontBankExecuteNode 统一收口，对终端行为无影响 |
+| 删除（5 查询类，历史） | 业务 catch 块中的手动 `slot.markBusinessFail` + `log.warn` 曾改由 `FrontBankExecuteNode` 收口；最终须分别由三个域 ExecuteNode 重新核验 |
 | 未变更 | 两个 Sender 的 `wallet_request_sending` / `wallet_response_received` 日志（完整明文 JSON、不脱敏）保持不变 |
+
+最终三域实现继续采用 Sender body 完整明文口径，但 `appKey`、私钥、签名材料、签名/认证 Header、
+`Authorization`、`Cookie` 等非业务报文凭证不得进入日志；Capability/Gateway 不得重复打印同一钱包报文。
 
 ## 五、执行边界记录
 
@@ -151,8 +162,8 @@ BUILD SUCCESS（无输出，零错误）
 |------|------|
 | 新增测试类 | ✗ 未新增 |
 | 运行测试 | ✗ 未运行（2026-08-25 用户裁决） |
-| 编译验证 | ✓ BUILD SUCCESS（129 源文件零错误） |
-| 代码提交/推送 | ✗ 未 commit、未 push，等待用户授权 |
+| 编译验证 | 历史版本曾 BUILD SUCCESS；不覆盖三域增量，不能作为最终证据 |
+| 代码提交/推送 | 本行只记录当时快照，不表示当前仓库状态 |
 | citic/unidentified 专项 | ✗ 未改动 |
 | catering-api-front | ✗ 未改动 |
 | domain/mapper/XML/DDL | ✗ 未改动 |
@@ -161,7 +172,9 @@ BUILD SUCCESS（无输出，零错误）
 
 ---
 
-## 附：28/29 号文档状态行更新
+## 附：已失效的 28/29 状态更新（仅供追溯）
+
+以下状态变更属于本报告当时的单一 Registry 版本，已被最终三域方案取代，不得再次写回 28、29 号文档：
 
 ### 28-cateringfront结构简化改造方案.md
 ```

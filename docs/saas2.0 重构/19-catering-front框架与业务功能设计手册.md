@@ -1,18 +1,17 @@
 # Catering Front 框架与后续开发手册
 
-> **结构状态（2026-08-25）**：本文主体记录当前已提交基线，便于 P0 核对业务行为；28 号扁平化设计已经
-> 用户批准但尚未实施，2026-08-25 的未提交全面改造已放弃。下一轮执行中信、平安 22 个通用能力与
-> 13 条链的全量迁移，步骤见 29 号 plan。凡本文 Router/Handle/Context/银行 Client 的开发模板与 28 号冲突，
-> 结构上以 28 号、29 号和 05 §0 为准。
-> 本次结构迁移日志执行用户确认的 B 方案：Capability 记录业务步骤，最终 `BankWalletSender` 统一且只
-> 记录一次钱包请求/响应/失败，删除旧 Handle/Capability 的重复钱包报文日志；其余字段范围和安全边界以
-> `cateringsass/limeng_front@99e696f4e7ab78a1b307b5a2fd3c911698c143fb` 为准。
+> **结构状态（2026-08-25）**：已有扁平化第一阶段完成，Transaction、Query、Account 三域注册尚待实施。
+> 下一轮只执行 29 号 plan 的三域增量：22 个通用能力归入三域，13 条链各保留一个域 ExecuteNode。
+> 凡本文历史 Router/Handle/Context 描述与 28、29 号冲突，结构上以 28、29 号和 05 §0 为准。
+> 日志执行用户确认的 B 方案：Capability 记录业务步骤，最终 `BankWalletSender` 统一且只记录一次钱包
+> 请求/响应/失败；请求/响应 body 使用完整明文 JSON、不做字段脱敏。私钥、签名材料、认证 Header、
+> `Authorization`、`Cookie` 等非业务报文凭证仍禁止进入日志。
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-24
+> 核验日期：2026-08-25
 > 适用对象：后续维护 `catering-front` 的开发人员与 AI
 > 最终目的：让没有历史上下文的开发者能够定位代码、理解边界，并按现有框架继续增加银行交易、查询和账户功能
-> 源码优先：本文与代码不一致时，以当前 `limeng_front` 分支源码为准，并将差异视为文档或代码缺陷
+> 源码优先：本文与代码不一致时，以当前 `limeng_front_restruct` 分支源码为准，并将差异视为文档或代码缺陷
 
 ---
 
@@ -238,9 +237,8 @@ FeignRequestInterceptor
 
 ## 5. LiteFlow、路由与执行器
 
-> 本节首先记录当前已提交基线。全量迁移后的 13 条目标链固定为
-> `THEN(frontValidate, tenantResolve, bankRoute)`，使用两层 Slot 和
-> `FrontTransExecuteNode → BankTransCapabilityRegistry → CiticTransferCapability`（分域注册）；不得继续复制下述旧节点层级。
+> 本节旧六节点链只用于追溯历史行为，不是开发模板。最终 13 条链保持原 chain id，但分别只有
+> `frontTransExecute`、`frontQueryExecute`、`frontAccountExecute` 一个节点。
 
 当前 `front-flow.xml` 有 13 条具名链：8 条交易、5 条查询。每条链复用同一组节点：
 
@@ -267,24 +265,26 @@ front api 请求都用 tenantId 从 `tenant_base_config` 一次查询取出
 显式传入优先）。`bankHandleContextPrepare` 加载银行账户配置时复用 Slot 中的
 `supportBankConfig`，不再重复查询 `tenant_base_config`。
 
-关键纪律：
+最终结构纪律：
 
 - API 方法决定领域和固定 capability；调用方不能覆盖。
-- Transaction、Query 分别进入独立 Registry。
-- Registry 使用类型安全的 `(BankCode, FrontCapability)` 复合键。
-- 重复注册在启动阶段失败，不能后注册覆盖前注册。
-- Dispatch 只执行已经选中的 `BankCapabilityHandle`，不得再写 `switch(capability)`。
-- `BankCapabilityDefinition.execute()` 要求返回非空，Handle 禁止返回 `null`。
+- Transaction、Query、Account 分别进入独立强类型 Registry。
+- 三条执行路径固定为 `域 ApplicationService → 单一域 ExecuteNode → 本域 Registry → 本域 Capability`。
+- Registry 使用类型安全的 `(BankCode, FrontCapability)` 复合键；重复注册在启动阶段失败。
+- 三个 ExecuteNode 各自使用 LiteFlow 无参 `getFirstContextBean()` 读取并校验本域 Slot，然后直接调用
+  `TenantBankConfigLoader`、本域 Registry 和 Capability；不设置抽象执行节点。
+- 账户状态、账户余额属于 Account 域，不进入 Query Registry。
+- 不存在统一 `BankCapability`、统一 Registry、通用 ExecuteNode、Router、Dispatch 或 Handle 继承链。
 - 可预期业务失败写入 Slot 并结束；系统异常继续抛出，由异常处理器收口。
 
-新增能力通常不需要修改 Router；真正需要修改的是 API 契约、对应银行的能力定义和协议实现。
+新增银行通常不需要修改 API 或 LiteFlow chain id；只在现有三域中登记该银行真实支持的 Capability。
 
 ---
 
 ## 6. 当前基线的租户银行配置
 
-> 下述 Provider/Assembler 是待迁移基线，不是新增代码模板。28/29 号目标只保留
-> `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`；Loader 具体类直接查询并
+> 下述 Provider/Assembler 是历史基线，不是新增代码模板。28/29 号目标只保留三个域
+> `ExecuteNode → TenantBankConfigLoader → RemoteConfigServiceClient`；Loader 具体类直接查询并
 > 扁平组装，只暴露 `loadTenantBaseInfo` 与 `loadBankAccountConfig`。中信不明来款 Application Service
 > 同样改用该 Loader，不改变专项业务链。
 
@@ -597,20 +597,23 @@ public AccountStatusResult queryAccountStatus(
 - 金额全部使用 `Long` 人民币分，禁止浮点数。
 - `specialData` 逐键白名单映射，禁止整体 `putAll` 到银行报文。
 - 中信不明来款按专项强类型 DTO 显式映射，不得为了复用通用链重新包装成 `specialData`。
-- 银行协议 DTO 留在 `catering-front/channel/{bank}/{capability}`，与使用它的能力相邻；真实跨能力 DTO 才进入银行 `common`。
+- 银行协议 DTO 留在所属 `catering-front/channel/{bank}/{transaction|query|account}` 域包，
+  与使用它的能力相邻；真实跨能力 DTO 才进入银行 `common`。
 - 银行调用统一直接走 `BankWalletGateway.post`，Gateway 只再分派到直接执行 HTTP 的银行 Sender，
   不增加 Sender 后的 WalletHttpClient/Invoker/Facade 包装层。
 - 路由分域（2026-08-25 裁决）：交易链 `FrontTransExecuteNode → BankTransCapabilityRegistry →
-  BankTransCapability`、查询链 `FrontQueryExecuteNode → BankQueryCapabilityRegistry →
-  BankQueryCapability`，按
-  `(BankCode, FrontCapability)` 定位，不增加 Router、Dispatch 或第二份能力矩阵。
-- Slot 只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot` 两层，禁止新业务 Context。
+  BankTransCapability`、交易查询链 `FrontQueryExecuteNode → BankQueryCapabilityRegistry →
+  BankQueryCapability`、账户链 `FrontAccountExecuteNode → BankAccountCapabilityRegistry →
+  BankAccountCapability`，按 `(BankCode, FrontCapability)` 定位，不增加 Router、Dispatch 或第二份能力矩阵。
+- Slot 只允许 `FrontBaseSlot ← FrontTransSlot/FrontQuerySlot/FrontAccountSlot` 两层，禁止新业务 Context。
 - 能力代码按真实执行顺序展开，允许少量重复；禁止 Handle 继承链和 BankSupport God class。
 - 不支持、未接入、结果未知要使用不同错误或状态明确表达。
 - 渠道表字段命名使用 `pay/rec/withdraw/bank_card`，禁止 `payer/payee`。
 - Entity ↔ VO/BO 转换使用项目 mapstruct-plus 范式。
 - 配置和分片缺失立即失败，禁止兜底到其他租户或数据源。
-- 敏感字段、密钥、验证码、完整账号/卡号/手机号/证件号/姓名不得明文写日志、异常或响应；若历史代码仍打印原始报文，后续开发不得复制该模式。
+- 最终 Sender 的钱包请求/响应 body 记录完整明文 JSON、不做字段脱敏；Capability/Gateway 不重复记录
+  同一报文。`appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie` 等非业务报文凭证
+  不得写入日志、异常或普通接口响应。
 
 ### 13.2 禁止事项
 
@@ -630,25 +633,28 @@ public AccountStatusResult queryAccountStatus(
 
 ## 14. Definition of Done
 
-### 14.0 全量扁平化迁移完成标准
+### 14.0 三域注册收口完成标准
 
-- [ ] 中信 11 个、平安 11 个通用能力与 13 条链全部迁移。
+- [ ] 中信、平安 22 个通用能力按 Transaction 12、Query 6、Account 4 完成归域。
 - [ ] `catering-api-front` 零 diff，domain/mapper/DDL/不明来款未改。
-- [ ] `flow` 只按 slot/node/route 分组，Slot 继承严格两层。
-- [ ] 所有银行能力按 `channel/{bank}/{capability}` 分包；银行 common 只有真实复用。
+- [ ] 8 条交易链、3 条交易查询链、2 条账户链保持原 chain id，且每条链只有一个对应域 ExecuteNode。
+- [ ] `FrontTransSlot`、`FrontQuerySlot`、`FrontAccountSlot` 均直接继承 `FrontBaseSlot`，继承严格两层。
+- [ ] 所有银行能力按 `channel/{bank}/{transaction|query|account}` 分包；银行 common 只有真实复用。
 - [ ] 任一 Capability 均可按顺序读完本能力主流程。
 - [ ] 无新增业务 Context、Handle 父类、Router、Dispatch、BankSupport 或多层 Wallet Client。
-- [ ] 租户配置调用链固定为 `TenantResolveNode → TenantBankConfigLoader → RemoteConfigServiceClient`；
+- [ ] 三个强类型 Capability 接口、三个 Registry、三个 ExecuteNode 各自独立，不存在统一 Capability/Registry/节点。
+- [ ] 租户配置调用链固定为 `域 ExecuteNode → TenantBankConfigLoader → RemoteConfigServiceClient`；
       旧 `Provider → AssemblerRouter → Assembler` 及抽象/继承层级已删除，Loader 直接查询并扁平组装。
 - [ ] 钱包业务发送只直接调用 `BankWalletGateway.post`。
-- [ ] Capability 业务日志位于真实步骤附近；最终 Sender 唯一记录钱包请求/响应/失败，无重复报文日志。
+- [ ] Capability 业务日志位于真实步骤附近；最终 Sender 唯一记录完整明文钱包请求/响应 body 与失败，
+      无重复报文日志且非业务报文凭证未入日志。
 - [ ] 本轮未新增/运行测试、未执行编译；静态 review 结果未被表述为测试或编译通过。
 - [ ] 旧 Context/Router/Dispatch/Handle 已删除，完成后等待用户 review。
 
 ### 14.1 新银行完成标准
 
-- [ ] `BankCode`、账户配置组装器、WalletSender、ResponseChecker 已实现。
-- [ ] 每个宣称支持的能力都有 Registry 复合键和真实 Gateway 调用。
+- [ ] `BankCode`、`TenantBankConfigLoader` 平级银行分支、WalletSender、ResponseChecker 已实现。
+- [ ] 每个宣称支持的能力都注册在所属 Transaction/Query/Account Registry，并有真实 Gateway 调用。
 - [ ] 不支持的能力未注册，待接入能力明确返回 `F200003`。
 - [ ] API DTO 和银行协议 DTO 位于正确模块。
 - [ ] specialData 与 accountSpecialData 未混用。
@@ -662,7 +668,7 @@ public AccountStatusResult queryAccountStatus(
 - [ ] 银行动态字段、租户静态配置和 Front 固定值三类来源已分离。
 - [ ] 注册、路由、上下文装配、网关、响应检查链路完整。
 - [ ] 账户状态/余额等银行原值已有明确归一化策略或明确保留为 specialData。
-- [ ] 不返回原始敏感报文，不模拟银行成功。
+- [ ] 不在接口响应或异常中额外返回认证凭证，不模拟银行成功；Sender 日志按约定记录完整明文 body。
 
 ### 14.3 中信不明来款专项能力完成标准
 
