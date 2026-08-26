@@ -221,6 +221,8 @@ codegraph status               # 索引状态
 - ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
   `TenantDataSourceShardingAlgorithm` 直接把 `data_source_id` 的值拼成 `ds_x` 路由（不查配置中心）；
   `data_source_id` 由业务请求方在 `baseData` 传入，请求头同名字段用于跨服务透传与落库记录；
+  全部 SELECT/UPDATE 的 WHERE 条件均含分片键（2026-08-27 修复，此前查询和更新
+  缺分片键导致广播路由）；INSERT 由 entity 列值覆盖。
   `data_source_id` 缺失时先由域 ExecuteNode 第④步从
   `tenant_base_config` 回填（2026-08-20 起，调用方最少只需传 tenantId + clientId）；
   回填后仍为空、或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，

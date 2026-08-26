@@ -626,6 +626,11 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   即可路由到新库，不改代码；
 - **失败策略**：域 ExecuteNode 第④步回填后 `data_source_id` 仍为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
   系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源或广播到其他租户数据库；
+- **全链路分片键覆盖（2026-08-27 修复）**：全部 SELECT（查重/原渠道回查/6073 补全/提现卡号回查）
+  和 UPDATE（updateSending/updateResponse/updateOnException）的 WHERE 条件均必须包含
+  `.eq(DATA_SOURCE_ID, dataSourceId)`，禁止只按 id/tenantId 触发广播路由；
+  dataSourceId 由域 ExecuteNode 第④步回填保障非空，能力类从
+  `slot.getRequestData().getDataSourceId()` 获取。INSERT 已由 entity.setDataSourceId 覆盖。
 - **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
   SQL 的 `data_source_id` 自动触发分片路由；
 - **不使用 dynamic-datasource**（`@DS` / `DynamicDataSourceContextHolder`）和 Hint

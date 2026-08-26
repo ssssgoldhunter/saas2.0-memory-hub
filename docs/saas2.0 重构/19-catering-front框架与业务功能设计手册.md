@@ -265,3 +265,12 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 - 文档、能力矩阵和实际代码一致。
 
 本轮结构增量按用户裁决不新增/运行测试、不执行编译；静态检查不得表述为编译或测试通过。
+
+
+## 分片键全链路覆盖（2026-08-27）
+
+全部数据库操作（SELECT/UPDATE/INSERT）均携带 `data_source_id` 分片键，精确路由到 `ds_X`：
+- **INSERT**：entity.setDataSourceId(data.getDataSourceId())；
+- **SELECT**（查重/原渠道回查/6073 补全/提现卡号回查）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
+- **UPDATE**（updateSending/updateResponse/updateOnException）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
+- **保障**：域 ExecuteNode 第④步回填+校验非空，能力类从 slot.getRequestData().getDataSourceId() 获取。
