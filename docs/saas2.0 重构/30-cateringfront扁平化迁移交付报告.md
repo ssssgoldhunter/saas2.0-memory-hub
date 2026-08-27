@@ -1,5 +1,10 @@
 # Catering Front 扁平化迁移交付报告（30 号）
 
+> 补充记录（2026-08-26）：① Slot 路由能力字段更名为 `routeCapability`（与对外
+> baseData.capability=被查交易原交易能力区分）；② 中信状态查询 bug 修复
+> （switch 数据源 slot→data.getCapability()，迁移缺陷）；③ baseData.capability
+> 语义约定入档（10/21/28 号）。详见 10 号 §语义约定 与 git log。
+
 > ⚠️ 基线说明（2026-08-25）：本报告记录的是**三域注册改造前**的历史快照（单节点
 > `frontBankExecute` + 单一 `BankCapabilityRegistry`）。最终裁决是 Transaction、Query、Account
 > 三个执行域各自拥有强类型 Capability、Registry、ExecuteNode 和 Slot，见 28、29 号文档。

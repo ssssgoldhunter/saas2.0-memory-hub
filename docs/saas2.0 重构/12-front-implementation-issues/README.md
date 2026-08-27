@@ -59,6 +59,7 @@
 | [FRONT-P1-013](FRONT-P1-013-base-data-capability-validation.md) | P1 | baseData 缺少按银行具体能力的必填和格式校验 | CLOSED |
 | [FRONT-P1-014](FRONT-P1-014-pingan-6073-queryid-link.md) | P1 | 平安 6073 订单回查错用 bank_user_ssn | CLOSED |
 | [FRONT-P1-015](FRONT-P1-015-detail-query-total-page-failure.md) | P1 | 24/25 明细失败返回缺少 totalPage | CLOSED |
+| [FRONT-ACC-001](FRONT-ACC-001-account-maintenance-in-progress.md) | 新功能 | 账户维护能力开发（开户/绑卡等，进行中） | IN_PROGRESS |
 | [FRONT-P2-001](FRONT-P2-001-base-special-boundary.md) | P2 | baseData 与 specialData 字段边界未落实 | CLOSED |
 | [FRONT-P2-002](FRONT-P2-002-persistence-converter.md) | P2 | Handle 反射赋值违反对象转换约束 | CLOSED |
 | [FRONT-P2-003](FRONT-P2-003-resource-consistency.md) | P2 | LiteFlow 与 DDL 存在多份冲突资源 | CLOSED |
@@ -74,7 +75,7 @@
 
 ## 当前状态摘要
 
-全部 P0/P1/P2 功能 Issue 与独立 TODO-002 均已关闭：
+全部 P0/P1/P2 功能 Issue 与独立 TODO-002 均已关闭（另有新功能 [FRONT-ACC-001 账户维护] (FRONT-ACC-001-account-maintenance-in-progress.md) IN_PROGRESS）：
 
 1. `FRONT-P1-015`（CLOSED，2026-08-20）：中信非法 `TOTAL_PAGE` 收口为失败分页、
    web-test Feign 失败分页壳补齐 `totalPage=0`，用户确认关闭。
