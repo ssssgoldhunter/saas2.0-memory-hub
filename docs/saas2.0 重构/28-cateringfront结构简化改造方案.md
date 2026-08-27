@@ -19,7 +19,9 @@
    收口写 Slot 并结束链；校验与响应归一化分别由 Capability 和
    FrontFlowExecutor/ApplicationService 承接。
 3. Slot 参考 lsym UAT `catering-consume` 的命名和继承关系，当前固定命名为
-   `FrontBaseSlot`、`FrontTransSlot`、`FrontQuerySlot`、`FrontAccountSlot`；禁止再引入
+   `FrontBaseSlot`、`FrontTransSlot`、`FrontQuerySlot`、`FrontAccountSlot`（Base 上的路由能力
+   字段 2026-08-26 更名为 `routeCapability`，与对外 baseData.capability——被查交易原交易
+   能力——彻底区分，两个 capability 禁止混用）；禁止再引入
    `FrontFlowContext`、`BankRequestContext` 等业务 Context。
    2026-08-25 追加裁决（分域注册）：新域 Slot 必须直接平级继承 `FrontBaseSlot`，不得挂在其他域 Slot 之下。
 4. Slot 继承关系严格只有两层：`FrontBaseSlot`，以及直接继承它的

@@ -51,7 +51,18 @@ FrontRequest
 业务 `specialData` 与账户 `accountSpecialData` 禁止合并或整体 `putAll`。Capability 只能按常量白名单逐字段
 映射到银行 `reserve`。
 
-## 3. 单笔交易状态查询
+## 3. 
+### baseData.capability 语义约定（2026-08-26 用户裁决）
+
+`TransStatusQueryData.capability` = **被查询交易的原交易能力**（TRANSFER / CONSUME / REFUND /
+WITHDRAW / RECHARGE），由调用方发起状态查询时**必传**：
+
+- 中信侧按它选择业务定位字段（转账/消费/退款 → 子订单号 + TRANS_TYPE=01；提现 → 主流水号）；
+- 平安侧按它映射 bizFunc（02 普通交易 / 03 提现 / 04 充值，提现另回查渠道表取卡号）；
+- 路由能力（TRANS_STATUS_QUERY）由 Front 内部 Slot 承载（已更名 `routeCapability`），
+  调用方不感知、不出现在 baseData——两个 capability 是不同字段，禁止混用。
+
+单笔交易状态查询
 
 > 2026-08-17 用户裁决：baseData 字段去 original 前缀（capability/transDate）——
 > 本对象本身就是状态查询请求；与查询入口的 API capability（TRANS_STATUS_QUERY，路由用）
