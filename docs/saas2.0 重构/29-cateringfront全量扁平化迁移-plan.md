@@ -260,3 +260,13 @@ git diff --check
 - **运行时验证**：按用户指示未由 AI 执行，由用户人工测试承接（第一轮缺陷正是
   编译不可见的运行时缺陷，人工测试为必要闭环）；
 - 代码位于 limeng_front_restruct 工作区（未提交），基线 0dd983a7。
+
+## 分片键全覆盖修复（2026-08-27）
+
+- 问题：全部 SELECT（10 处）和 UPDATE（~48 处）缺 data_source_id 分片键，
+  触发 ShardingSphere 广播路由（扫全部分片库）；
+- 修复：14 个能力类文件（12 交易 + 2 查询），全部 Wrapper 追加
+  `.eq(DATA_SOURCE_ID, dataSourceId)`；方法签名穿透（updateSending/updateResponse/
+  updateOnException/fillWithdrawBizOrders 加 dataSourceId 参数）；
+- INSERT（12 处）已有分片键未动；
+- 编译 0 错误；SELECT/UPDATE 缺分片键 grep = 0。
