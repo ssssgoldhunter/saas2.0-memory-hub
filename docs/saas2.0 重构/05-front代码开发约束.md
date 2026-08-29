@@ -1,6 +1,7 @@
 # Front 代码开发约束
 
-> **28 号结构简化修订（2026-08-25，用户已批准设计）**：初版扁平化已实施，最终三域注册待实施。
+> **28 号结构简化修订（2026-08-25 设计，2026-08-25 已实施完成）**：三域注册结构已落地并完成当时静态验收，
+> 本节按历史实施记录对待；当前活动任务为 FRONT-ACC-001 账户维护（12-front-implementation-issues）。
 > 28 号是结构简化的最高优先级设计。本文旧章节中的 Router/Handle 继承、三段式 Context、
 > 银行多级 Client 和全量迁移描述只用于核对已提交基线，不得作为新代码模板。
 > 目标结构固定为两层 Slot、交易/查询/账户三个强类型执行域、`flow/slot|node|route`、
@@ -16,6 +17,9 @@
 ---
 
 ## 0. 28 号三域注册增量强制结构约束
+
+> 本节记录 2026-08-25 已完成迁移的当时约束，22 个实现类 / 13 条链是历史基线，
+> 不是当前数量。当前源码数量和未闭环差异见 §11 顶部快照。
 
 1. **范围**：在既有扁平代码上将中信、平安全部 22 个通用 Capability 迁移到所属域的强类型接口、
    Slot 参数和 Registry，并切换 13 条 LiteFlow 单节点链；不得跳过任何能力。只调整框架归属，
@@ -1280,9 +1284,12 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 
 ---
 
-## 10. 当前实施顺序：三域注册收口
+## 10. 历史实施记录：三域注册收口（已完成，2026-08-25）
 
-1. 以 `limeng_front_restruct` 已完成的初版扁平结构为当前代码起点，将全部 22 个 Capability 迁移到
+> 本节为已完成的实施记录，仅作迁移过程参照；当前活动任务为 FRONT-ACC-001 账户维护，
+> 不得据此重新执行三域收口。
+
+1. 当时以 `limeng_front_restruct` 已完成的初版扁平结构为代码起点，将全部 22 个 Capability 迁移到
    所属域的强类型接口、Slot 参数和 Registry；不得跳过任何能力，也不得重写其银行业务逻辑。
 2. 确认 `catering-api-front`、domain、mapper、DDL、不明来款业务为禁改区。
 3. 建立 `FrontAccountSlot`、`FrontAccountApplicationService`，把账户状态/余额从 Query 域迁到 Account 域。
@@ -1320,16 +1327,16 @@ ContractKeys 或补写未启用分支。
 | 3 | **Mapper XML** | `resources/mapper/Front*Mapper.xml` | `<resultMap>` 加 `<result column="xxx" property="xxx"/>`；`Base_Column_List` 加列名；去重；字段数 = Entity 字段数 |
 | 4 | **Mapper 接口** | `mapper/Front*Mapper.java` | 确认 `BaseMapperPlus<Entity, Vo>` 泛型类型正确 |
 | 5 | **Service / ServiceImpl** | `service/Front*Service.java` / `service/impl/` | `queryList` 等自定义查询的 `LambdaQuery` 字段引用要同步；删除已删字段的 `.eq()` 行 |
-| 6 | **Handle 持久化** | `channel/*/TransactionHandle.java` | `doInsertInit` 的 `invokeSetter` 调用、`updateSending`/`updateResponse` 的 `wrapper.set` 要同步；字符串字面量改为 `FrontChannelColumnConstants` 常量 |
-| 7 | **渠道列名常量类** | `common-core/constant/front/FrontChannelColumnConstants.java` | 新字段列名定义为常量；删字段时同步删常量；Handle 不写字符串字面量 |
-| 8 | **银行协议常量类** | `common-core/constant/front/*ContractKeys.java` / `*QueryContractKeys.java` | Handle 里 `reserve.put()` / `response.getString()` 用的 key 必须有对应常量定义；新增银行字段时同步加常量 |
+| 6 | **Capability 持久化** | `channel/{bank}/{domain}/*Capability.java` | INIT/SENDING/响应更新涉及的 entity 赋值和 wrapper set 要同步；列名使用 `FrontChannelColumnConstants` 常量 |
+| 7 | **渠道列名常量类** | `common-core/constant/front/FrontChannelColumnConstants.java` | 新字段列名定义为常量；删字段时同步删常量；Capability 不写列名字符串字面量 |
+| 8 | **银行协议常量类** | `common-core/constant/front/*ContractKeys.java` / `*QueryContractKeys.java` | Capability 里 `reserve.put()` / `response.getString()` 用的 key 必须有对应常量定义；新增银行字段时同步加常量 |
 | 9 | **DDL 文档** | `09B-channel-transaction-ddl-utf8mb4.sql.md` + `09-final-rebuild-all-tables.sql` + 本次 ALTER 脚本 | 建表 SQL 同步更新（全新库执行得到最终结构）；已有库需另提供最小 ALTER 脚本 |
 | 10 | **字段目录** | `09A-channel-transaction-table-field-catalog.md` | 字段表格加/删行、序号重排、§2 字段数量汇总更新 |
 | 11 | **编译验证** | `mvn clean compile -DskipTests -pl catering-modules/catering-front -am` | 仅在用户明确授权时执行；未授权时在交付报告中明确写“未编译” |
 
 ### 禁止事项
 
-- **禁止**只提供 ALTER SQL 不改 Entity/Mapper XML/Handle——运行时字段映射不上；
+- **禁止**只提供 ALTER SQL 不改 Entity/Mapper XML/Capability——运行时字段映射不上；
 - **禁止**改了 Entity 不改 VO——Entity 和 VO 必须逐字段对齐（用 diff 验证）；
 - **禁止**在 Handle/Service 里用字符串字面量作为列名或银行协议 key——必须用 `FrontChannelColumnConstants` 或 `*ContractKeys` 常量；
 - **禁止**改了 Entity 字段名不改 Mapper XML 的 `resultMap` 和 `Base_Column_List`——查询结果会丢字段；
@@ -1390,6 +1397,12 @@ ContractKeys 或补写未启用分支。
 
 ## 11. 提交前检查表
 
+> **当前源码快照（2026-08-29，`limeng_front@cead0222`，仅静态核验）**：
+> `FrontCapability` 枚举 21 项；银行 Capability 实现类 29 个（12 / 6 / 11）；
+> LiteFlow 链 21 条（8 / 3 / 10）；标准 API 20 个（8 交易 / 5 查询 / 7 账户维护）。
+> 已知未闭环差异：去白名单孤儿链、Query/Account 查询 null 处理、平安 Sender 结构化失败事件、
+> web-test Authorization Header 日志。以下检查项描述目标口径，不能用勾选代替源码证据。
+
 ### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
 
 - [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
@@ -1404,7 +1417,7 @@ ContractKeys 或补写未启用分支。
       直接 `BaseRequest` 和 `FrontRequest<T>.baseData`；
 - [ ] header 与请求体识别字段冲突时明确失败，不得静默保留请求体值；
 - [ ] `RequestContext.afterCompletion` 调 `clear()` 清理 ThreadLocal；
-- [ ] Handle 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列；
+- [ ] Capability 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列；
 - [ ] 分库路由键是 `data_source_id`（由 `baseData.dataSourceId` 透传回填到渠道流水 `data_source_id` 列，见 §3.10.1）；`tenant_id` 是租户标识与分区键，不参与分库路由。
 
 ### B. 模块与依赖
@@ -1420,7 +1433,7 @@ ContractKeys 或补写未启用分支。
 
 - [ ] 单条交易/交易状态/账户查询返回 `R<具体结果>`，分页明细查询直接返回
       `TableDataInfo<具体行>`，无返回体返回 `R<Void>`；
-- [ ] 分页接口不存在 `R<TableDataInfo<...>>` 等包裹形式，且全链路（Handle/Service/API）
+- [ ] 分页接口不存在 `R<TableDataInfo<...>>` 等包裹形式，且全链路（Capability/Application Service/API）
       不存在 `FrontPageResult` 分页中间承接对象（2026-08-19 起废除）；
 - [ ] 不存在 `FrontResponse` 中间包装层；
 - [ ] API/Controller/ApplicationService 三层签名一致，Controller 只透传不重复包装；
@@ -1462,8 +1475,9 @@ ContractKeys 或补写未启用分支。
 
 ### F. LiteFlow 编排
 
-- [ ] `frontTransExecute/frontQueryExecute/frontAccountExecute` 三个节点注册唯一，13 条链无悬空引用；
-- [ ] 交易 8 条链固定 `THEN(frontTransExecute)`，查询 3 条固定 `THEN(frontQueryExecute)`，账户 2 条固定
+- [ ] `frontTransExecute/frontQueryExecute/frontAccountExecute` 三个节点注册唯一，21 条链引用可达；
+      当前 `chainFrontAccountUnwhiteName` 无 API/AppService 调用，未处理前不得勾选“无悬空引用”；
+- [ ] 交易 8 条链固定 `THEN(frontTransExecute)`，查询 3 条固定 `THEN(frontQueryExecute)`，账户 10 条固定
       `THEN(frontAccountExecute)`；
 - [ ] 每个 ExecuteNode 只执行本域 Registry 选中的 Capability，不按 capability 再分派；
 - [ ] 交易链不设置公共重复交易检查节点；`CiticTransferCapability` 使用固定 Mapper 检查；
@@ -1473,14 +1487,15 @@ ContractKeys 或补写未启用分支。
 
 ### G. 持久化与渠道流水
 
-- [ ] 10 张表按“银行 + 交易业务”拆分，由当前能力 Handler 使用固定 Repository，不接收表名、不拼接
-      动态 SQL；capability 只参与 Handler 定位，不用于动态选表；
+- [ ] 10 张表按“银行 + 交易业务”拆分，由当前银行 Capability 使用固定 Repository，不接收表名、不拼接
+      动态 SQL；capability 只参与 Registry 定位，不用于动态选表；
 - [ ] **渠道表禁止 MEDIUMTEXT 快照字段**（`business_base_snapshot_cipher` 等 4 个已删除），所有请求/返回字段单独成列；
 - [ ] **禁止落库** front_resp_code/front_resp_desc/front_remark（接口返回即可）、version/request_hash/interface_code/config_version/business_date/business_time/business_remark、send_started_at/completed_at；
 - [ ] 每张表含 `reserve1/reserve2/reserve3` + 3 个时间（create_time/update_time/bank_responded_at）；
 - [ ] Entity 继承 `TenantEntity`，VO 继承 `BaseRequest`，Entity ↔ VO 逐字段对齐（`diff` 验证）；
 - [ ] Mapper XML `resultMap` 行数 = `Base_Column_List` 列名数 = Entity 字段数（含父类 5 个字段）；
-- [ ] Handle `doInsertInit`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→ 调银行 → `updateResponse`（UPDATE 终态/响应码）；
+- [ ] Capability 主流程直接呈现 `doInsertInit`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
+      调银行 → `updateResponse`（UPDATE 终态/响应码）；
 - [ ] 重复交易检查：CITIC + PingAn 交易方法在当前银行业务表按
       `tenant_id + biz_order_no + biz_sub_order_no` 查询；命中返回“交易已存在”，不调用银行、不重放旧结果；
 - [ ] report 跨实例查重已按用户裁决暂缓；两家 `checkDuplicateTransaction()` 当前只查
@@ -1500,15 +1515,15 @@ ContractKeys 或补写未启用分支。
 - [ ] 算法直接把 `data_source_id` 值拼成 `ds_x`（不查配置中心，见 §3.10.1）；
 - [ ] 配置缺失、解析失败或目标 `ds_x` 不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
 - [ ] 本阶段不验收 `shardingsphere-config-{dev,uat,prod}.yaml` 的连接配置加密和安全加固；后续部署任务单独处理；
-- [ ] `FrontDataSourceHelper` 已废弃不存在，Handle 无数据源切换代码；
+- [ ] `FrontDataSourceHelper` 已废弃不存在，Capability 无数据源切换代码；
 - [ ] 10 张表 `PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`（内置于 09-final）；
 - [ ] 主键组合 `(id, tenant_id, store_id)`，唯一键降级为普通索引（满足分区约束）。
 
 ### I. 字段命名与常量
 
 - [ ] 付款 `pay_`/收款 `rec_`/提现 `withdraw_`/银行卡 `bank_card_` 前缀（禁止 payer/payee）；
-- [ ] Handle 零字符串字面量（列名用 `FrontChannelColumnConstants`，银行协议 key 用 `*ContractKeys`）；
-- [ ] common-core 常量类与 Handle 实际引用对齐（`reserve.put`/`response.getString` 的 key 都有常量定义）；
+- [ ] Capability 零协议字段 key 字符串字面量（列名用 `FrontChannelColumnConstants`，银行协议 key 用 `*ContractKeys`）；
+- [ ] common-core 常量类与 Capability 实际引用对齐（`reserve.put`/`response.getString` 的 key 都有常量定义）；
 - [ ] Entity ↔ VO 转换用 `@AutoMapper` + `MapstructUtils.convert`，无手写 `setXxx(getXxx())`。
 
 ### J. 异常与日志
@@ -1517,21 +1532,25 @@ ContractKeys 或补写未启用分支。
 - [ ] `FrontExceptionHandler` 统一收口，未知异常对外只返回 `INTERNAL_ERROR` 不泄漏堆栈；
 - [ ] `frontRespCode/frontRespDesc` 来自同一个 `FrontErrorCode`；
 - [ ] 银行原始响应码不作 `R.code/frontRespCode`；
-- [ ] 交易 API 入口记录方法、traceId、定位字段和状态，不记录完整 `FrontRequest`；
+- [ ] 业务请求/响应字段允许完整明文；若同一完整 Front 请求只保留一个入口事件，应明确由
+      Controller Aspect 或 Application Service 哪一层承担。当前两层都会输出完整请求，不得写成已收口；
 - [ ] 交易 Capability 存在 `capability_started`、`capability_completed/capability_failed` 独立日志点；
 - [ ] 最终 `BankWalletSender` 存在唯一的 `wallet_request_sending`、
       `wallet_response_received/wallet_request_failed` 日志点；Gateway/Capability 不重复输出同一报文；
+      当前平安 Sender 通信异常路径没有结构化 `wallet_request_failed`，未修复前不得勾选；
 - [ ] 交易 API、Capability 和钱包日志均携带 `bizOrderNo/bizSubOrderNo/tenantId/platformCode/dataSourceId`
       以及实际方法名、银行编码；无值时保留 key 并记录 `null`；
 - [ ] 查询由最终 Sender 记录一次请求及一次响应/失败；Query Capability 不重复打印同一报文，
       不通过反射采集 metadata，不要求 `capability` 或交易型定位字段；
 - [ ] 最终 Sender 唯一记录完整明文钱包请求/响应 JSON，不对 body 字段脱敏；
 - [ ] `appKey`、私钥、签名原文、签名头、`Authorization`、Cookie 和完整银行 URL 不进入日志；
+      业务验证码属于业务 payload，按用户裁决允许明文；当前 web-test 会记录 Authorization Header，
+      未修复前不得勾选；
       Capability 开始日志不单独打印完整 `accountConfig/accountSpecialData`。
 
 ### K. DDL 变更同步（见 §10.5）
 
-- [ ] DDL 变更已同步 11 项（Entity/VO/Mapper XML/Mapper 接口/Service/Handle/列名常量类/银行协议常量类/DDL 文档/字段目录/编译验证）；
+- [ ] DDL 变更已同步 11 项（Entity/VO/Mapper XML/Mapper 接口/Service/Capability/列名常量类/银行协议常量类/DDL 文档/字段目录/编译验证）；
 - [ ] 本轮按用户裁决未新增/运行测试、未执行编译，只提交静态 review 证据且未声称编译通过。
 
 ### L. 文档

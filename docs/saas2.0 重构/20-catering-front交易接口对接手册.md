@@ -212,8 +212,10 @@ rec.setBankAccountName(recName);
 JSONObject specialData = assembler.assemble();
 ```
 
-每笔调用新建实例，禁止把 Assembler 注册成单例或跨请求复用。输出仍是明文业务数据，调用方不得记录
-账号、卡号、姓名、手机号、验证码或证件号明文。
+每笔调用新建实例，禁止把 Assembler 注册成单例或跨请求复用。输出是明文业务数据；按当前用户裁决，
+业务请求/响应字段（账号、卡号、姓名、手机号、验证码、证件号等）允许明文记录。
+`appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
+非业务凭证仍禁止进入日志。
 
 ---
 
@@ -368,7 +370,7 @@ FrontRequest<AuthTransferBusinessData> → R<FrontTransResult>
 | `recName` | String | 是 | `rec.bankAccountName` | 收款户名 |
 | `authType` | String | 是 | `auth.authType` | 授权类型，本期仅 `SMS`（APP 组装/Capability 双层拒绝） |
 | `authOrderNo` | String | 是 | `auth.authOrderNo` | 授权码申请返回的授权指令号，原样回传 |
-| `authCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front；Front 加密后上送，上游/Capability 禁止记录输入明文 |
+| `authCode` | String | 是 | `auth.authCode` | 用户验证码明文交给 Front，Front 加密后上送；作为业务 payload 按当前裁决允许明文记录 |
 
 `bizOrderNo` 和 `amount` 必填，`fee` 空按 0，`remark` 最大 120。
 

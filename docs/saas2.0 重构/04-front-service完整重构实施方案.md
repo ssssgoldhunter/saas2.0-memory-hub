@@ -1,12 +1,13 @@
 # SaaS 2.0 多银行渠道 Front Service 实施方案
 
-> 状态：current-plan / three-domain-pending-implementation
+> 状态：historical-plan / superseded-by-28-29（三域注册已实施完成，本文仅作历史方案记录）
 > 更新日期：2026-08-25
 > 实施起点：`cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
 > 最终设计：[28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)
 > 可执行任务：[29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
 
-本文是当前 Front Service 的完整实施安排。旧版大 Handle、业务 Context、Router/Dispatch、
+本文是 28/29 号三域迁移的历史实施安排，22 个实现类 / 13 条链不是当前源码数量；当前状态以
+WIKI-START §4、§7.1 和 19 号手册为准。旧版大 Handle、业务 Context、Router/Dispatch、
 Provider/Assembler 和多节点 LiteFlow 实施清单已删除，不再作为开发参考。三域改造只调整内部组装和路由，
 不修改 API 与银行业务。
 

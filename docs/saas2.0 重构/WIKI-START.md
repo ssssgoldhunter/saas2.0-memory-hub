@@ -12,22 +12,23 @@
 再严格按其中的“必读顺序”读取文档和当前代码。不要根据旧项目直接复制实现。
 
 阅读完成后，先向我说明：
-1. 当前代码已经提供哪些框架能力；
-2. 29 号三域注册任务在 28 号目标设计、当前已提交代码和 30 号历史快照中分别对应什么；
+1. 当前代码已经提供哪些框架能力（含 FrontAccountController/FrontAccountApi 的账户管理入口）；
+2. FRONT-ACC-001 账户维护任务的当前进度与未完成项；
 3. 你准备修改哪些文件；
 4. 哪些字段进入 baseData、specialData、accountConfig、accountSpecialData；
 5. 本次是否收到编写测试或执行编译的明确授权。
 
-确认上述信息后，完整执行 29 号三域注册收口：将 22 个通用 Capability 按 Transaction 12、Query 6、
-Account 4 归域，将 13 条 LiteFlow 链按 8/3/2 切换到三个强类型单节点入口，并同步更新记忆体文档。
-不得借此重写银行业务逻辑、改变能力支持状态或扩大到 29 号之外的任务。
+确认上述信息后，按 FRONT-ACC-001 的任务范围继续实施当前活动任务。
+28、29 号三域注册方案【已完成实施】，是设计基线与历史实施记录——禁止重新执行 29 号计划
+或重做已完成的三域迁移。"只做一个能力"的旧限制已取消；实施范围以最新活动任务和全量迁移要求为准。
+"既有 API 零变化"只约束迁移既有能力类任务；新增业务能力任务（如账户维护）允许按契约新增 API。
 ```
 
 ## 2. 仓库与参考项目
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`，分支 `limeng_front_restruct`，基线 `0dd983a72cc7def2d60f6f35aefcc1c1160864d2` | 本轮三域注册改造目标 |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`（第一阶段扁平化）；当前执行基线：`limeng_front@cead0222`（三域收口+账户维护进行中，2026-08-29 静态核验） | 当前开发目标分支为 limeng_front |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -40,7 +41,7 @@ Account 4 归域，将 13 条 LiteFlow 链按 8/3/2 切换到三个强类型单�
 ```text
 用户已确认并写入本 Wiki/28/05/字段契约的决策
 → 28-cateringfront结构简化改造方案（实施结构简化时）
-→ 29-cateringfront全量扁平化迁移-plan（当前唯一实施任务）
+→ 29-cateringfront全量扁平化迁移-plan（已实施完成，历史基线记录）
 → 05-front代码开发约束
 → 01-front-重构总体结构设计
 → 04-front-service完整重构实施方案
@@ -105,8 +106,8 @@ codegraph status               # 索引状态
 3. 本次领取的 Issue 子文件及其直接引用的字段契约：先核验当前代码，再决定是否修改。
 4. `cateringsass/catering-modules/catering-front/README.md` 和当前代码：确认实际实现，不依赖历史完成声明。
 5. [01-front-重构总体结构设计](01-front-重构总体结构设计.md)：理解模块、请求、配置、路由和响应边界。
-6. [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)：当前三域 Service 文件职责、
-   22 个 Capability 归域、13 条链和实施/验收顺序。
+6. [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)：历史迁移期的 Service 文件职责、
+   当时 22 个 Capability 实现类归域、13 条链和实施/验收顺序；当前数量以本 Wiki §4 为准。
 7. [02-中信银行接口能力汇总](02-中信银行接口能力汇总.md)：实现中信能力时必读。
 8. [03-平安银行接口能力汇总](03-平安银行接口能力汇总.md)：实现平安能力时必读。
 9. [06-transfer-consume字段契约](06-transfer-consume字段契约.md)：实现 transfer/consume 时必须完整阅读。
@@ -153,9 +154,10 @@ codegraph status               # 索引状态
 30. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：中信专项能力的最终对接说明；
     本能力不进入通用 `FrontCapability`，请求/返回均不使用 `specialData`。
 31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：最终三域单节点目标设计。
-    已有扁平化第一阶段完成；Transaction、Query、Account 三域强类型注册改造尚待实施。
+    【已实施】作为设计基线保留；不得重新执行或重做三域迁移。
 32. [29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)：
-    下一位 AI 的唯一活动任务文档；只覆盖三域注册增量、13 条单节点链、22 个能力归域、静态验收与授权门禁。
+    【已实施】历史基线记录（含两轮验收史与分片键全覆盖修复记录）；不得重新打开为待实施。
+    当前活动任务见 [FRONT-ACC-001 账户维护](12-front-implementation-issues/FRONT-ACC-001-account-maintenance-in-progress.md)。
 33. [30-cateringfront扁平化迁移交付报告](30-cateringfront扁平化迁移交付报告.md)：三域裁决之前的
     `frontBankExecute + 单一 Registry` 历史交付快照；不得作为三域最终验收证据。
 
@@ -164,16 +166,25 @@ codegraph status               # 索引状态
 
 ## 4. 当前代码已提供的框架
 
-当前业务能力与扁平化第一阶段已经落地。三域注册是唯一待实施的框架增量，后续 AI 不应另起架构：
+当前业务能力、扁平化第一阶段与三域注册均已落地（三域注册为已实施基线，禁止重新实施）。后续 AI 不应另起架构：
+
+**数量口径（历史基线与当前源码分列）**：
+- 28/29 号历史基线：22 个银行 Capability 实现类、13 条链（交易 8 / 查询 3 / 账户 2）；
+- 当前源码（`limeng_front@cead0222`，2026-08-29 静态核验）：`FrontCapability` 枚举 21 项，
+  **银行 Capability 实现类 29 个、LiteFlow 链 21 条**——实现类分布为交易 12 / 查询 6 / 账户 11
+  （账户 11 = 中信 9 + 平安挡板 2）；
+  链分布 8 交易 / 3 查询 / 10 账户（账户 10 = 既有状态/余额查询 2 + 账户维护 8）。
+  枚举中的 `RECHARGE` 当前没有 Front API 或银行 Capability 实现，不能按枚举项数推导 API 数。
 
 - `catering-api-front`：API、请求响应对象、常量和枚举；
 - `catering-common-core`：`R`、Front 错误码、`FrontException` 和 Front 公共配置 key；
 - `catering-front`：Controller、Application Service、LiteFlow、能力注册路由、银行 Capability、配置加载、统一异常和日志；
-- 8 个通用交易 API、5 个通用查询 API，以及中信不明来款 3 个专项 API；
+- 8 个交易 API、5 个查询 API、7 个账户维护 API，共 20 个标准 Front API；另有中信不明来款
+  3 个专项 API；
 - 每个 API 方法在服务内部固定自己的 `FrontCapability`，调用方不能传入或覆盖；最终按
   Transaction、Query、Account 三个执行域分别使用强类型 Capability 接口和 Registry，复合键重复时启动失败；
-- 13 条 LiteFlow 链保持原 chain id，但最终分别只有 `frontTransExecute`、`frontQueryExecute`、
-  `frontAccountExecute` 一个节点；交易 8 条、查询 3 条、账户 2 条；
+- 当前 21 条 LiteFlow 链分别只有 `frontTransExecute`、`frontQueryExecute`、
+  `frontAccountExecute` 一个节点；交易 8 条、查询 3 条、账户 10 条；
 - `FrontBaseSlot` 只承载公共字段，`FrontTransSlot`、`FrontQuerySlot`、`FrontAccountSlot` 直接继承 Base，
   继承深度固定为两层；
 - 三个 ExecuteNode 分别完成 Slot 读取、租户配置加载、本域 Registry 路由、Capability 调用和结果/异常回填；
@@ -200,14 +211,16 @@ codegraph status               # 索引状态
 - 单条交易、交易状态和账户查询返回 `R<具体结果>`；分页明细查询直接返回工程统一的
   `TableDataInfo<AccountTransDetailItem>` / `TableDataInfo<PlatformTransDetailItem>`（24/25 各一套行 DTO），禁止再用 `R` 包裹；
   所有 Front 结果通过 `FrontBaseResult` 统一提供 `frontRespCode/frontRespDesc/specialData`；
-- `FrontExceptionHandler` 和结构化日志工具；日志采用 B 方案：Capability 只记录业务步骤，最终
+- `FrontExceptionHandler` 和结构化日志工具；日志目标采用 B 方案：Capability 只记录业务步骤，最终
   `BankWalletSender` 在发送前记录一次 `wallet_request_sending`、响应后记录一次
-  `wallet_response_received`、失败时记录一次 `wallet_request_failed`，body 使用完整明文 JSON、不做字段脱敏；
-  `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie` 等非业务报文凭证禁止进入日志；
-- 已有扁平化第一阶段是三域改造的代码起点；30 号报告只记录三域裁决之前的单一 Registry 快照，
-  不是最终验收结论；
-- 下一轮只按 28/29 号完成三域注册：13 条链分别使用单一域节点，22 个通用能力按
-  Transaction 12、Query 6、Account 4 归域；银行代码按 `channel/{bank}/{transaction|query|account}` 分组；
+  `wallet_response_received`、失败时记录一次 `wallet_request_failed`，业务 body 使用完整明文 JSON；
+  `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
+  非业务凭证禁止进入日志。当前中信 Sender 已有三类事件，平安 Sender 通信异常路径尚无结构化
+  `wallet_request_failed`，不能写成两家均已达标；
+- 三域注册【历史迁移已实施完成】：当时 13 条链使用单一域节点，22 个银行 Capability 实现类按
+  Transaction 12、Query 6、Account 4 归域；当前账户维护增量后的数量见本节开头；银行代码按
+  `channel/{bank}/{transaction|query|account}` 分组；
+  后续新能力一律按此结构新增，不重建旧结构；
 - 目标框架保留 LiteFlow + 注册式 Route 扩展能力：未来新银行复用现有能力时，只增加银行枚举、
   Loader 平级分支、该银行 Sender 与三个现有域中实际支持的扁平 Capability，不修改 API 入口和 chain id；
   只有出现数据和状态形态明确不同的新能力并经用户确认后，才允许新增第四执行域；
@@ -215,7 +228,7 @@ codegraph status               # 索引状态
   `liteflow.rule-source` 固定为 `liteflow/front-flow.xml`；
 - 渠道流水持久层已落地：10 张表的 Entity/VO/Mapper/XML/Service/ServiceImpl 已搬入 main，
   Entity 继承 `TenantEntity` 复用父类审计字段（`createBy`/`createTime`/`updateBy`/`updateTime`）；
-- Handle 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
+- Capability 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
   调银行 → `updateResponse`（UPDATE 状态/响应码）；中信退款不再查询原渠道表补字段，固定使用
   `originalBizOrderNo + originalBizSubOrderNo` 组装银行原交易定位字段；五个旧 `original_*` 列仅作为可空兼容列保留；
 - ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
@@ -345,29 +358,48 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
   统一 Front 错误码、说明和状态；业务成功的 `data.frontRespCode` 同样统一为字符串 `"200"`；
 - 交易链路按 05 §8 执行 B 方案：Capability 保留真实业务步骤日志，最终 Sender 唯一记录钱包
   请求/响应/失败，body 使用完整明文 JSON、不脱敏；迁移时删除重复报文日志，并继续排除非报文凭证；
-- 三域注册增量必须迁移全部 22 个 Capability 的强类型接口、Slot 参数和 Registry 归属，不得跳过任何
-  能力；不得重写第一阶段已经完成的银行业务逻辑，也不得改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
+- 28/29 号历史迁移必须覆盖当时全部 22 个银行 Capability 实现类；该迁移已经完成，禁止重新执行。
+  当前新增能力不得重写既有银行业务逻辑、改变能力支持状态、创建虚假银行能力或提前抽象未来能力；
 - 本轮用户已明确：不新增或运行测试、不执行编译，只做静态 review，禁止据此声明测试或编译通过。
 
 ## 7. 后续 AI 的实现单位
 
-当前唯一可领取单位是 29 号三域注册收口。实现步骤固定：
+28/29 号三域注册收口【已实施完成】，禁止重新执行。**当前活动任务：FRONT-ACC-001 账户维护**
+（12-front-implementation-issues/FRONT-ACC-001-account-maintenance-in-progress.md）。
 
-1. 完整阅读 28、29 号文档，以 `limeng_front_restruct` 当前已提交代码为唯一实现起点；
-2. 先核对 API/Controller/chain id 禁改区，以及 22 个能力按 Transaction 12、Query 6、Account 4 的归域；
-3. 建立 `FrontAccountApplicationService`、三个域 Slot、三个强类型 Capability 接口、三个 Registry 和三个 ExecuteNode；
-4. 将 8 条交易链映射 `frontTransExecute`、3 条交易查询链映射 `frontQueryExecute`、2 条账户链映射
-   `frontAccountExecute`，每条链仅含一个域节点；
-5. 三个 ExecuteNode 各自直接读取 Slot、调用 Loader、Registry 和 Capability，不增加抽象父节点或嵌套流程；
-6. 银行 Capability 保持校验、组装、持久化和结果映射可读展开；钱包发送统一经 Gateway/Sender；
-7. 删除单一 `BankCapability`、单一 Registry、通用 ExecuteNode 及兼容转发层，不恢复 Context、Handle、
-   BankSupport、Router、Dispatch 或多层 Wallet Client；
-8. Sender 唯一记录完整明文请求/响应 body；Capability 不重复打印钱包报文，认证凭证不得入日志；
-9. 三个 Application Service 显式处理 `FrontFlowExecutor` 返回的 `null`，转为非空失败响应；
-10. 本轮不写/不运行测试、不执行编译，只做静态核验并如实说明；
-11. 完成后提交三域矩阵、13 条链、删除清单和行为差异给用户 review；代码 commit/push 需另行明确授权。
+通用工作方式（沿用三域实施期确认的纪律）：
+1. 阅读顺序：本 WIKI → 19 → 28 → 29 → 30（历史参照）→ 当前活动 Issue → 当前源码核对未完成项；
+2. 新增能力一律走三域结构：`channel/{bank}/{domain}/` 能力类 implements 对应域强类型接口，
+   Registry 自动收集即完成路由；银行代码按 `channel/{bank}/{transaction|query|account}` 分组；
+   当前源码实况：银行 Capability 实现类 29 个（交易 12/查询 6/账户 11，账户 11=中信 9+平安挡板 2）、
+   链 21（8 交易/3 查询/10 账户）——历史基线 22/13 见 §4 数量口径；
+3. 三个 ExecuteNode 各自直接读取 Slot、调用 Loader、Registry 和 Capability，不增加抽象父节点或嵌套流程；
+4. 银行 Capability 保持校验、组装、持久化和结果映射可读展开；钱包发送统一经 Gateway/Sender；
+5. 禁止复活 Context、Handle、BankSupport、Router、Dispatch 或多层 Wallet Client；
+6. 最终发送端记录完整明文请求/响应 body；Capability 不重复打印钱包报文，认证凭证不得入日志；
+7. 三个 Application Service 必须显式处理 `FrontFlowExecutor` 返回的 `null`，转为非空失败响应；
+   当前只有 Transaction 路径完整收口，Query 的单条/分页结果和 Account 的查询结果仍存在
+   `R.ok(null)` 或直接返回 `null` 的静态路径，属于待修代码差异，不能写成已完成；
+8. 测试/编译/commit/push 均需用户当次明确授权；完成后提交改动清单与验证证据给用户 review。
 
-## 8. Handle 方法入口
+### 7.1 当前源码静态差异（2026-08-29）
+
+以下是本次按 `limeng_front@cead0222` 核对出的事实，不自动并入 FRONT-ACC-001 的开发范围；
+后续 AI 必须先由用户确认任务边界，再修改代码：
+
+| 差异 | 当前源码事实 | 目标口径 |
+|---|---|---|
+| 去白名单链 | `chainFrontAccountUnwhiteName` 仅存在于 XML 和常量，无 API/AppService 方法调用 | 删除孤儿链，或新增契约并接入；不得静默猜选 |
+| null 结果 | Query 单条/分页、Account 查询仍可能包装或返回 `null` | 外层显式转为非空失败响应 |
+| 平安通信失败日志 | 普通 error 日志存在，但没有结构化 `wallet_request_failed` | 最终 Sender 统一输出发送/响应/失败三类事件 |
+| web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization` | 业务 payload 可明文，认证凭证必须排除 |
+| 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
+| 代码注释 | `front-flow.xml` 头注释仍写 13 条链，个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链和三域 Capability 结构一致 |
+
+语义约定：Slot 内部路由能力字段为 `routeCapability`（框架内部路由键）；对外报文字段
+`baseData.capability` 仅在状态查询等场景存在且语义为"被查交易的原交易能力"。两者禁止互相替代。
+
+## 8. API / Capability 方法入口
 
 交易方法：
 
@@ -392,9 +424,21 @@ queryPlatformTransactionDetails
 queryTransactionDetails
 ```
 
-具体方法与旧 Front、mdl API/Service/Handle/银行实现类的对应关系，以
-[04-front-service完整重构实施方案](04-front-service完整重构实施方案.md) 的“Handle 方法映射”和
-“交易/交易查询方法关联”章节为准。
+账户维护方法：
+
+```text
+openAccount
+bindCard
+unbindCard
+updateAccountInfo
+acctClose
+whiteName                  // opType 区分加白/去白
+withdraw
+```
+
+具体方法与旧 Front、mdl API/Service/Handle/银行实现类的历史对应关系，可参考
+[04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)；当前实现定位必须以
+API → Application Service → 域 ExecuteNode → Registry → 银行 Capability 的源码调用链为准。
 
 ## 9. 每次交付必须报告
 

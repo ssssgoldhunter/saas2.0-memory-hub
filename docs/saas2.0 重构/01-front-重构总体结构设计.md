@@ -1,13 +1,14 @@
 # SaaS 2.0 多银行渠道 Front 总体结构设计
 
-> 状态：current-design / three-domain-pending-implementation
+> 状态：historical-design / superseded-by-28（结构以 28 号三域定稿为准，本文仅作历史设计记录）
 > 更新日期：2026-08-26
 > 代码起点：`cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
 > 结构裁决：[28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)
 > 实施计划：[29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
 > 银行能力落地：本文 §16（中信）、§17（平安）已并入原 02/03 接口能力汇总，飞书主文档自洽完整。
 
-本文描述 Front 的现行目标结构。旧 `FrontFlowContext → BankRequestContext → Handle`、
+本文描述 28/29 号迁移时的目标结构和 22 个实现类 / 13 条链历史基线；当前账户维护增量后的
+源码数量、状态和差异以 WIKI-START §4、§7.1 及 19 号手册为准。旧 `FrontFlowContext → BankRequestContext → Handle`、
 Router/Dispatch、多节点 LiteFlow、单一 `BankCapabilityRegistry` 和
 `Provider → AssemblerRouter → Assembler` 均已退出目标设计。
 
@@ -167,7 +168,7 @@ interface BankAccountCapability {
 每个 Registry 只注入本域接口列表，建立不可变
 `Map<BankCode, Map<FrontCapability, 本域Capability>>`。同域重复复合键必须启动失败；银行不存在和能力未注册使用不同错误。
 
-当前 22 个通用能力归域：
+历史迁移基线的 22 个通用能力实现类归域：
 
 | 域 | 数量 | 能力 |
 |---|---:|---|
@@ -177,7 +178,7 @@ interface BankAccountCapability {
 
 不存在统一 `BankCapability`、统一 Registry、通用 ExecuteNode 或跨域支持矩阵。
 
-### 5.1 22 能力 × 中信 / 平安 落地映射
+### 5.1 历史 22 能力实现类 × 中信 / 平安落地映射
 
 下表把 §5 的 22 个通用能力落到两家银行的 `bizFunc`、银行产品码与当前 Front 范围。中信
 `platformCode=zxegj`（渠道号 `0010`），平安 `platformCode=pajzb`（渠道号 `0001`）。各能力的字段级

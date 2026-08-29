@@ -193,7 +193,7 @@ errCode == D5000000
 |---|---|---|
 | `mrchCode` | `accountSpecialData.mrchCode` | 平台号，禁止业务系统覆盖 |
 | `txnClientNo` | `accountSpecialData.txnClientNo` | 客户号，禁止业务系统覆盖 |
-| `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，进入请求前加密，禁止记录明文 |
+| `stlAcctNo` | `accountSpecialData.stlAcctNo` | 资金汇总账号，进入请求前加密；作为业务报文字段按当前裁决允许明文记录 |
 | `functionFlag` | 平安 Capability 场景策略 | lsym 生产代码：transfer=`9`；consume 默认/`0109`=`9`；特殊 `0107`=`7` |
 | `outAcctId` | `specialData.payMemberCode` | 转出方商户会员编号（reserve 协议键；来源为对外语义键 payMemberCode，2026-08-21 更名） |
 | `outAcctName` | `specialData.outAcctName` | 转出方户名，按协议加密 |
@@ -284,8 +284,8 @@ result.applyFrontResponse(FrontErrorCode.SUCCESS);
 - `queryId`：写渠道交易流水，并映射公共 `frontQueryId`；
 - 具备公共语义的银行字段：映射强类型结果字段；
 - 只有某家银行存在且业务系统确实需要的字段：按常量白名单写入 `specialData`；
-- 完整 `reserve`、密钥、账户明文、签名和敏感信息：禁止额外返回或由 Capability/上游重复写日志；
-  最终 Sender 按统一规则记录实际钱包请求/响应 body，非报文凭证仍排除。
+- 完整 `reserve` 只按白名单返回；Capability/上游不得重复打印同一钱包报文。最终 Sender 按统一规则
+  记录实际钱包请求/响应 body，业务字段允许明文；密钥、签名材料、认证 Header 等非报文凭证仍排除。
 
 ### 6.4 成功响应示例
 

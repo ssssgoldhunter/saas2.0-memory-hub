@@ -4,13 +4,13 @@
 >
 > 建立时间：2026-08-07
 >
-> 最近核验：2026-08-25
+> 最近核验：2026-08-29（`limeng_front@cead0222`，仅静态核验）
 >
 > 用途：其他 AI 每次只领取一个问题，按问题文件范围修改代码并同步引用文档。
 
-> 结构简化不是旧缺陷 Issue，当前唯一活动结构任务是
-> [29-cateringfront全量扁平化迁移-plan](../29-cateringfront全量扁平化迁移-plan.md)。
-> 旧 P0/P1/P2 Issue 继续保持 CLOSED，不得因结构迁移重新打开。
+> 结构简化（28/29 号三域注册）【已实施完成】，属历史实施记录，不得重新执行。
+> 当前活动任务：[FRONT-ACC-001 账户维护能力开发](FRONT-ACC-001-account-maintenance-in-progress.md)
+> （IN_PROGRESS）。旧 P0/P1/P2 Issue 继续保持 CLOSED。
 
 ## 状态口径
 
@@ -75,7 +75,7 @@
 
 ## 当前状态摘要
 
-全部 P0/P1/P2 功能 Issue 与独立 TODO-002 均已关闭（另有新功能 [FRONT-ACC-001 账户维护] (FRONT-ACC-001-account-maintenance-in-progress.md) IN_PROGRESS）：
+全部 P0/P1/P2 功能 Issue 与独立 TODO-002 均已关闭；当前活动任务为 [FRONT-ACC-001 账户维护能力开发](FRONT-ACC-001-account-maintenance-in-progress.md)（IN_PROGRESS）：
 
 1. `FRONT-P1-015`（CLOSED，2026-08-20）：中信非法 `TOTAL_PAGE` 收口为失败分页、
    web-test Feign 失败分页壳补齐 `totalPage=0`，用户确认关闭。
@@ -93,7 +93,16 @@
 |---|---|---|
 | 终验任务 | [18 号 plan T11](../18-明细查询对外契约与平安启用-plan.md) | 保持未勾选；只有用户明确授权时才执行当次编译和最终自检 |
 
-全部功能 Issue 已关闭；上表仅为按用户授权才会执行的终验编译项，不属于缺陷。
+全部旧功能 Issue 已关闭；上表仅为按用户授权才会执行的终验编译项，不属于缺陷。
+
+**当前活动任务：FRONT-ACC-001 账户维护能力开发（IN_PROGRESS）**——中信 Account 域 9 个 Capability
+（既有查询 2 + 账户维护新增 7）文件与链均已就位；加上平安 2 个挡板后 Account 域总计 11 个；
+原缺失常量类阻塞已解除；
+去白名单孤儿链待用户裁决，编译与联调均未验证，状态分级见该 Issue 文件。
+
+2026-08-29 跨任务静态核验还发现 Query/Account 查询 null 结果、平安 Sender 结构化失败事件、
+web-test Authorization Header 日志等框架契约差异。它们已登记在 WIKI-START §7.1，尚未由用户
+分配为新的代码任务，不得混入 FRONT-ACC-001 顺带修改。
 
 ## 历史用户确认关闭（9 项，2026-08-19）
 

@@ -3,9 +3,9 @@
 本文只记录已明确延后、需要后续人工确认或逐项接入的工作，不属于
 `12-front-implementation-issues` 缺陷清单，也不计入 P0/P1/P2 Issue 完成度。
 
-> 2026-08-25 说明：全量扁平化迁移不是本表待办，统一按
+> 2026-08-29 说明：全量扁平化迁移已经按
 > [29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
-> 执行；本文 TODO-001/002/003 状态不因结构迁移改变。
+> 实施完成，该文档只保留历史记录，不得重新执行；本文 TODO-001/002/003 状态不因结构迁移改变。
 
 当前状态摘要：
 
@@ -14,7 +14,7 @@
 - `CLOSED`：平安退款代码、DDL 和文档已完成静态验收，并于 2026-08-19 经用户确认关闭；
 - `DEFERRED`：report 报表库跨实例重复交易补查，用户明确暂时不做。
 
-## TODO-001 平安查询 Handle 逐接口核对和接入（CLOSED）
+## TODO-001 平安查询 Capability 逐接口核对和接入（CLOSED）
 
 - 状态：`CLOSED`（2026-08-19 用户裁决）——交易状态和两类明细已实现；
   账户状态/余额不再安排接入，固定保留 `ADAPTER_NOT_READY` 挡板
@@ -24,7 +24,8 @@
 ### 保留挡板原因
 
 平安查询字段、`bizFunc`、请求路径、账户定位方式和返回数组结构尚未逐接口对照银行 Word 文档确认。
-当前 Handle 中的本地常量、字段映射和请求组装只属于历史实现分析草稿，不是正式字段契约，不能通过
+旧 Handle / 当前挡板 Capability 中的本地常量、字段映射和请求组装只属于历史实现分析草稿，
+不是正式字段契约，不能通过
 整理参数或补字段常量的方式顺带启用。
 
 ### 接口最终状态
@@ -48,7 +49,7 @@
 
 1. 每次只领取一个查询接口并完成人工字段核对，不批量启用两个接口。
 2. 明确该接口的路径、`bizFunc`、`chnlNo`、顶层字段、`reserve` 字段、响应节点和状态映射。
-3. `bizFunc/chnlNo/API path` 作为带业务注释的 Handle 本地固定参数；字段 key 才进入该接口专属的
+3. `bizFunc/chnlNo/API path` 作为带业务注释的 Capability 本地固定参数；字段 key 才进入该接口专属的
    PingAn Query ContractKeys，且使用银行协议原始名。
 4. 只在对应接口的确认实现中增加实际使用的本地固定参数，不为尚未实现的分支预留草稿常量或映射。
 5. 删除该接口对中信 ContractKeys、普通转账 ContractKeys 和未确认字符串字段 key 的借用。
@@ -92,8 +93,8 @@
 |---|---|---|
 | 组装器 | `FrontSpecialDataAssembler`、`PingAnSpecialDataAssembler` | 退款仅保留可选备注；`withdraw()` 与退款 Javadoc 均已恢复、修正 |
 | 银行请求对象 | `PingAnRefundRequest` | 顶层原流水/日期/金额/手续费已明确；`oriOrderId` 当前不发送 |
-| Handle 实现 | `PingAnTransHandle`（现 `PingAnRefundCapability`） | `bizFunc=02`、两表精确查询、`frontSsn`、账号加密、原记录/日期校验和单实例查重均已闭环 |
-| 渠道落库 | `PingAnTransHandle#insertRefundInitRecord`（现 PingAnRefundCapability 内） | 本次业务字段、原渠道三项关联及原账户字段完整落库 |
+| Capability 实现 | `PingAnTransHandle`（历史名，现 `PingAnRefundCapability`） | `bizFunc=02`、两表精确查询、`frontSsn`、账号加密、原记录/日期校验和单实例查重均已闭环 |
+| 渠道落库 | `PingAnTransHandle#insertRefundInitRecord`（历史入口，现位于 `PingAnRefundCapability`） | 本次业务字段、原渠道三项关联及原账户字段完整落库 |
 | 字段常量 | `PingAnRefundContractKeys` | key 与来源、加密及不发送字段的注释已统一 |
 | 引用文档 | 03、05、08、13、15、16、WIKI、Issue 索引 | 设计边界、实现状态和 `originalBizTransactionId` 选填/DDL 可空口径已统一 |
 

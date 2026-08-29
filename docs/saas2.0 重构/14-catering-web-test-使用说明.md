@@ -11,7 +11,8 @@
 cateringsass/catering-modules/catering-web-test/
 ```
 
-**定位**：一个轻量的可运行 Spring Boot 服务（非 JUnit 测试库），通过浏览器 UI 模拟外部业务系统调用 `catering-front` 的所有 API。
+**定位**：一个轻量的可运行 Spring Boot 服务（非 JUnit 测试库），通过浏览器 UI 模拟外部业务系统
+调用 `catering-front` 标准 API；中信不明来款 3 个专项 API 不在本工具覆盖范围。
 
 **核心技术栈**：Spring Boot 3.5 + FeignClient → `catering-front` + Bootstrap 5 前端 SPA。
 
@@ -40,7 +41,8 @@ mvn spring-boot:run -Dmaven.repo.local=/Users/limeng/shares/m2saas
 
 ## 3. 功能覆盖
 
-覆盖 `catering-front` 全部 13 个 API 方法（5 查询 + 8 交易）：
+后端 `FrontTestController` 当前覆盖 20 个标准 API 方法（5 查询 + 8 交易 + 7 账户维护）。
+主页面 `index.html` 承载原 13 个查询/交易接口；账户维护使用独立页面 `account-test.html`。
 
 | 类别 | Tab | API 路径 | 备注 |
 |---|---|---|---|
@@ -57,6 +59,13 @@ mvn spring-boot:run -Dmaven.repo.local=/Users/limeng/shares/m2saas
 | 交易 | 提现 | `POST /transaction/withdraw` | 需安全确认 |
 | 交易 | 平台付款(中信) | `POST /transaction/platform-pay` | 需安全确认 |
 | 交易 | 平台收款(中信) | `POST /transaction/platform-receive` | 需安全确认 |
+| 账户 | 开户 | `POST /account/open` | 中信账户维护；独立页面 |
+| 账户 | 绑卡 | `POST /account/bind-card` | 中信账户维护；独立页面 |
+| 账户 | 解绑卡 | `POST /account/unbind-card` | 中信账户维护；独立页面 |
+| 账户 | 修改账户信息 | `POST /account/update-account-info` | 中信账户维护；独立页面 |
+| 账户 | 关户 | `POST /account/acct-close` | 中信账户维护；独立页面 |
+| 账户 | 白名单/去白 | `POST /account/white-name` | `opType` 区分；独立页面 |
+| 账户 | 账户提现 | `POST /account/withdraw` | 独立页面 |
 
 ## 4. UI 使用说明
 
@@ -259,7 +268,8 @@ catering-front (实际业务服务)
 > 调用：先调 `/assemble/special-data`（本地 `FrontSpecialDataAssembler`，组装输入的
 > platformCode/dataSourceId 来自本地租户配置），确认后再发起交易/查询。
 
-- `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi` 和 `FrontTransApi`，透传请求
+- `FrontTestController.java`：通过 Feign 注入 `FrontQueryApi`、`FrontTransApi` 和
+  `FrontAccountApi`，透传 20 个标准请求
 - `WebTestRawDecoder.java` / `WebTestFeignConfig.java`（config 包，2026-08-20 增）：
   透传解码器及注册配置，见 §7.1
 - `TenantTestProperties.java`：`@ConfigurationProperties` 绑定 YAML 测试数据
@@ -287,8 +297,8 @@ web-test 配置了专用透传解码器，远程业务失败不再转异常、�
 ### 7.2 结构化调用日志（2026-08-14 升级）
 
 web-test 后端调用日志由 `[test] >>>/<<<` 文本样式升级为与 catering-front 交易链路一致的结构化
-event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），覆盖全部 13 个
-测试接口及 `/tenants`。每条日志是合法单行 JSON：
+event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），覆盖全部 20 个
+标准测试接口及 `/tenants`。每条日志是合法单行 JSON：
 
 - `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode）；
   dataSourceId 不进 RequestContext/header（2026-08-20 起），只保留在请求体 baseData——
@@ -296,7 +306,8 @@ event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），
 - `test_request_sending`：Feign 调用发送前，payload=完整请求体；
 - `test_feign_headers`（2026-08-20 增）：Feign 拦截器链末尾记录实际发送的完整 header
   （tenantId/clientId/Same-Token/Authorization 等），payload=header 名到值的映射，
-  用于核对最小调用方形态（header 只封装 tenantId + clientId）；
+  用于核对最小调用方形态。**当前源码会把 Authorization 写入日志，与 Front 的认证凭证排除规则冲突；
+  这是待修复静态差异，不能作为现行目标口径继续复制**；
 - `test_response_received`：调用成功返回，payload=完整响应体，带 `elapsedMs`；
 - `test_request_failed`：远程失败，payload=`{exceptionType,message}`，带 `elapsedMs`，保留完整堆栈；
 - `test_tenants_loaded`：租户列表加载；

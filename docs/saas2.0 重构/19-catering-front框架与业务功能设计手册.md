@@ -1,8 +1,10 @@
 # Catering Front 框架与业务功能设计手册
 
-> 状态：current-design / three-domain-pending-implementation
-> 更新日期：2026-08-25
-> 代码起点：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
+> 状态：current-design / three-domain-implemented（结构已落地；账户维护 FRONT-ACC-001 进行中，
+> 当前仍有静态契约差异，不能表述为整体终验通过）
+> 更新日期：2026-08-29
+> 历史迁移起点：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
+> 当前源码基线：`limeng_front@cead0222`（2026-08-29 静态核验；未执行编译/测试）
 > 结构权威：01、05、28、29 号文档
 
 本文供维护 `catering-front`、增加银行或实现能力时使用。它只描述现行三域扁平框架和已确认业务；
@@ -99,14 +101,22 @@ ExecuteNode 使用 LiteFlow v2.16.X 无参 `getFirstContextBean()` 取 Slot并�
 
 共 6 个银行 Capability。Query 域不包含账户状态和账户余额。
 
-### 4.3 Account：4 个实现
+### 4.3 Account：11 个实现
 
 | 能力 | 中信 | 平安 | 结果 |
 |---|---|---|---|
 | accountStatus | 支持 | 保持 `ADAPTER_NOT_READY` 挡板 | `R<AccountStatusResult>` |
 | accountBalance | 支持 | 保持 `ADAPTER_NOT_READY` 挡板 | `R<AccountBalanceResult>` |
+| accountOpen | 支持 | 不注册 | `R<AccountBaseResult>` |
+| accountBindCard | 支持 | 不注册 | `R<AccountBaseResult>` |
+| accountUnbindCard | 支持 | 不注册 | `R<AccountBaseResult>` |
+| accountUpdateInfo | 支持 | 不注册 | `R<AccountBaseResult>` |
+| accountClose | 支持 | 不注册 | `R<AccountBaseResult>` |
+| accountWhiteName | 支持 | 不注册 | `R<AccountBaseResult>`；`opType` 区分加白/去白 |
+| accountWithdraw | 支持 | 不注册 | `R<AccountBaseResult>`；区别于 Transaction withdraw |
 
-共 4 个银行 Capability，其中平安 2 个继续保留既有待接入语义，不模拟成功。
+共 11 个银行 Capability：中信 9 个，平安 2 个挡板。账户维护新增 7 个公开 API；
+当前 XML 另有 `chainFrontAccountUnwhiteName`，但没有独立 API/AppService 调用，见 §13 当前差异。
 
 ### 4.4 中信不明来款专项
 
@@ -226,6 +236,11 @@ Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账�
 钱包请求/响应 body 不脱敏。Capability/Gateway 不得重复打印同一报文。
 `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie` 等非业务报文凭证不得进入日志、异常或普通响应。
 
+当前源码事实：中信 Sender 已提供发送、响应和失败三类结构化事件；平安 Sender 的通信异常路径
+只有普通 error 日志，尚无结构化 `wallet_request_failed`。`catering-web-test` 的
+`test_feign_headers` 当前还会记录 `Authorization`，与认证凭证排除规则冲突。业务验证码属于业务
+payload，按用户裁决允许明文，不再列入禁止项。以上均是待后续明确授权后修正的代码差异。
+
 ## 11. 新银行开发
 
 复用已有 Front 能力时只需要：
@@ -252,19 +267,25 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 
 ## 13. Definition of Done
 
-- API/Controller/DTO 未改变。
+- 28/29 历史迁移的既有 API/Controller/DTO 未改变；新增账户维护能力允许按新契约增加 API/DTO。
 - Slot 为 Base + Trans/Query/Account 两层。
 - 三个强类型接口、三个 Registry、三个 ExecuteNode。
-- 22 个能力按 12/6/4 归域。
-- 13 条单节点链按 8/3/2 归域。
+- 当前 `FrontCapability` 枚举 21 项；其中 `RECHARGE` 暂无 Front API/银行实现。银行 Capability
+  实现类 29 个，按 12/6/11 归域。
+- 当前 21 条单节点链按 8/3/10 归域。
+- 标准 API 20 个（8 交易 / 5 查询 / 7 账户维护），中信不明来款专项 API 3 个。
 - 账户状态/余额只在 Account 域。
 - Capability 主流程可在一个类中顺序读完。
 - 旧 Context/Router/Dispatch/Handle、统一 Registry、Provider/Assembler 零残留。
 - Sender 是唯一完整明文钱包 body 日志位置，认证凭证未入日志。
+- Application Service 对执行器 `null` 结果显式转为非空失败响应。
 - 中信不明来款继续独立。
 - 文档、能力矩阵和实际代码一致。
 
-本轮结构增量按用户裁决不新增/运行测试、不执行编译；静态检查不得表述为编译或测试通过。
+当前源码尚未满足全部 DoD：`chainFrontAccountUnwhiteName` 是无调用方链；Query 单条/分页和
+Account 查询存在 `null` 结果未收口路径；平安 Sender 缺结构化失败事件；web-test Header 日志
+仍包含 Authorization；`front-flow.xml` 头注释仍写历史 13 条链。上述是静态核验结论，
+本轮未获编译/测试授权，不得表述为编译、测试或整体终验通过。
 
 
 ## 分片键全链路覆盖（2026-08-27）
@@ -274,3 +295,20 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 - **SELECT**（查重/原渠道回查/6073 补全/提现卡号回查）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
 - **UPDATE**（updateSending/updateResponse/updateOnException）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
 - **保障**：域 ExecuteNode 第④步回填+校验非空，能力类从 slot.getRequestData().getDataSourceId() 获取。
+
+
+## 附录：最终约束清单（持续有效）
+
+1. package 结构扁平、流程容易顺序阅读；
+2. flow 下可按能力分包；slot 集中放置，模块代码集中放置后再按不同能力分组；
+3. Slot 继承层级最多两层：Base Slot + 直接继承 Base 的业务 Slot
+   （FrontTransSlot/FrontQuerySlot/FrontAccountSlot 等表意命名，禁止无意义的 *Context 命名）；
+4. Front 的职责保持 Registry + Route；
+5. 允许每个银行、每个能力拥有独立组装代码；允许适度重复，不为消除重复增加多层继承和跳转；
+6. API 是否新增或保持不变以具体业务任务为准；框架扁平化不得无故改变既有 API 契约
+   （迁移既有能力类时契约零变化；新增业务能力允许新增契约）；
+7. 钱包调用链保持简单：一个统一发送出口，沿用现有 WalletHttpClient 承担统一发送职责，
+   不额外引入 Sender 继承体系；发送前、响应后、异常路径统一记录日志；
+8. 业务日志按当前确认口径明文展示（含业务 payload 中的验证码）；`appKey`、密钥、签名私钥、
+   签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等非业务凭证仍不得输出；
+9. 下游返回 null 时不得伪造成功，由外层调用方显式判断并处理。

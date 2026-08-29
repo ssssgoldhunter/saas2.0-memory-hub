@@ -190,7 +190,8 @@ pay.setBankEMemberCode(memberCode); // 平安 Assembler 要求，6073 当前不�
 JSONObject specialData = assembler.assemble();
 ```
 
-每次调用新建 Assembler。输出包含账户、会员号等敏感值，不得明文记录。
+每次调用新建 Assembler。输出包含账户、会员号等业务值；按当前用户裁决允许作为业务 payload
+明文记录，认证凭证仍必须排除。
 
 ---
 
@@ -754,9 +755,9 @@ if (page.getTotalPage() != null && pageNo < page.getTotalPage()) {
 - 中信行级 `GOAC/OANM`；
 - 任意完整 `specialData`。
 
-调用方不得把这些值明文写日志、异常消息或监控标签。调用方日志只保留必要定位字段，例如租户、业务订单号、
-`frontSsn`、查询类型、日期、页码、Front 错误码和耗时。Front 最终 Sender 按内部统一口径记录完整明文
-钱包请求/响应 body；上游不得复制该日志。
+按当前用户裁决，上述业务字段允许明文记录；Front 最终 Sender 仍是钱包请求/响应 body 的统一日志位置，
+上游和 Capability 不重复打印同一钱包报文。`appKey`、私钥、签名材料、签名/认证 Header、
+`Authorization`、`Cookie`、完整银行 URL 等非业务凭证不得进入日志、异常消息或监控标签。
 
 ---
 

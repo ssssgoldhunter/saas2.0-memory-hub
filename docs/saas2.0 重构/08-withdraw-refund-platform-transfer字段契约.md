@@ -104,7 +104,7 @@ FrontTransSlot extends FrontBaseSlot
 |---|---|---|
 | `acctNo` | 发起提现的银行用户/见证子账户 | 中信、平安 `acctNo`，按协议加密 |
 | `outAcctId` | 发起提现的银行会员编号 | 平安 `mchntMbrId` |
-| `cardNoEnc` | 收款银行卡号原始输入 | 两家请求 `cardNoEnc`，按协议加密；上游/Capability 禁止记录输入明文，Sender 记录加密后的实际钱包 body |
+| `cardNoEnc` | 收款银行卡号原始输入 | 两家请求 `cardNoEnc`，按协议加密；业务输入按用户裁决允许明文记录，Sender 记录加密后的实际钱包 body |
 | `nameEnc` | 提现会员/见证账户名称原始输入 | 平安 `reserve.nameEnc`，按协议加密 |
 | `WITH_ACCNAME` | 中信银行卡持卡人姓名原始输入 | 中信 `reserve.WITH_ACCNAME`，按协议加密 |
 | `userNameEnc` | 平安银行卡持卡人姓名原始输入 | 平安 `reserve.userNameEnc`，按协议加密 |
@@ -113,7 +113,8 @@ FrontTransSlot extends FrontBaseSlot
 `amount/fee` 仍属于内部业务公共数据，保留在 `baseData`；普通交易备注仍按各能力的 baseData 契约处理。
 平安退款是明确例外：`refundReason` 只作内部业务原因，银行 `reserve.remark` 由可选
 `specialData.remark` 提供。上述 specialData 值可以按明确字段保存到内部渠道表，本期不要求数据库字段
-加密；进入银行请求时仍必须按协议加密，上游和 Capability 不得记录输入明文，最终 Sender 按统一规则记录实际钱包 body。
+加密；进入银行请求时仍必须按协议加密。业务输入按当前用户裁决允许明文记录，最终 Sender 按统一规则
+记录实际钱包 body；`appKey`、私钥、签名/认证 Header、`Authorization` 等非业务凭证仍禁止输出。
 
 ### 3.3 `PlatformTransferBusinessData`
 
@@ -188,7 +189,7 @@ ccy     = CNY
 | `remark` | `baseData.remark` | 旧 mdl 存在自赋值缺陷，新实现必须显式赋值；平安最大 512（C 512 O） |
 | `reserve.tranWebName` | Capability 固定 `0001` | 调用方不可覆盖 |
 | `reserve.certType` | Capability 固定 `24` | 只表达现有协议值，不擅自解释证件类型语义 |
-| `reserve.certNoEnc` | `specialData.certNo` | 加密；上游/Capability 禁止记录输入明文，Sender 只记录加密后的实际钱包 body |
+| `reserve.certNoEnc` | `specialData.certNo` | 加密；业务输入按当前裁决允许明文记录，Sender 记录加密后的实际钱包 body |
 | `reserve.nameEnc` | `specialData.nameEnc` | 加密 |
 | `reserve.userNameEnc` | `specialData.userNameEnc` | 加密 |
 | `reserve.stlAcctNo` | 平安 `accountSpecialData.stlAcctNo` | 加密 |
@@ -376,7 +377,7 @@ com/chinaums/common/core/constant/front/
 
 最新 lsym UAT 实现只作为字段参考。其“调用方提供原交易银行字段”的边界可以保留，但旧
 `orgPay/orgRec/orgTrans*` 字段不能直接搬进公共 `baseData`，必须改为上表规定的银行原始
-`specialData` key；`FUND_TP` 取 `platformUserRole`、未校验日期格式和输出敏感明文等实现不得迁移。
+`specialData` key；`FUND_TP` 取 `platformUserRole`、未校验日期格式和旧式重复/无边界日志实现不得迁移。
 
 ## 10. 仍需业务或银行确认
 

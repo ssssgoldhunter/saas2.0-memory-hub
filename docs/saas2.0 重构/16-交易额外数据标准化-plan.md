@@ -6,6 +6,8 @@
 >
 > 2026-08-19 口径更新：下文“平安退款空实现”仅是 2026-08-17 的历史实施记录；当前最终设计以
 > TODO-002 为准——业务系统不提供原渠道字段，Front 按原业务主子流水查询原渠道表。
+> 2026-08-29 日志口径更新：下文“只记协议键名（脱敏）”是当时实现记录，已被完整业务 payload
+> 明文策略取代；认证凭证仍排除。当前事实以 WIKI-START §4、§7.1 为准。
 
 ## 实施记录（2026-08-17）
 
@@ -111,7 +113,8 @@
 
 1. ✅ `FrontTestController` 新增 `POST /api/test/front/assemble/special-data`：入参反序列化为
    `FrontSpecialDataAssembler`（platformCode 缺省按 tenantId 从租户配置补全，RequestContext 写入），
-   本地调 `assemble()` 返回 `R<JSONObject>`；`FrontException` 转 `R.fail(msg)`；日志只记协议键名（脱敏）；
+   本地调 `assemble()` 返回 `R<JSONObject>`；`FrontException` 转 `R.fail(msg)`；当时日志只记协议键名，
+   后续已改为完整业务 payload 明文（见本计划顶部 2026-08-29 口径更新）；
 2. ✅ `app.js`/`index.html`（index 结构未动）：交易 Tab 的协议键 schema（getSpecialSchema）整体替换为
    标准结构 schema（getStandardSchema，std-* 输入：pay/rec/oriPay/oriRec 组 + bankCard 卡要素 +
    auth 鉴权组 + originalBusinessDate/contractId）；账户下拉联动填标准字段（accountNo→bankEAccountId、

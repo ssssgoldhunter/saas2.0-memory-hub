@@ -236,12 +236,15 @@
 ### 7.1 通用
 
 - 禁止返回 `null` 或模拟成功。
-- 日志、异常消息、接口响应中禁止输出敏感字段明文（密钥、账户配置、账号、卡号、手机号、证件号、姓名、验证码等）。
+- 默认禁止在日志、异常消息、接口响应中输出敏感字段明文。SaaS 2.0 Front 例外口径见 §7.2：
+  业务请求/响应 body 经用户确认允许明文，认证凭证和安全配置仍严禁输出。
 - 金额一律以「分」为单位传递，禁止浮点数。
 - 未收到明确授权：不新增测试类、不运行测试、不执行编译。
 
 ### 7.2 SaaS 2.0 Front 专属（摘要，完整清单见 WIKI-START §6）
 
+- 业务请求/响应字段（含业务验证码）允许按当前用户裁决完整明文记录；`appKey`、私钥、
+  签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等非业务凭证禁止输出。
 - 中信退款必须调用真实 `/refund + bizFunc=23`，禁止用反向转账模拟退款；对外固定
   `orgBizOrderNo + orgBizSubOrderNo` → 银行 `ORI_BUSS_ID + ORI_BUSS_SUB_ID`。
 - 平安 `platformPay/platformReceive` 固定为 `UNSUPPORTED`，不虚构等价接口。
