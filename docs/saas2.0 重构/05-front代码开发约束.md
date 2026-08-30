@@ -1283,13 +1283,13 @@ Java 字段用 camelCase（`payAccountId`/`recAccountId`/`withdrawAccountId`）�
 - 不在子模块 `pom.xml` 写死第三方依赖 `<version>`，版本统一在根 `pom.xml` 管理（见 §2.5）；
 - 不在 catering-front 使用 `dynamic-datasource`（`@DS` / `DynamicDataSourceContextHolder`）
   或 Hint（`HintManager`）做分库切换；分库固定用 ShardingSphere-JDBC STANDARD 模式，
-  分片键 `data_source_id`（见 §3.10.1）；
-- 不使用 `FrontDataSourceHelper`——已废弃，STANDARD 模式下 SQL 自带 `data_source_id` 自动路由，
-  Handle 代码不需要任何数据源切换包裹；
+  分片键 `tenant_id`（见 §3.10.1）；
+- 不使用 `FrontDataSourceHelper`——已废弃，STANDARD 模式下 SQL 携带插件注入的 `tenant_id`
+  自动路由，Handle 代码不需要任何数据源切换包裹；
 - 不在 Application Service 手动读 HTTP header——参数注入由 `catering-common-feign` 的
   `RequestContextInterceptor` + `BaseDataRequestBodyAdvice` 自动完成（见 §3.10.3）；
-- 分库路由键是 `data_source_id`（由业务请求方在 `baseData` 传入，回填到渠道流水 `data_source_id`
-  列）；`tenant_id` 是租户标识与 MySQL 分区键，不参与分库路由决策；
+- 分库路由键是 `tenant_id`（多租户插件按请求上下文注入，2026-08-29 起）；`data_source_id`
+  仅作为 insert 列值写渠道流水（由 `baseData` 传入/ExecuteNode 回填），不参与路由决策；
 - 10 张渠道流水表必须使用 `LINEAR KEY (tenant_id, store_id) PARTITIONS 30` 分区（见 §3.10.2）。
 
 ---
@@ -1427,8 +1427,8 @@ ContractKeys 或补写未启用分支。
       直接 `BaseRequest` 和 `FrontRequest<T>.baseData`；
 - [ ] header 与请求体识别字段冲突时明确失败，不得静默保留请求体值；
 - [ ] `RequestContext.afterCompletion` 调 `clear()` 清理 ThreadLocal；
-- [ ] Capability 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列；
-- [ ] 分库路由键是 `data_source_id`（由 `baseData.dataSourceId` 透传回填到渠道流水 `data_source_id` 列，见 §3.10.1）；`tenant_id` 是租户标识与分区键，不参与分库路由。
+- [ ] Capability 通过 `data.getDataSourceId()` 取值，落库到渠道流水 `data_source_id` 列（仅实例标识列值，不参与路由）；
+- [ ] 分库路由键是 `tenant_id`（多租户插件注入，2026-08-29 起，见 §3.10.1）；`tenant_id` 同时是 MySQL 分区键之一。
 
 ### B. 模块与依赖
 
@@ -1521,9 +1521,11 @@ ContractKeys 或补写未启用分支。
 
 ### H. 分库与分区
 
-- [ ] ShardingSphere STANDARD 模式，分片键 `data_source_id`，算法 `TenantDataSourceShardingAlgorithm`；
-- [ ] 算法直接把 `data_source_id` 值拼成 `ds_x`（不查配置中心，见 §3.10.1）；
-- [ ] 配置缺失、解析失败或目标 `ds_x` 不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
+- [ ] ShardingSphere STANDARD 模式，分片键 `tenant_id`，算法 `TenantDataSourceShardingAlgorithm`；
+- [ ] 算法按 `tenant_id` 查进程内 `TenantDataSourceMappingCache` 得 `ds_x`（映射权威源
+      `sys_tenant.resourceConfig`，见 §3.10.1）；
+- [ ] `tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失/`resourceConfig` 非法或目标 `ds_x`
+      不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
 - [ ] 本阶段不验收 `shardingsphere-config-{dev,uat,prod}.yaml` 的连接配置加密和安全加固；后续部署任务单独处理；
 - [ ] `FrontDataSourceHelper` 已废弃不存在，Capability 无数据源切换代码；
 - [ ] 10 张表 `PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`（内置于 09-final）；

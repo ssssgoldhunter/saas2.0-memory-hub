@@ -302,7 +302,8 @@ event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），
 
 - `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode）；
   dataSourceId 不进 RequestContext/header（2026-08-20 起），只保留在请求体 baseData——
-  front 分库路由读 body 值，避免 header 注入的配置值覆盖业务请求体的 dataSourceId；
+  2026-08-29 起 front 分库路由改按 `tenant_id`（多租户插件注入），body 中的 dataSourceId
+  仅作为 insert 列值写渠道表；header/body 分离仍用于避免配置值覆盖业务请求体值；
 - `test_request_sending`：Feign 调用发送前，payload=完整请求体；
 - `test_feign_headers`（2026-08-20 增）：Feign 拦截器链末尾记录实际发送的完整 header
   （tenantId/clientId/Same-Token/Authorization 等），payload=header 名到值的映射，
