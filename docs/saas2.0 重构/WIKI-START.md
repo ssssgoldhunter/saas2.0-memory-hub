@@ -399,6 +399,8 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 | 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
 | 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader`/ExecuteNode 注释仍引用不存在的 `TenantResolveNode`、仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
 | 文件接口无实现 | `FrontFileProcessApi` 4 个方法（queryCheckFileInfo/fileDownload/fileUpload/fileDownload801）在 catering-front 无 Controller 实现，`catering-routing` 仍经 Feign 调用，`@Tag` 误写为"渠道交易查询对外接口"，未入本 Wiki §8 API 清单 | 补实现并入册，或明确为遗留接口归档；不得静默保留 |
+| 平台收付款 Mapper 列重复 | `FrontCiticPlatformPay/PlatformReceiveTransactionMapper` 的 `Base_Column_List` 中 `data_source_id` 出现两次（2026-08-07 `045ab653` 引入） | 列清单去重；凡引用该 `<sql>` 的查询需回归验证 |
+| ShardingSphere SQL 日志 | dev/uat/prod 三份 `shardingsphere-config-*.yaml` 均为 `props.sql-show: true` | 生产环境关闭或降级该开关，避免全量 SQL 明文（含租户/金额）进日志 |
 
 语义约定：Slot 内部路由能力字段为 `routeCapability`（框架内部路由键）；对外报文字段
 `baseData.capability` 仅在状态查询等场景存在且语义为"被查交易的原交易能力"。两者禁止互相替代。

@@ -636,8 +636,9 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 - **`data_source_id` 的现状**：**不参与路由**，仅作为 insert 列值写入渠道流水表（记录数据
   所在库实例）。列值仍由业务请求方在 `baseData.dataSourceId` 传入（缺失时域 ExecuteNode
   第④步用 tenantId 从 `tenant_base_config` 缺省回填，显式传入优先——三域收口后无独立前置
-  节点），经 Feign 拦截器透传落到 Entity 的 `data_source_id` 列。该列值必须与
-  `sys_tenant.resourceConfig` 同值同格式（均为 `ds_N`），漂移按配置错误处理；
+  节点），经 Feign 拦截器透传落到 Entity 的 `data_source_id` 列。该列值【应当】与
+  `sys_tenant.resourceConfig` 同值同格式（均为 `ds_N`）——这是数据治理约定，**代码不做一致性
+  校验**：两处漂移不会导致路由失败，只会造成列值记录与实际路由不符；
 - **查询/更新免显式分片键（2026-08-29，提交 `7ae51dd6`）**：渠道 Capability 查询/更新
   wrapper 的 `.eq(DATA_SOURCE_ID, ...)` 条件已全部移除，路由依赖插件注入的 `tenant_id`；
   INSERT 仍由 entity 列值覆盖。此前 2026-08-27 的"WHERE 均含 data_source_id"约束已被本条

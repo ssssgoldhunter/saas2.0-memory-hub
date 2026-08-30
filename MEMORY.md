@@ -136,7 +136,9 @@
 - 日志当前裁决：业务请求/响应 body 允许完整明文；最终 Sender 是钱包报文的统一输出位置。
   `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
   非业务凭证仍禁止进入日志。当前代码仍有平安 Sender 缺少结构化 `wallet_request_failed`、
-  web-test 记录 Authorization Header、`FrontFileProcessApi` 4 方法无实现等静态差异，不能写成已全部达标。
+  web-test 记录 Authorization Header、`FrontFileProcessApi` 4 方法无实现、
+  平台收付款两个 Mapper `Base_Column_List` 重复 `data_source_id` 列、三环境 sharding
+  `sql-show=true`（含 prod）等静态差异，不能写成已全部达标。
 - 完成状态只以 `docs/saas2.0 重构/12-front-implementation-issues/` 为准（OPEN / FIXED_PENDING_REVIEW /
   CLOSED / DEFERRED）；平安交易状态与两类明细、退款边界均已按历史任务关闭，账户状态/余额固定保留
   `ADAPTER_NOT_READY` 挡板；report 跨实例补查为 `DEFERRED`（见 `13-front后续待办.md`）。
