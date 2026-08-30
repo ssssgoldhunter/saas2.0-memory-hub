@@ -28,7 +28,7 @@
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`（第一阶段扁平化）；当前执行基线：`limeng_front@cead0222`（三域收口+账户维护进行中，2026-08-29 静态核验） | 当前开发目标分支为 limeng_front |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`（第一阶段扁平化）；静态核验基线：`master@d164c7e7`（2026-08-30 复核，含 tenant_id 分片切换；`limeng_front@4829d1d7` 落后 master 仅 1 个文档提交） | 当前开发目标分支为 limeng_front |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -170,7 +170,7 @@ codegraph status               # 索引状态
 
 **数量口径（历史基线与当前源码分列）**：
 - 28/29 号历史基线：22 个银行 Capability 实现类、13 条链（交易 8 / 查询 3 / 账户 2）；
-- 当前源码（`limeng_front@cead0222`，2026-08-29 静态核验）：`FrontCapability` 枚举 21 项，
+- 当前源码（`master@d164c7e7`，2026-08-30 静态复核）：`FrontCapability` 枚举 21 项，
   **银行 Capability 实现类 29 个、LiteFlow 链 21 条**——实现类分布为交易 12 / 查询 6 / 账户 11
   （账户 11 = 中信 9 + 平安挡板 2）；
   链分布 8 交易 / 3 查询 / 10 账户（账户 10 = 既有状态/余额查询 2 + 账户维护 8）。
@@ -231,15 +231,16 @@ codegraph status               # 索引状态
 - Capability 持久化已接入：`insertInitRecord`（INSERT INIT）→ `updateSending`（UPDATE SENDING）→
   调银行 → `updateResponse`（UPDATE 状态/响应码）；中信退款不再查询原渠道表补字段，固定使用
   `originalBizOrderNo + originalBizSubOrderNo` 组装银行原交易定位字段；五个旧 `original_*` 列仅作为可空兼容列保留；
-- ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `data_source_id`，
-  `TenantDataSourceShardingAlgorithm` 直接把 `data_source_id` 的值拼成 `ds_x` 路由（不查配置中心）；
-  `data_source_id` 由业务请求方在 `baseData` 传入，请求头同名字段用于跨服务透传与落库记录；
-  全部 SELECT/UPDATE 的 WHERE 条件均含分片键（2026-08-27 修复，此前查询和更新
-  缺分片键导致广播路由）；INSERT 由 entity 列值覆盖。
-  `data_source_id` 缺失时先由域 ExecuteNode 第④步从
-  `tenant_base_config` 回填（2026-08-20 起，调用方最少只需传 tenantId + clientId）；
-  回填后仍为空、或计算出的 `ds_x` 不在可用数据源列表，必须立即失败，
-  禁止默认进入 `ds_0` 或第一个数据源；
+- ShardingSphere-JDBC 分库：使用 STANDARD 模式，分片键固定为 `tenant_id`，路由值由
+  MyBatis-Plus 多租户插件注入；`TenantDataSourceShardingAlgorithm` 用 `tenant_id` 查进程内
+  `TenantDataSourceMappingCache` 得到 `ds_x`（2026-08-29 起，提交 `c5cf5ae4`；映射权威源
+  `sys_tenant.resourceConfig`，TTL 默认 15 分钟 + single-flight 懒加载 + 启动预热）；
+  `data_source_id` 不参与路由，仅作为 insert 列值写入渠道表（记录数据所在库实例），
+  仍由 baseData 传入、域 ExecuteNode 第④步从 `tenant_base_config` 回填；
+- 查询/更新 SQL 不要求显式分片键（2026-08-29 FR-6，提交 `7ae51dd6`：Capability wrapper 的
+  `data_source_id` 条件已移除）；INSERT 由 entity 列值覆盖。
+  `tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失/`resourceConfig` 非法、或目标
+  `ds_x` 不在可用数据源列表时必须立即失败，禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
 - 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；每个请求由
   域 ExecuteNode 第③步用 tenantId 从 `tenant_base_config` 一次查询取出
@@ -349,7 +350,8 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 - 平安查询流水必须按场景分离：单笔状态查询使用原请求 `frontSsn/front_ssn → oriTransSsn`；
   6073 明细订单补全使用原应答 `queryId/bank_query_id = recordList.frontSeqNo`；
   `bank_user_ssn` 只保存明确返回的 `USER_SSN/ssn`，三者禁止互换；
-- 租户数据源配置是必备前置条件；STANDARD 分片找不到配置、配置解析失败或目标 `ds_x` 不存在时
+- 租户映射（`sys_tenant.resourceConfig`，经进程内缓存 `TenantDataSourceMappingCache`）是分片
+  路由必备前置条件；`tenant_id` 为空、映射缺失/非法或目标 `ds_x` 不在可用数据源列表时
   必须立即失败，
   禁止默认路由到任意数据库；
 - 钱包 `D5000000/success`、中信 `00000`、平安 `000000` 只用于 Capability 判定，
@@ -384,7 +386,8 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 
 ### 7.1 当前源码静态差异（2026-08-29）
 
-以下是本次按 `limeng_front@cead0222` 核对出的事实，不自动并入 FRONT-ACC-001 的开发范围；
+以下是按 `master@d164c7e7` 于 2026-08-30 复核确认仍存在的事实，不自动并入 FRONT-ACC-001
+的开发范围；
 后续 AI 必须先由用户确认任务边界，再修改代码：
 
 | 差异 | 当前源码事实 | 目标口径 |
@@ -392,9 +395,10 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 | 去白名单链 | `chainFrontAccountUnwhiteName` 仅存在于 XML 和常量，无 API/AppService 方法调用 | 删除孤儿链，或新增契约并接入；不得静默猜选 |
 | null 结果 | Query 单条/分页、Account 查询仍可能包装或返回 `null` | 外层显式转为非空失败响应 |
 | 平安通信失败日志 | 普通 error 日志存在，但没有结构化 `wallet_request_failed` | 最终 Sender 统一输出发送/响应/失败三类事件 |
-| web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization` | 业务 payload 可明文，认证凭证必须排除 |
+| web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization`（`WebTestHeaderLogInterceptor`） | 业务 payload 可明文，认证凭证必须排除 |
 | 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
-| 代码注释 | `front-flow.xml` 头注释仍写 13 条链，个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链和三域 Capability 结构一致 |
+| 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader`/ExecuteNode 注释仍引用不存在的 `TenantResolveNode`、仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
+| 文件接口无实现 | `FrontFileProcessApi` 4 个方法（queryCheckFileInfo/fileDownload/fileUpload/fileDownload801）在 catering-front 无 Controller 实现，`catering-routing` 仍经 Feign 调用，`@Tag` 误写为"渠道交易查询对外接口"，未入本 Wiki §8 API 清单 | 补实现并入册，或明确为遗留接口归档；不得静默保留 |
 
 语义约定：Slot 内部路由能力字段为 `routeCapability`（框架内部路由键）；对外报文字段
 `baseData.capability` 仅在状态查询等场景存在且语义为"被查交易的原交易能力"。两者禁止互相替代。

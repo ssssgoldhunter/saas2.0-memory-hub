@@ -610,47 +610,56 @@ lsym 该模块依赖的原生 mapstruct 坐标（`org.mapstruct:mapstruct` + `ma
 
 ### 3.10 分库与分区约束
 
-#### 3.10.1 分库：ShardingSphere-JDBC（STANDARD 分片）
+#### 3.10.1 分库：ShardingSphere-JDBC（STANDARD 分片，键 `tenant_id`）
 
 catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用
-**ShardingSphere-JDBC STANDARD 模式**（不是 Hint，不是 dynamic-datasource），由 SQL 中的
-分片键 `data_source_id` 自动路由。
+**ShardingSphere-JDBC STANDARD 模式**（不是 Hint，不是 dynamic-datasource）。分片键为
+`tenant_id`，路由值由 MyBatis-Plus 多租户插件（`TenantLineInnerInterceptor`，
+`tenant.enable=true`）自动注入，业务 SQL **不再要求**显式携带分片键条件（2026-08-29 起）。
 
-- **分片键**：`data_source_id`（每条渠道流水 SQL 自带，由业务请求方在 `baseData.dataSourceId`
-  传入——缺失时域 ExecuteNode 第④步用 tenantId 从 `tenant_base_config`
-  缺省回填（三域收口后无独立前置节点），显式传入优先——经 Feign 拦截器透传、`BaseDataRequestBodyAdvice` 回填到
-  Entity 的 `data_source_id` 列）；
+- **分片键**：`tenant_id`。SELECT/UPDATE 的路由值由租户插件按请求上下文注入；无租户上下文时
+  fail-closed（`tenant_id = NULL` 进而导致路由失败），该兜底禁止绕过或关闭；
 - **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
-  1. 从 SQL 的 `data_source_id` 值拿到数据源编号（如 `"2"`）；
-  2. `formatDataSourceName("2")` → `"ds_2"`，返回给 ShardingSphere 路由；
-  3. 算法**不查配置中心、不做远程查询**，仅校验值存在且 `ds_x` 在可用数据源列表中；
-- **配置位置**：`resources/shardingsphere-config-${profile}.yaml`（dev/uat/prod），
-  `spring.datasource.url: jdbc:shardingsphere:classpath:shardingsphere-config-${spring.profiles.active:dev}.yaml`；
-- **新增库**：在 `shardingsphere-config-*.yaml` 加 `ds_3` 数据源，业务请求方传 `data_source_id=3`
-  即可路由到新库，不改代码；
-- **失败策略**：域 ExecuteNode 第④步回填后 `data_source_id` 仍为空、或计算出的 `ds_x` 不在可用数据源列表时必须立即抛出
-  系统异常并终止 SQL；禁止默认进入 `ds_0`、第一个数据源或广播到其他租户数据库；
-- **全链路分片键覆盖（2026-08-27 修复）**：全部 SELECT（查重/原渠道回查/6073 补全/提现卡号回查）
-  和 UPDATE（updateSending/updateResponse/updateOnException）的 WHERE 条件均必须包含
-  `.eq(DATA_SOURCE_ID, dataSourceId)`，禁止只按 id/tenantId 触发广播路由；
-  dataSourceId 由域 ExecuteNode 第④步回填保障非空，能力类从
-  `slot.getRequestData().getDataSourceId()` 获取。INSERT 已由 entity.setDataSourceId 覆盖。
-- **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源，
-  SQL 的 `data_source_id` 自动触发分片路由；
+  1. 取 SQL 的 `tenant_id` 值；空白 → 抛 `IllegalStateException`；
+  2. 经静态回调读取 `TenantDataSourceMappingCache`（进程内缓存，算法类自身零 IO）；
+     回调未注入或映射缺失 → 抛 `IllegalStateException`；
+  3. 目标 `ds_x` 不在 `availableTargetNames` → 抛 `IllegalStateException`；否则返回 `ds_x`；
+- **映射权威源**：`sys_tenant.resourceConfig`（经 `RemoteTenantServiceClient.queryByTenantId /
+  queryList` 获取，合法值形如 `ds_N`）。缓存 TTL 默认 15 分钟（配置项
+  `front.sharding.mapping.ttl-minutes`，合法区间 [10,30]，越界回退默认）；过期按租户
+  single-flight 懒加载；刷新失败保留旧值并按 5 分钟短 TTL 重试；启动经
+  `SmartInitializingSingleton` 用 `queryList()` 预热，非法条目不入缓存、预热失败不阻断启动
+  （运行期由算法 fail-fast 兜底）；
+- **失败策略**：`tenant_id` 为空、映射缺失、`resourceConfig` 为 `default`/空/不在可用数据源
+  列表时必须立即抛异常终止 SQL；禁止默认进入 `ds_0`、第一个数据源或任何形式的默认库回退
+  （databatch 版算法的 `DEFAULT_DS` 兜底禁止照抄）；
+- **`data_source_id` 的现状**：**不参与路由**，仅作为 insert 列值写入渠道流水表（记录数据
+  所在库实例）。列值仍由业务请求方在 `baseData.dataSourceId` 传入（缺失时域 ExecuteNode
+  第④步用 tenantId 从 `tenant_base_config` 缺省回填，显式传入优先——三域收口后无独立前置
+  节点），经 Feign 拦截器透传落到 Entity 的 `data_source_id` 列。该列值必须与
+  `sys_tenant.resourceConfig` 同值同格式（均为 `ds_N`），漂移按配置错误处理；
+- **查询/更新免显式分片键（2026-08-29，提交 `7ae51dd6`）**：渠道 Capability 查询/更新
+  wrapper 的 `.eq(DATA_SOURCE_ID, ...)` 条件已全部移除，路由依赖插件注入的 `tenant_id`；
+  INSERT 仍由 entity 列值覆盖。此前 2026-08-27 的"WHERE 均含 data_source_id"约束已被本条
+  取代，不得按旧约束把显式 `data_source_id` 条件加回；
+- **Handle 零侵入**：不需要 `FrontDataSourceHelper`、不需要手动切换数据源；
 - **不使用 dynamic-datasource**（`@DS` / `DynamicDataSourceContextHolder`）和 Hint
   （`HintManager`）；
-- **`tenant_id` 的作用**：`tenant_id` 仍是每条记录的租户标识（多租户隔离、MySQL 分区键之一），
-  但**不作为分库路由键**——分库由 `data_source_id` 决定。
+- **范围分片**：range 语义返回全部可用数据源（广播）；当前 10 张表没有按 `tenant_id` 的
+  range 查询，新增此类查询前必须先评审跨库归并的分页/合计语义。
 
 涉及类：
 
 | 类 | 模块 | 职责 |
 |---|---|---|
-| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法（`data_source_id` 直接拼 `ds_x`，不查配置中心） |
+| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法：按 `tenant_id` 查进程内映射返回 `ds_x`，全分支 fail-fast、零 IO |
+| `TenantDataSourceMappingCache` | catering-front `sharding` | tenantId → 数据源名进程内缓存（TTL 懒加载 + single-flight + 启动预热），唯一向算法注入回调的组件 |
 
-> 历史设计曾设想“分片键 `tenant_id` + 算法查配置中心 `tenant_base_config` 解析 `data_source_id`”，
-> 并配套 `ShardingAlgorithmInjector` 注入 `RemoteConfigServiceClient`；**当前代码未采用该方案**，
-> 直接以 `data_source_id` 为分片键，`ShardingAlgorithmInjector` 不存在，算法不依赖任何配置中心客户端。
+> 历史沿革（仅作追溯，不作当前依据）：①最初设想"分片键 `tenant_id` + 算法查配置中心
+> `tenant_base_config` 解析"（`ShardingAlgorithmInjector` 方案，未实施）；②2026-08-27 前实际
+> 采用"分片键 `data_source_id` 值直拼 `ds_x`、SQL 显式带分片键"；③2026-08-29 起
+> （提交 `c5cf5ae4`、`7ae51dd6`）为现行方案：分片键 `tenant_id` + 进程内映射缓存 +
+> SQL 免显式分片键。
 
 #### 3.10.2 分区：MySQL LINEAR KEY
 

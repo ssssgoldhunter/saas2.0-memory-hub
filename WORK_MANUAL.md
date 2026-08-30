@@ -254,8 +254,9 @@
 - 单条接口返回 `R<具体结果>`，分页明细直接返回 `TableDataInfo<...>`，禁止再用 `R` 包裹。
 - `bizFunc/chnlNo/API path` 用带注释的本地常量；字段 key 才进 `*ContractKeys`。
 - 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）自动注入，调用方零改动。
-- ShardingSphere STANDARD 分片键固定 `data_source_id`；缺失/为空/目标 `ds_x` 不存在必须立即失败，
-  禁止默认进入 `ds_0`。
+- ShardingSphere STANDARD 分片键固定 `tenant_id`（进程内租户映射缓存路由，
+  `data_source_id` 仅作 insert 列值）；`tenant_id` 缺失/映射缺失/目标 `ds_x` 不存在必须
+  立即失败，禁止默认进入 `ds_0`。
 - 重复交易校验用当前银行业务表 `tenantId + bizOrderNo + bizSubOrderNo`，命中返回「交易已存在」，
   不重放旧结果、不返回旧交易数据。
 - `specialData` / `accountSpecialData` 禁止整体 `putAll` 到银行 `reserveMap`。

@@ -288,13 +288,15 @@ Account 查询存在 `null` 结果未收口路径；平安 Sender 缺结构化�
 本轮未获编译/测试授权，不得表述为编译、测试或整体终验通过。
 
 
-## 分片键全链路覆盖（2026-08-27）
+## 分片路由口径（2026-08-29 起，tenant_id 分片）
 
-全部数据库操作（SELECT/UPDATE/INSERT）均携带 `data_source_id` 分片键，精确路由到 `ds_X`：
-- **INSERT**：entity.setDataSourceId(data.getDataSourceId())；
-- **SELECT**（查重/原渠道回查/6073 补全/提现卡号回查）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
-- **UPDATE**（updateSending/updateResponse/updateOnException）：Wrapper 含 `.eq(DATA_SOURCE_ID, dataSourceId)`；
-- **保障**：域 ExecuteNode 第④步回填+校验非空，能力类从 slot.getRequestData().getDataSourceId() 获取。
+分片键为 `tenant_id`，由 MyBatis-Plus 多租户插件注入路由值，SQL 免显式分片键；
+算法按 `tenant_id` 查进程内 `TenantDataSourceMappingCache` 得 `ds_x`（详见 05 §3.10.1）：
+- **INSERT**：仍写 `data_source_id` 列值（entity.setDataSourceId，仅作实例标识记录，不参与路由）；
+- **SELECT/UPDATE**：不再要求 `.eq(DATA_SOURCE_ID, ...)` 显式条件（2026-08-29 FR-6 已移除），
+  路由由插件注入的 `tenant_id` 精确保证；
+- **保障**：`tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失或目标 `ds_x` 不在可用列表时
+  立即失败，禁止默认路由。
 
 
 ## 附录：最终约束清单（持续有效）

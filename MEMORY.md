@@ -114,8 +114,9 @@
 
 ### 5.3 saas2.0 / cateringsass（当前主战场：多银行渠道 Front 重构）
 
-- 代码：`cateringsass/catering-modules/catering-front`（当前分支 `limeng_front`，2026-08-29
-  静态核验基线 `cead0222`）；记忆库 `saas2.0-memory-hub`。
+- 代码：`cateringsass/catering-modules/catering-front`（2026-08-30 静态复核基线
+  `master@d164c7e7`，含 tenant_id 分片切换；`limeng_front@4829d1d7` 落后 master 1 个文档提交）；
+  记忆库 `saas2.0-memory-hub`。
 - 当前 API：8 个交易 + 5 个查询 + 7 个账户维护，共 20 个标准 Front API；另有中信不明来款
   3 个专项 API。当前 `FrontCapability` 枚举 21 项，银行 Capability 实现类 29 个
   （Transaction 12 / Query 6 / Account 11），LiteFlow 链 21 条（8 / 3 / 10）。枚举中的
@@ -129,12 +130,13 @@
 - 已落地框架（不要重新设计）：api/common/front 模块边界、`R` + `FrontErrorCode`、
   `baseData + specialData`、`TenantBankConfigLoader` 两次配置查询、统一异常、三域强类型 Registry、
   渠道流水 10 张表（中信 6 + 平安 4，含 `reserve1/2/3`）、ShardingSphere STANDARD 分片
-  （键 `data_source_id`）、4 参数自动注入，以及 Capability 内可顺序阅读的持久化三阶段
+  （键 `tenant_id`，进程内租户映射缓存路由；`data_source_id` 仅作 insert 列值）、4 参数自动注入，
+  以及 Capability 内可顺序阅读的持久化三阶段
   （INSERT INIT → UPDATE SENDING → UPDATE RESPONSE）。
 - 日志当前裁决：业务请求/响应 body 允许完整明文；最终 Sender 是钱包报文的统一输出位置。
   `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
   非业务凭证仍禁止进入日志。当前代码仍有平安 Sender 缺少结构化 `wallet_request_failed`、
-  web-test 记录 Authorization Header 等静态差异，不能写成已全部达标。
+  web-test 记录 Authorization Header、`FrontFileProcessApi` 4 方法无实现等静态差异，不能写成已全部达标。
 - 完成状态只以 `docs/saas2.0 重构/12-front-implementation-issues/` 为准（OPEN / FIXED_PENDING_REVIEW /
   CLOSED / DEFERRED）；平安交易状态与两类明细、退款边界均已按历史任务关闭，账户状态/余额固定保留
   `ADAPTER_NOT_READY` 挡板；report 跨实例补查为 `DEFERRED`（见 `13-front后续待办.md`）。

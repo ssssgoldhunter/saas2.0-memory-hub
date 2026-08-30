@@ -286,7 +286,8 @@ Loader 直接查询并扁平组装中信/平安配置。禁止恢复
 - 交易按“银行 + 交易能力”使用固定表，禁止统一动态表和动态表名。
 - 重复检查固定使用当前表的 `tenantId + bizOrderNo + bizSubOrderNo`。
 - 状态按 `INIT → SENDING → 最终状态` 更新；超时或结果不明进入 `UNKNOWN`，不得自动重发资金交易。
-- `data_source_id` 是分库键；缺失配置或目标数据源不存在时立即失败，不得兜底到 `ds_0`。
+- 分库键是 `tenant_id`（进程内租户映射缓存路由，2026-08-29 起；`data_source_id` 仅作 insert
+  列值记录实例）；`tenant_id` 缺失、映射缺失或目标数据源不存在时立即失败，不得兜底到 `ds_0`。
 - 本结构增量不修改 10 张表、Entity、VO、Mapper、XML、DDL 或分片规则。
 
 ## 12. 中信不明来款专项

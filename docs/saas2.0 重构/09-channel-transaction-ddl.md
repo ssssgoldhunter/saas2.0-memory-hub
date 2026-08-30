@@ -343,17 +343,21 @@ snapshot_key_version
 ### 12.1 分库：ShardingSphere-JDBC（STANDARD 分片）
 
 10 张渠道流水表与业务表绑定，分布在多个物理数据库实例中。分库使用 ShardingSphere-JDBC
-STANDARD 模式，分片键 `tenant_id`，SQL 自带分片值自动路由，Handle 代码零侵入。
+STANDARD 模式，分片键 `tenant_id`（由 MyBatis-Plus 多租户插件注入，SQL 免显式分片键），
+Capability 代码零侵入。
 
-- **分片键**：`tenant_id`（每条 SQL 自带）；
-- **分片算法**：`TenantDataSourceShardingAlgorithm`（查配置中心 `tenant_base_config`（JSON），
-  解析 `data_source_id` 字段 → 拼 `ds_x`）；
-- **配置**：`resources/shardingsphere-config.yaml`，`mode: Standalone`；
-- **配置值示例**：`tenant_base_config` = `{"data_source_id":"2"}`；
-- **新增库**：加 `ds_x` 数据源 + 配置租户 `tenant_base_config` JSON 的 `data_source_id=x`，不改代码；
-- **配置前提**：租户数据源配置属于上线必备配置，正常情况下必须存在；
-- **失败策略**：若运行时仍发生配置缺失、JSON 解析失败、`data_source_id` 缺失或目标 `ds_x` 不存在，立即失败；
-  禁止默认路由到 `ds_0`、第一个数据源或其他租户数据库；
+- **分片键**：`tenant_id`（由 `TenantLineInnerInterceptor` 按请求上下文注入）；
+- **分片算法**：`TenantDataSourceShardingAlgorithm`（按 `tenant_id` 查进程内
+  `TenantDataSourceMappingCache` 得 `ds_x`；映射权威源 `sys_tenant.resourceConfig`，
+  TTL 默认 15 分钟 + single-flight 懒加载 + 启动预热）；
+- **配置**：`resources/shardingsphere-config-${profile}.yaml`（dev/uat/prod），`mode: Standalone`；
+- **新增库**：yaml 加 `ds_x` 数据源 + 目标租户 `sys_tenant.resourceConfig` 改为该 `ds_x`
+  （各实例 ≤1 个 TTL 内生效），不改代码；
+- **配置前提**：租户映射属于上线必备配置，正常情况下必须存在；
+- **失败策略**：`tenant_id` 为空、映射缺失、`resourceConfig` 为 `default`/空/解析失败或目标
+  `ds_x` 不存在，立即失败；禁止默认路由到 `ds_0`、第一个数据源或其他租户数据库；
+- **列值口径**：`data_source_id` 列仅作实例标识记录（insert 列值，不参与路由），须与
+  `sys_tenant.resourceConfig` 同值同格式；
 - **不使用 Hint / dynamic-datasource**。
 
 详细分片算法和配置约束见 [05-front代码开发约束](05-front代码开发约束.md) §3.10.1。
