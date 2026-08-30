@@ -397,7 +397,7 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 | 平安通信失败日志 | 普通 error 日志存在，但没有结构化 `wallet_request_failed` | 最终 Sender 统一输出发送/响应/失败三类事件 |
 | web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization`（`WebTestHeaderLogInterceptor`） | 业务 payload 可明文，认证凭证必须排除 |
 | 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
-| 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader`/ExecuteNode 注释仍引用不存在的 `TenantResolveNode`、仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
+| 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader` 注释仍引用不存在的 `TenantResolveNode`；ExecuteNode 注释仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
 | 文件接口无实现 | `FrontFileProcessApi` 4 个方法（queryCheckFileInfo/fileDownload/fileUpload/fileDownload801）在 catering-front 无 Controller 实现，`catering-routing` 仍经 Feign 调用，`@Tag` 误写为"渠道交易查询对外接口"，未入本 Wiki §8 API 清单 | 补实现并入册，或明确为遗留接口归档；不得静默保留 |
 | 平台收付款 Mapper 列重复 | `FrontCiticPlatformPay/PlatformReceiveTransactionMapper` 的 `Base_Column_List` 中 `data_source_id` 出现两次（2026-08-07 `045ab653` 引入） | 列清单去重；凡引用该 `<sql>` 的查询需回归验证 |
 | ShardingSphere SQL 日志 | dev/uat/prod 三份 `shardingsphere-config-*.yaml` 均为 `props.sql-show: true` | 生产环境关闭或降级该开关，避免全量 SQL 明文（含租户/金额）进日志 |

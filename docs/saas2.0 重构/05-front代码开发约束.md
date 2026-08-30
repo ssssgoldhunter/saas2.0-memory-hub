@@ -633,6 +633,10 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 - **失败策略**：`tenant_id` 为空、映射缺失、`resourceConfig` 为 `default`/空/不在可用数据源
   列表时必须立即抛异常终止 SQL；禁止默认进入 `ds_0`、第一个数据源或任何形式的默认库回退
   （databatch 版算法的 `DEFAULT_DS` 兜底禁止照抄）；
+- **配置位置**：`resources/shardingsphere-config-${profile}.yaml`（dev/uat/prod）；加载入口为
+  nacos `catering-front.yml` 的 `spring.datasource.url: jdbc:shardingsphere:classpath:...`
+  （`ShardingSphereDriver`），同文件显式 `spring.datasource.dynamic.enabled=false` 关闭
+  common-mybatis 带入的 dynamic-datasource starter；
 - **`data_source_id` 的现状**：**不参与路由**，仅作为 insert 列值写入渠道流水表（记录数据
   所在库实例）。列值仍由业务请求方在 `baseData.dataSourceId` 传入（缺失时域 ExecuteNode
   第④步用 tenantId 从 `tenant_base_config` 缺省回填，显式传入优先——三域收口后无独立前置

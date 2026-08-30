@@ -356,8 +356,8 @@ Capability 代码零侵入。
 - **配置前提**：租户映射属于上线必备配置，正常情况下必须存在；
 - **失败策略**：`tenant_id` 为空、映射缺失、`resourceConfig` 为 `default`/空/解析失败或目标
   `ds_x` 不存在，立即失败；禁止默认路由到 `ds_0`、第一个数据源或其他租户数据库；
-- **列值口径**：`data_source_id` 列仅作实例标识记录（insert 列值，不参与路由），须与
-  `sys_tenant.resourceConfig` 同值同格式；
+- **列值口径**：`data_source_id` 列仅作实例标识记录（insert 列值，不参与路由），【应当】与
+  `sys_tenant.resourceConfig` 同值同格式（数据治理约定，代码不做一致性校验）；
 - **不使用 Hint / dynamic-datasource**。
 
 详细分片算法和配置约束见 [05-front代码开发约束](05-front代码开发约束.md) §3.10.1。
