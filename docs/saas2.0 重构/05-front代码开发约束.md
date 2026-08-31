@@ -643,6 +643,10 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   节点），经 Feign 拦截器透传落到 Entity 的 `data_source_id` 列。该列值【应当】与
   `sys_tenant.resourceConfig` 同值同格式（均为 `ds_N`）——这是数据治理约定，**代码不做一致性
   校验**：两处漂移不会导致路由失败，只会造成列值记录与实际路由不符；
+- **Capability 执行语义（2026-08-31 起）**：交易 Capability 在 execute 第一段做
+  `data-source-id 权威值回填`——`slot.tenantBaseInfo.dataSourceId`（租户配置权威值）非空时，
+  `data.dataSourceId` 空则回填、非空且不一致抛 `TENANT_BANK_CONFIG_MISMATCH`（防止写行携带
+  漂移的库标识）；落库列值因此恒为权威值或调用方与权威一致的值；
 - **查询/更新免显式分片键（2026-08-29，提交 `7ae51dd6`）**：渠道 Capability 查询/更新
   wrapper 的 `.eq(DATA_SOURCE_ID, ...)` 条件已全部移除，路由依赖插件注入的 `tenant_id`；
   INSERT 仍由 entity 列值覆盖。此前 2026-08-27 的"WHERE 均含 data_source_id"约束已被本条
