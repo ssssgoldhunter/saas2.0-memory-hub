@@ -58,7 +58,7 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 
 ### 1.2 最终可执行 SQL
 
-目标库字符集为 `utf8mb4 / utf8mb4_general_ci` 时的完整可执行建表 SQL 见
+目标库字符集为 `utf8mb4 / utf8mb4_unicode_ci` 时的完整可执行建表 SQL 见
 [09B-channel-transaction-ddl-utf8mb4.sql](09B-channel-transaction-ddl-utf8mb4.sql.md)。
 本字段字典的每个字段类型已与 09B 完全一致；09B 额外包含 `ENGINE/CHARSET/COLLATE/ROW_FORMAT`
 和索引长度兼容性核查。
@@ -788,11 +788,11 @@ SQL 时必须检查目标数据库版本对 `DATETIME`、`CURRENT_TIMESTAMP`、`
 
 ## 4. 最终 SQL 已生成
 
-目标库字符集 `utf8mb4 / utf8mb4_general_ci` 的完整可执行建表 SQL 已在
+目标库字符集 `utf8mb4 / utf8mb4_unicode_ci` 的完整可执行建表 SQL 已在
 [09B-channel-transaction-ddl-utf8mb4.sql](09B-channel-transaction-ddl-utf8mb4.sql.md) 中生成，
 包含 10 张表完整 `CREATE TABLE`、`ENGINE/CHARSET/COLLATE/ROW_FORMAT` 和索引长度兼容性核查。
 
-后续无需再让 AI 重新生成 SQL；若目标库字符集与 09B 不同（如 `utf8mb4_unicode_ci` 或其他），
+后续无需再让 AI 重新生成 SQL；若目标库要求的字符集或排序规则与 09B 当前目标（`utf8mb4 / utf8mb4_unicode_ci`）不同，
 再按以下约束派生新版本：
 
 ```text

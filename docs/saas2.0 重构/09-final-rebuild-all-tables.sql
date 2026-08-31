@@ -26,7 +26,7 @@ DROP TABLE IF EXISTS `front_citic_platform_receive_transaction`;
 
 -- =============================================================================
 -- Front 分银行、分交易业务渠道流水建表 SQL
--- 字符集：utf8mb4 / 排序规则：utf8mb4_general_ci / 引擎：InnoDB / 行格式：DYNAMIC
+-- 字符集：utf8mb4 / 排序规则：utf8mb4_unicode_ci / 引擎：InnoDB / 行格式：DYNAMIC
 -- 共 10 张表：中信 6 张 + 平安 4 张
 -- 字段类型规范见 09B 文档 §1
 -- =============================================================================
@@ -92,7 +92,7 @@ CREATE TABLE `front_citic_transfer_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信转账渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信转账渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -160,7 +160,7 @@ CREATE TABLE `front_pingan_transfer_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安转账及转账授权渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安转账及转账授权渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -224,7 +224,7 @@ CREATE TABLE `front_citic_consume_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信消费渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信消费渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -290,7 +290,7 @@ CREATE TABLE `front_pingan_consume_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安消费渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安消费渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -364,7 +364,7 @@ CREATE TABLE `front_citic_refund_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信真退款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信真退款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -438,7 +438,7 @@ CREATE TABLE `front_pingan_refund_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安退款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安退款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -501,7 +501,7 @@ CREATE TABLE `front_citic_withdraw_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信提现渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信提现渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -565,7 +565,7 @@ CREATE TABLE `front_pingan_withdraw_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安提现渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 平安提现渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -626,7 +626,7 @@ CREATE TABLE `front_citic_platform_pay_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信平台付款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信平台付款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 -- -----------------------------------------------------------------------------
@@ -687,7 +687,7 @@ CREATE TABLE `front_citic_platform_receive_transaction` (
   KEY `idx_front_bank_user_ssn` (`bank_user_ssn`),
   KEY `idx_front_status_time` (`tenant_id`,`front_status`,`update_time`),
   KEY `idx_front_store_time` (`tenant_id`,`store_id`,`create_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信平台收款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='Front 中信平台收款渠道交易流水' PARTITION BY LINEAR KEY (`tenant_id`, `store_id`) PARTITIONS 30;
 
 
 SELECT TABLE_NAME, TABLE_COLLATION, ENGINE, TABLE_COMMENT

@@ -51,7 +51,7 @@
 → 08-withdraw-refund-platform-transfer字段契约（实现提现、退款或中信平台收付款时）
 → 09-channel-transaction-ddl（实现任何交易落库、重复交易检查、状态查询或退款关联时）
 → 09A-channel-transaction-table-field-catalog（字段字典，生成或审查建表 SQL 时）
-→ 09B-channel-transaction-ddl-utf8mb4.sql（目标库 utf8mb4/utf8mb4_general_ci 的可执行最终 SQL，手动建表用）
+→ 09B-channel-transaction-ddl-utf8mb4.sql（目标库 utf8mb4/utf8mb4_unicode_ci 的可执行最终 SQL，手动建表用）
 → 09-final-rebuild-all-tables.sql（全量重建：DROP + CREATE + 分区，目标环境一次性建表用）
 → 10-transaction-query-field-contract（实现交易状态或交易明细查询时）
 → 11-catering-common-framework-catalog（需要确认公共框架已有能力时）
@@ -120,7 +120,7 @@ codegraph status               # 索引状态
 13. [09A-channel-transaction-table-field-catalog](09A-channel-transaction-table-field-catalog.md)：生成、迁移或
     审查数据库 SQL 时必须阅读，其中 10 张表的全部字段、默认值、更新规则和索引均已逐表展开。
 14. [09B-channel-transaction-ddl-utf8mb4.sql](09B-channel-transaction-ddl-utf8mb4.sql.md)：目标库字符集为
-    `utf8mb4 / utf8mb4_general_ci` 时的**可执行最终建表 SQL**，10 张表完整 CREATE TABLE，手动建表直接用这份。
+    `utf8mb4 / utf8mb4_unicode_ci` 时的**可执行最终建表 SQL**，10 张表完整 CREATE TABLE，手动建表直接用这份。
 15. [09-final-rebuild-all-tables.sql](09-final-rebuild-all-tables.sql)：目标环境**全量重建脚本**，
     DROP + CREATE + 分区，10 张表一次性重建直接用这份。
 16. [09C-citic-refund-legacy-columns-nullable.sql](09C-citic-refund-legacy-columns-nullable.sql)：已有库仅放宽
