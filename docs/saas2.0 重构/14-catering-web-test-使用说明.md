@@ -263,7 +263,7 @@ catering-front (实际业务服务)
 
 > 最小调用方形态（2026-08-20 用户要求）：web-test 调 front 的 header 只封装
 > `tenantId + clientId` 两字段；请求体 baseData 只带 `tenantId/storeId` 等业务字段，
-> 不填 platformCode/dataSourceId——由 front 域 ExecuteNode 第④步从
+> 不填 platformCode/dataSourceId——Transaction/Query 由 `frontTenantPack` 从
 > `tenant_base_config` 缺省回填（见 19 号手册）。specialData 组装仍按开发手册两步
 > 调用：先调 `/assemble/special-data`（本地 `FrontSpecialDataAssembler`，组装输入的
 > platformCode/dataSourceId 来自本地租户配置），确认后再发起交易/查询。
@@ -303,7 +303,7 @@ event JSON（工具类 `com.chinaums.web.test.logging.WebTestLogJsonUtils`），
 - `test_context_prepared`：RequestContext 装配完成（tenantId/clientId/platformCode）；
   dataSourceId 不进 RequestContext/header（2026-08-20 起），只保留在请求体 baseData——
   2026-08-29 起 front 分库路由改按 `tenant_id`（多租户插件注入），body 中的 dataSourceId
-  仅作为 insert 列值写渠道表；header/body 分离仍用于避免配置值覆盖业务请求体值；
+  仅作为持久化/审计/实例标识；最终以租户配置为权威，请求显式值冲突时 Front 拒绝执行；
 - `test_request_sending`：Feign 调用发送前，payload=完整请求体；
 - `test_feign_headers`（2026-08-20 增）：Feign 拦截器链末尾记录实际发送的完整 header
   （tenantId/clientId/Same-Token/Authorization 等），payload=header 名到值的映射，

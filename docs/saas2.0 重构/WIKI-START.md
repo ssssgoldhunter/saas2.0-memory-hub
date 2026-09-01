@@ -13,12 +13,12 @@
 
 阅读完成后，先向我说明：
 1. 当前代码已经提供哪些框架能力（含 FrontAccountController/FrontAccountApi 的账户管理入口）；
-2. FRONT-ACC-001 账户维护任务的当前进度与未完成项；
+2. 当前分支相对本文代码基线的差异与任务范围；
 3. 你准备修改哪些文件；
 4. 哪些字段进入 baseData、specialData、accountConfig、accountSpecialData；
 5. 本次是否收到编写测试或执行编译的明确授权。
 
-确认上述信息后，按 FRONT-ACC-001 的任务范围继续实施当前活动任务。
+确认上述信息后，只按用户本次明确任务范围实施。
 28、29 号三域注册方案【已完成实施】，是设计基线与历史实施记录——禁止重新执行 29 号计划
 或重做已完成的三域迁移。"只做一个能力"的旧限制已取消；实施范围以最新活动任务和全量迁移要求为准。
 "既有 API 零变化"只约束迁移既有能力类任务；新增业务能力任务（如账户维护）允许按契约新增 API。
@@ -28,7 +28,7 @@
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`（第一阶段扁平化）；静态核验基线：`master@d164c7e7`（2026-08-30 复核，含 tenant_id 分片切换；`limeng_front@4829d1d7` 落后 master 仅 1 个文档提交） | 当前开发目标分支为 limeng_front |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@dbd9fad5`（租户准备/专项 Pack/分库安全实现） | 修改前必须以当前分支代码重新核验 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -40,6 +40,7 @@
 
 ```text
 用户已确认并写入本 Wiki/28/05/字段契约的决策
+→ 31-catering-front租户准备与分库安全设计（租户准备/分库相关任务）
 → 28-cateringfront结构简化改造方案（实施结构简化时）
 → 29-cateringfront全量扁平化迁移-plan（已实施完成，历史基线记录）
 → 05-front代码开发约束
@@ -98,6 +99,8 @@ codegraph status               # 索引状态
 3. [21-catering-front交易查询接口对接手册](21-catering-front交易查询接口对接手册.md)：上游对接
    3 个 Query 域接口和 2 个 Account 域接口时使用，包含请求/响应原始字段、分页明细、银行差异和调试案例。
 4. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：上游接入中信不明来款专项能力时使用，包含 2033 列表、2025 退款、2023 重新匹配/实时清分、2087 状态查询的完整强类型契约。
+5. [31-catering-front租户准备与分库安全设计](31-catering-front租户准备与分库安全设计.md)：
+   交易/查询公共 Pack、中信专项 Pack、Header tenantId 权威规则及 tenant_id 分库安全边界。
 
 ### 3.2 设计契约、实施记录与历史资料
 
@@ -153,13 +156,15 @@ codegraph status               # 索引状态
     执行计划（T1-T18、波及文件总表、风险与回退）。
 30. [27-中信不明来款业务接入手册](27-中信不明来款业务接入手册.md)：中信专项能力的最终对接说明；
     本能力不进入通用 `FrontCapability`，请求/返回均不使用 `specialData`。
-31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：最终三域单节点目标设计。
-    【已实施】作为设计基线保留；不得重新执行或重做三域迁移。
+31. [28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)：历史三域扁平目标设计。
+    【已实施】作为历史设计基线保留；最终链结构按 19、31 号文档，不得重新执行三域迁移。
 32. [29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)：
     【已实施】历史基线记录（含两轮验收史与分片键全覆盖修复记录）；不得重新打开为待实施。
     当前活动任务见 [FRONT-ACC-001 账户维护](12-front-implementation-issues/FRONT-ACC-001-account-maintenance-in-progress.md)。
 33. [30-cateringfront扁平化迁移交付报告](30-cateringfront扁平化迁移交付报告.md)：三域裁决之前的
     `frontBankExecute + 单一 Registry` 历史交付快照；不得作为三域最终验收证据。
+34. [31-catering-front租户准备与分库安全设计](31-catering-front租户准备与分库安全设计.md)：
+    当前租户准备、专项 Pack、Header tenantId 权威规则与分库安全的最终实现设计。
 
 实现中信或平安能力时，应同时阅读 `02` 和 `03` 的公共字段部分，再重点阅读目标银行文档，避免把某家
 银行字段错误提升为跨银行通用字段。
@@ -170,10 +175,11 @@ codegraph status               # 索引状态
 
 **数量口径（历史基线与当前源码分列）**：
 - 28/29 号历史基线：22 个银行 Capability 实现类、13 条链（交易 8 / 查询 3 / 账户 2）；
-- 当前源码（`master@d164c7e7`，2026-08-30 静态复核）：`FrontCapability` 枚举 21 项，
+- 当前源码（`limeng_front@dbd9fad5`）：`FrontCapability` 枚举 21 项，
   **银行 Capability 实现类 29 个、LiteFlow 链 21 条**——实现类分布为交易 12 / 查询 6 / 账户 11
   （账户 11 = 中信 9 + 平安挡板 2）；
-  链分布 8 交易 / 3 查询 / 10 账户（账户 10 = 既有状态/余额查询 2 + 账户维护 8）。
+  链分布 8 交易 / 3 查询 / 10 账户（交易/查询先执行 `frontTenantPack`，账户保持单节点；
+  账户 10 = 既有状态/余额查询 2 + 账户维护 8）。
   枚举中的 `RECHARGE` 当前没有 Front API 或银行 Capability 实现，不能按枚举项数推导 API 数。
 
 - `catering-api-front`：API、请求响应对象、常量和枚举；
@@ -235,17 +241,17 @@ codegraph status               # 索引状态
   MyBatis-Plus 多租户插件注入；`TenantDataSourceShardingAlgorithm` 用 `tenant_id` 查进程内
   `TenantDataSourceMappingCache` 得到 `ds_x`（2026-08-29 起，提交 `c5cf5ae4`；映射权威源
   `sys_tenant.resourceConfig`，TTL 默认 15 分钟 + single-flight 懒加载 + 启动预热）；
-  `data_source_id` 不参与路由，仅作为 insert 列值写入渠道表（记录数据所在库实例），
-  仍由 baseData 传入、域 ExecuteNode 第④步从 `tenant_base_config` 回填；
+  `data_source_id` 不参与路由，仅作为持久化/审计/实例标识；Transaction/Query 由
+  `FrontTenantPackNode` 按 `tenant_base_config` 权威值回填或核对，中信专项由
+  `FrontSpecialTenantPack` 在配置值非空时执行回填/冲突核对；
 - 查询/更新 SQL 不要求显式分片键（2026-08-29 FR-6，提交 `7ae51dd6`：Capability wrapper 的
   `data_source_id` 条件已移除）；INSERT 由 entity 列值覆盖。
   `tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失/`resourceConfig` 非法、或目标
   `ds_x` 不在可用数据源列表时必须立即失败，禁止默认进入 `ds_0` 或第一个数据源；
 - 不使用 Hint、`HintManager`、`FrontDataSourceHelper` 或 dynamic-datasource 手动切库；
-- 4 个必要参数（tenantId/clientId/platformCode/dataSourceId）自动注入；每个请求由
-  域 ExecuteNode 第③步用 tenantId 从 `tenant_base_config` 一次查询取出
-  clientId/platformCode/dataSourceId/supportBankConfig，缺省回填前三者（显式传入优先，
-  调用方最少只需传 tenantId），银行配置加载复用 supportBankConfig 免二次查询：
+- common-feign 传递 tenantId/clientId/platformCode/dataSourceId，但 Front 业务是否可执行由自身校验：
+  Transaction/Query 要求 Header/Slot/request tenantId 存在且一致，dataSourceId 以租户配置为权威；
+  银行配置加载复用 supportBankConfig 免二次查询：
   `FeignRequestInterceptor`（发送端）→ `RequestContextInterceptor`（接收端，存 ThreadLocal）→
   `BaseDataRequestBodyAdvice`（反序列化后填充到 `FrontRequest<T>.baseData`），Application Service 零改动；
 - 交易发送前执行重复交易校验：在当前银行业务表内按
@@ -277,19 +283,19 @@ report 跨实例重复交易补查已按用户裁决暂缓，
 ## 5. 固定的数据流
 
 ```text
-交易 API → FrontTransApplicationService → THEN(frontTransExecute)
-       → FrontTransExecuteNode → BankTransCapabilityRegistry
+交易 API → FrontTransApplicationService → THEN(frontTenantPack, frontTransExecute)
+       → FrontTenantPackNode → FrontTransExecuteNode → BankTransCapabilityRegistry
        → BankTransCapability.execute(FrontTransSlot)
 
-交易查询 API → FrontQueryApplicationService → THEN(frontQueryExecute)
-           → FrontQueryExecuteNode → BankQueryCapabilityRegistry
+交易查询 API → FrontQueryApplicationService → THEN(frontTenantPack, frontQueryExecute)
+           → FrontTenantPackNode → FrontQueryExecuteNode → BankQueryCapabilityRegistry
            → BankQueryCapability.execute(FrontQuerySlot)
 
 账户状态/余额 API → FrontAccountApplicationService → THEN(frontAccountExecute)
                → FrontAccountExecuteNode → BankAccountCapabilityRegistry
                → BankAccountCapability.execute(FrontAccountSlot)
 
-三个域 ExecuteNode → TenantBankConfigLoader → RemoteConfigServiceClient
+Transaction/Query 的 FrontTenantPackNode、Account ExecuteNode → TenantBankConfigLoader → RemoteConfigServiceClient
 三个域 Capability → BankWalletGateway.post → BankWalletSender
 ```
 
@@ -384,11 +390,10 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
    `R.ok(null)` 或直接返回 `null` 的静态路径，属于待修代码差异，不能写成已完成；
 8. 测试/编译/commit/push 均需用户当次明确授权；完成后提交改动清单与验证证据给用户 review。
 
-### 7.1 当前源码静态差异（2026-08-29）
+### 7.1 历史源码静态差异（2026-08-29，非当前结论）
 
-以下是按 `master@d164c7e7` 于 2026-08-30 复核确认仍存在的事实，不自动并入 FRONT-ACC-001
-的开发范围；
-后续 AI 必须先由用户确认任务边界，再修改代码：
+以下表格仅保留旧基线审查历史。`limeng_front@dbd9fad5` 已包含后续实现，禁止直接把本表当成当前缺陷清单；
+后续 AI 必须重新扫描当前代码并由用户确认任务边界后再修改代码：
 
 | 差异 | 当前源码事实 | 目标口径 |
 |---|---|---|

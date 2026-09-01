@@ -6,6 +6,7 @@
 > 结构裁决：[28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)
 > 实施计划：[29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
 > 银行能力落地：本文 §16（中信）、§17（平安）已并入原 02/03 接口能力汇总，飞书主文档自洽完整。
+> 最终实现校准：2026-08-31 的租户准备、专项 Pack 与分库安全结构以 31 号设计为准。
 
 本文描述 28/29 号迁移时的目标结构和 22 个实现类 / 13 条链历史基线；当前账户维护增量后的
 源码数量、状态和差异以 WIKI-START §4、§7.1 及 19 号手册为准。旧 `FrontFlowContext → BankRequestContext → Handle`、
@@ -31,14 +32,16 @@ Front 面向内部业务系统提供统一的多银行交易、交易查询和�
 ```text
 交易 API
 → FrontTransApplicationService
-→ THEN(frontTransExecute)
+→ THEN(frontTenantPack, frontTransExecute)
+→ FrontTenantPackNode
 → FrontTransExecuteNode
 → BankTransCapabilityRegistry
 → BankTransCapability.execute(FrontTransSlot)
 
 交易查询 API
 → FrontQueryApplicationService
-→ THEN(frontQueryExecute)
+→ THEN(frontTenantPack, frontQueryExecute)
+→ FrontTenantPackNode
 → FrontQueryExecuteNode
 → BankQueryCapabilityRegistry
 → BankQueryCapability.execute(FrontQuerySlot)
@@ -204,16 +207,16 @@ interface BankAccountCapability {
 
 ## 6. LiteFlow 规则
 
-13 个原 chain id 保持不变：
+当前 21 个 chain id 保持不变：
 
 | 域 | 数量 | 节点 |
 |---|---:|---|
-| Transaction | 8 | `THEN(frontTransExecute)` |
-| Query | 3 | `THEN(frontQueryExecute)` |
-| Account | 2 | `THEN(frontAccountExecute)` |
+| Transaction | 8 | `THEN(frontTenantPack, frontTransExecute)` |
+| Query | 3 | `THEN(frontTenantPack, frontQueryExecute)` |
+| Account | 10 | `THEN(frontAccountExecute)` |
 
-LiteFlow v2.16.X 支持单节点 `THEN(node)`。公共校验、配置加载、路由和异常收口直接在所属域 ExecuteNode
-顺序执行，不再拆成 Validate/Resolve/Route/Prepare/Dispatch/Normalize 节点。
+Transaction/Query 使用一个统一 `frontTenantPack` 完成租户准备，再进入所属域 ExecuteNode；Account 保持
+单节点链。Pack 不拆银行业务步骤，Capability 仍保持扁平。
 
 ## 7. 请求与响应边界
 
@@ -298,13 +301,14 @@ Loader 直接查询并扁平组装中信/平安配置。禁止恢复
 CiticUnidentifiedRemittanceApi
 → Controller
 → CiticUnidentifiedRemittanceApplicationService
-→ TenantBankConfigLoader
+→ FrontSpecialTenantPack
+→ FrontSpecialProcessContext
 → CiticUnidentifiedRemittanceChannel
 → BankWalletGateway
 ```
 
 它不注册为通用 `FrontCapability`，不进入三域 Registry/LiteFlow，不使用 `specialData`；仅复用租户上下文、
-Loader、Gateway 和中信 common 基础设施。协议以 27 号接入手册和专项文档为准。
+专项 Pack、Gateway 和中信 common 基础设施。协议以 27 号接入手册和专项文档为准。
 
 ## 13. 新银行接入
 
@@ -315,7 +319,7 @@ Loader、Gateway 和中信 common 基础设施。协议以 27 号接入手册和
 3. 一个最终 BankWalletSender；
 4. 该银行真实支持的三域 Capability 实现。
 
-不修改 API、Controller、三个 Application Service、13 条 chain id、三个 Registry、三个 ExecuteNode 或其他银行代码。
+不修改 API、Controller、三个 Application Service、21 条 chain id、三个 Registry、三个 ExecuteNode 或其他银行代码。
 只有新能力的数据和状态形态无法由现有三种 Slot 准确承载，并经用户明确批准后，才允许增加第四执行域。
 
 ## 14. 结构验收
@@ -324,7 +328,7 @@ Loader、Gateway 和中信 common 基础设施。协议以 27 号接入手册和
 - Slot 为 Base + Trans/Query/Account 两层。
 - 强类型 Capability 接口、Registry、ExecuteNode 各 3 个。
 - 22 个通用能力归域为 12/6/4。
-- 13 条单节点链归域为 8/3/2。
+- 21 条链归域为 8/3/10；交易/查询为租户 Pack + 域 ExecuteNode，账户为单节点。
 - 账户状态/余额只注册 Account 域。
 - 业务 Context、Router、Dispatch、Handle 父类、统一 Registry、Provider/Assembler 链为 0。
 - 钱包发送出口只有 Gateway/Sender；完整明文 body 只在 Sender 出现一次。

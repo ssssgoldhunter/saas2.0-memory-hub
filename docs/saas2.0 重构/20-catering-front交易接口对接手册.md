@@ -1,7 +1,7 @@
 # Catering Front 交易接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-25
+> 核验日期：2026-08-31
 > 适用对象：调用 `catering-front` 的业务上游开发人员
 > 覆盖范围：当前 `FrontTransApi` 已定义的 8 个交易接口
 > 不覆盖：银行 Capability 开发、账户查询、交易查询；这些内容分别见 19、21 号手册
@@ -19,7 +19,7 @@
 - 只有 `R.code == 200 && data.frontRespCode == "200"` 才是 Front 业务成功。
 - `UNKNOWN`、`ACCEPTED`、`PROCESSING` 不是最终成功，必须调用交易状态查询确认。
 - Front 内部三域改造不改变本手册任何 API：8 个方法仍由 Transaction 域处理，调用方无需感知
-  `FrontTransSlot/frontTransExecute/BankTransCapabilityRegistry`。
+  `FrontTransSlot/frontTenantPack/frontTransExecute/BankTransCapabilityRegistry`。
 
 ### 1.1 当前银行支持矩阵
 
@@ -62,18 +62,20 @@ private final FrontTransApi frontTransApi;
 
 | Header / `BaseRequest` 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `tenantId` | String | 是 | 租户标识 |
+| `tenantId` | String | 是 | 租户标识；Header 是强制权威值，缺失时在进入交易能力前失败 |
 | `clientId` | String | 否 | 调用客户端标识 缺失时 Front 从 `tenant_base_config` 回填 |
 | `platformCode` | String | 否 | `zxegj` 中信；`pajzb` 平安。缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
-| `dataSourceId` | String | 否 | 分库编号，如 `2`；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填。显式传入优先于配置值 |
+| `dataSourceId` | String | 否 | 数据源实例标识；以 `tenant_base_config` 为权威，缺失时回填，显式值不一致时失败；不参与物理分库路由 |
 
-正常 Feign Web 调用由 `catering-common-feign` 自动转发并注入到 `baseData`。异步线程或定时任务没有
-原请求上下文时，调用方必须显式建立正确的 RequestContext；不能只填 JSON 而遗漏请求头链路。
+正常 Feign Web 调用由 `catering-common-feign` 自动转发并注入到 `baseData`。该拦截器只负责传输，
+`frontTenantPack` 会再次强制校验 Header、Slot、请求 `tenantId` 一致性。异步线程或定时任务没有
+原请求上下文时，调用方必须显式建立正确的 RequestContext；请求体中的 tenantId 不能替代 Header。
 
 ### 2.3 实际对接顺序
 
 1. 确认租户已配置目标银行，并能提供正确 `platformCode`。
-2. 最少准备 `tenantId/storeId`；`clientId/platformCode/dataSourceId` 可省略，Front 域 ExecuteNode 第④步会从租户基础配置回填（回填后仍缺失则请求失败）。
+2. 最少准备 Header `tenantId` 和请求 `tenantId/storeId`，且两个 tenantId 必须一致；`clientId/platformCode/dataSourceId`
+   可省略，由 `frontTenantPack` 从租户基础配置准备，其中 `dataSourceId` 显式值与配置冲突时请求失败。
 3. 准备业务唯一号、主子订单号、金额和日期时间。
 4. 从账户/企业/绑卡等上游 check 结果取得标准账户要素。
 5. 每笔请求新建 `FrontSpecialDataAssembler` 并生成 `specialData`。
@@ -100,7 +102,7 @@ private final FrontTransApi frontTransApi;
 | `platformCode` | String | 是 | Header 自动注入 | 银行平台编码：`zxegj` / `pajzb` |
 | `tenantId` | String | 是 | Header 自动注入 | 租户标识 |
 | `clientId` | String | 是 | Header 自动注入 | 客户端标识 |
-| `dataSourceId` | String | 是 | Header 自动注入 | Front 渠道流水分库键 |
+| `dataSourceId` | String | 是 | `frontTenantPack` 按租户配置回填/核对 | 渠道流水记录字段，不是分库键；物理路由使用 `tenant_id` |
 | `storeId` | String | 是 | 业务请求 | 发起本次请求的业务门店 ID，不等同于收付款门店 |
 
 ### 3.3 `BaseTransactionBusinessData` 全字段
@@ -626,8 +628,8 @@ if (result.getFrontStatus() != FrontTransactionStatus.SUCCESS) {
 }
 ```
 
-`tenantId/clientId/platformCode/dataSourceId` 由 Feign 上下文注入；若调用场景没有拦截器上下文，必须先
-建立上下文，不能在示例中硬编码真实租户或敏感账户。
+Feign 上下文负责传递公共字段；Header tenantId 必须存在且与请求一致，dataSourceId 由
+`frontTenantPack` 按租户配置回填/核对。异步场景必须先建立正确上下文，不能只填请求体。
 
 ---
 

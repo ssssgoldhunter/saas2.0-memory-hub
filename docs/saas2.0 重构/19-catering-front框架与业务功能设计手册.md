@@ -1,10 +1,9 @@
 # Catering Front 框架与业务功能设计手册
 
-> 状态：current-design / three-domain-implemented（结构已落地；账户维护 FRONT-ACC-001 进行中，
-> 当前仍有静态契约差异，不能表述为整体终验通过）
-> 更新日期：2026-08-29
+> 状态：current-design / implemented
+> 更新日期：2026-08-31
 > 历史迁移起点：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
-> 当前源码基线：`limeng_front@cead0222`（2026-08-29 静态核验；未执行编译/测试）
+> 当前源码基线：`limeng_front@dbd9fad5`
 > 结构权威：01、05、28、29 号文档
 
 本文供维护 `catering-front`、增加银行或实现能力时使用。它只描述现行三域扁平框架和已确认业务；
@@ -31,14 +30,16 @@
 ```text
 Transaction API
 → FrontTransApplicationService
-→ THEN(frontTransExecute)
+→ THEN(frontTenantPack, frontTransExecute)
+→ FrontTenantPackNode
 → FrontTransExecuteNode
 → BankTransCapabilityRegistry
 → BankTransCapability.execute(FrontTransSlot)
 
 Query API
 → FrontQueryApplicationService
-→ THEN(frontQueryExecute)
+→ THEN(frontTenantPack, frontQueryExecute)
+→ FrontTenantPackNode
 → FrontQueryExecuteNode
 → BankQueryCapabilityRegistry
 → BankQueryCapability.execute(FrontQuerySlot)
@@ -53,7 +54,8 @@ Account API
 Capability → BankWalletGateway.post → BankWalletSender
 ```
 
-API 入口和 chain id 不变。LiteFlow 每条链只包含一个域 ExecuteNode；业务逻辑全部在银行 Capability 内扁平展开。
+API 入口和 chain id 不变。交易 8 条和交易查询 3 条链先执行统一租户准备组件，再进入本域 ExecuteNode；
+账户 10 条链仍只包含 `frontAccountExecute`。业务逻辑继续在银行 Capability 内扁平展开。
 
 ## 3. Slot、接口和 Registry
 
@@ -72,7 +74,9 @@ FrontBaseSlot
 - Registry 按本域 `(BankCode, FrontCapability)` 注册；重复 Key 启动失败。
 - 禁止统一宽接口、`FrontBaseSlot + instanceof`、统一 Registry 或通用 ExecuteNode。
 
-ExecuteNode 使用 LiteFlow v2.16.X 无参 `getFirstContextBean()` 取 Slot并检查类型，顺序执行公共校验、配置加载、域路由和 Capability 调用。
+`FrontTenantPackNode` 对 Transaction/Query 执行 Header、Slot、请求 `tenantId` 一致性校验，加载
+`TenantBaseInfo`，并按租户配置权威值回填或核对 `dataSourceId`。ExecuteNode 取得 Slot 后只完成本域路由和
+Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完整边界见 31 号设计。
 
 ## 4. 业务能力矩阵
 
@@ -125,7 +129,7 @@ ExecuteNode 使用 LiteFlow v2.16.X 无参 `getFirstContextBean()` 取 Slot并�
 - 不注册 `FrontCapability`；
 - 不进入三域 Registry/LiteFlow；
 - 请求/返回使用全字段强类型 DTO，不使用 `specialData`；
-- 只复用租户上下文、`TenantBankConfigLoader`、Gateway 和中信 common。
+- 通过 `FrontSpecialTenantPack` 统一完成专项租户准备并取得 `FrontSpecialProcessContext`，再复用 Gateway 和中信 common。
 
 ## 5. 对外请求和返回
 
@@ -159,9 +163,15 @@ FrontRequest<T>
 ## 6. 租户与银行配置
 
 ```text
-域 ExecuteNode
+Transaction/Query：FrontTenantPackNode
 → TenantBankConfigLoader
 → RemoteConfigServiceClient
+
+Account：FrontAccountExecuteNode
+→ TenantBankConfigLoader
+
+中信专项：FrontSpecialTenantPack
+→ TenantBankConfigLoader
 ```
 
 Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账户配置，并直接扁平组装
@@ -226,7 +236,7 @@ Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账�
 日志采用 B 方案：
 
 1. API/Application Service：入口、完成、异常收口。
-2. ExecuteNode：租户加载、BankCode 和本域路由结果。
+2. `FrontTenantPackNode`/ExecuteNode：租户准备、BankCode 和本域路由结果。
 3. Capability：业务开始、字段校验、流水状态、银行判定和异常。
 4. Sender：发送前唯一记录一次 `wallet_request_sending`；响应后唯一记录一次
    `wallet_response_received`；通信失败唯一记录一次 `wallet_request_failed`。
@@ -272,7 +282,8 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 - 三个强类型接口、三个 Registry、三个 ExecuteNode。
 - 当前 `FrontCapability` 枚举 21 项；其中 `RECHARGE` 暂无 Front API/银行实现。银行 Capability
   实现类 29 个，按 12/6/11 归域。
-- 当前 21 条单节点链按 8/3/10 归域。
+- 当前 21 条链按 8/3/10 归域：交易和交易查询是 `frontTenantPack + 域 ExecuteNode` 两节点串行链，
+  账户是 `frontAccountExecute` 单节点链。
 - 标准 API 20 个（8 交易 / 5 查询 / 7 账户维护），中信不明来款专项 API 3 个。
 - 账户状态/余额只在 Account 域。
 - Capability 主流程可在一个类中顺序读完。
@@ -282,10 +293,8 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 - 中信不明来款继续独立。
 - 文档、能力矩阵和实际代码一致。
 
-当前源码尚未满足全部 DoD：`chainFrontAccountUnwhiteName` 是无调用方链；Query 单条/分页和
-Account 查询存在 `null` 结果未收口路径；平安 Sender 缺结构化失败事件；web-test Header 日志
-仍包含 Authorization；`front-flow.xml` 头注释仍写历史 13 条链。上述是静态核验结论，
-本轮未获编译/测试授权，不得表述为编译、测试或整体终验通过。
+租户准备与分库安全的最终实现和回归测试锚点见 31 号设计。其他历史审查项必须按当前代码重新核验，
+不得继续引用旧基线的未闭环结论。
 
 
 ## 分片路由口径（2026-08-29 起，tenant_id 分片）

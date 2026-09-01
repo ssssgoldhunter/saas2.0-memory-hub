@@ -6,6 +6,8 @@
 > 已提交扁平代码上完成三域注册增量。
 > 30 号报告及 `99e696f4` 只用于追溯三域裁决前历史，不是本轮实现基线或最终验收证据。
 > 核心目标：API 不动，内部结构扁平，代码像原 `catering-consume` Handler 和旧 Front Handle 一样能按业务顺序直接阅读。
+> 最终实现校准（2026-08-31）：三域扁平原则不变；Transaction/Query 在域 ExecuteNode 前新增唯一公共
+> `frontTenantPack`，Account 保持单节点，中信专项使用 `FrontSpecialTenantPack`。当前结构见 19、31 号文档。
 
 ## 1. 用户裁决
 

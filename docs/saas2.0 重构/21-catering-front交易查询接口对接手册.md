@@ -1,7 +1,7 @@
 # Catering Front 交易查询接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-25
+> 核验日期：2026-08-31
 > 适用对象：调用 `catering-front` 查询能力的业务上游开发人员
 > 覆盖范围：当前 `FrontQueryApi` 的 5 个接口（3 个 Query 域 + 2 个 Account 域）及完整请求、返回字段
 > 不覆盖：银行 Capability 开发和交易发起；分别见 19、20 号手册
@@ -20,7 +20,8 @@
 - 明细金额统一返回人民币分；查询条件中的日期统一 `yyyyMMdd`。
 - `frontStatus` 在交易状态查询中是内部三态 `S/P/F/null`，与交易接口的枚举不是同一类型。
 - API 名称和签名不变，但内部执行域已明确：交易状态/两类明细走 Query；账户状态/余额走 Account。
-  调用方无需感知 `FrontQuerySlot` 或 `FrontAccountSlot`。
+  其中 3 个 Query 域接口依次执行 `frontTenantPack/frontQueryExecute`，2 个 Account 域接口仍执行
+  `frontAccountExecute`；调用方无需感知 `FrontQuerySlot` 或 `FrontAccountSlot`。
 
 ### 1.1 支持矩阵
 
@@ -56,17 +57,17 @@ private final FrontQueryApi frontQueryApi;
 
 | 原始字段 | 类型 | 必填 | 注释 |
 |---|---|---|---|
-| `tenantId` | String | 是 | 租户标识，由 Header/Feign 上下文注入 |
+| `tenantId` | String | 是 | 租户标识；Query 域要求 Header 权威值存在且与请求一致 |
 | `clientId` | String | 否 | 客户端标识，由 Header/Feign 上下文注入 缺失时 Front 从 `tenant_base_config` 回填 |
 | `capability` | String | 是 | **被查交易的原交易能力**：TRANSFER / CONSUME / REFUND / WITHDRAW / RECHARGE（2026-08-26 裁决；Front 内部路由能力不出现在 baseData） |
 | `platformCode` | String | 否 | `zxegj` / `pajzb`，由 Header/Feign 上下文注入；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
-| `dataSourceId` | String | 否 | 数据源编号；涉及平安本地渠道表回查时决定分库。缺失时从 `tenant_base_config` 回填，显式传入优先 |
+| `dataSourceId` | String | 否 | 数据源实例标识；Query 域以 `tenant_base_config` 为权威，缺失时回填、不一致时失败；物理分库只按 `tenant_id` |
 | `storeId` | String | 是 | 发起本次查询的业务门店 ID |
 
 ### 2.3 查询对接步骤
 
 1. 确认目标银行和该查询能力的支持状态。
-2. 建立四个请求头上下文，并填写 `storeId`。
+2. 建立请求头上下文并确保 Header/request `tenantId` 一致，再填写 `storeId`；请求体 tenantId 不能替代 Header。
 3. 根据接口准备强类型 `baseData`。
 4. 使用 `FrontSpecialDataAssembler` 或本文原始 key 表生成 `specialData`。
 5. 调用对应 Feign 方法。
@@ -783,7 +784,7 @@ if (page.getTotalPage() != null && pageNo < page.getTotalPage()) {
 ## 14. 联调检查表
 
 - [ ] 使用 `FrontQueryApi` 当前 DTO，没有使用旧 `TransactionDetailItem/FrontPageResult`。
-- [ ] 四个 Header 上下文和 `storeId` 完整。
+- [ ] Query 域 Header/request tenantId 完整且一致，`storeId` 完整；Account 域按其现有入口契约准备上下文。
 - [ ] 单条查询按 `R<T>` 解析，明细直接按 `TableDataInfo<T>` 解析。
 - [ ] 中信账户状态已传 `specialData.acctNo`。
 - [ ] 平安账户状态/余额没有被当作可用能力。

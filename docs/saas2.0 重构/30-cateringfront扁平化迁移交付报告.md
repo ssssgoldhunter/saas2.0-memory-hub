@@ -1,5 +1,8 @@
 # Catering Front 扁平化迁移交付报告（30 号）
 
+> 最终实现校准（2026-08-31）：本文仍是历史交付快照。当前三域、租户准备、中信专项 Pack 与分库安全
+> 结构以 19、31 号文档及 `limeng_front@dbd9fad5` 为准。
+
 > 补充记录（2026-08-26）：① Slot 路由能力字段更名为 `routeCapability`（与对外
 > baseData.capability=被查交易原交易能力区分）；② 中信状态查询 bug 修复
 > （switch 数据源 slot→data.getCapability()，迁移缺陷）；③ baseData.capability

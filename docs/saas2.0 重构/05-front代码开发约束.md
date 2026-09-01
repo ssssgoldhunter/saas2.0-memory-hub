@@ -14,6 +14,12 @@
 > 适用模块：`catering-api-front`、`catering-front` 及其使用的 `catering-common-core`
 > 约束级别：后续 Front 代码开发必须遵守
 
+> **2026-08-31 最终实现校准（优先于本文历史迁移段落）**：交易 8 条和交易查询 3 条链固定为
+> `THEN(frontTenantPack, frontTransExecute/frontQueryExecute)`，账户 10 条链保持
+> `THEN(frontAccountExecute)`。`FrontTenantPackNode` 统一校验 Header/Slot/request tenantId、加载
+> `TenantBaseInfo` 并按配置权威值回填或核对 dataSourceId。中信不明来款和文件处理使用非 LiteFlow 的
+> `FrontSpecialTenantPack`。完整约束见 [31-catering-front租户准备与分库安全设计](31-catering-front租户准备与分库安全设计.md)。
+
 ---
 
 ## 0. 28 号三域注册增量强制结构约束
@@ -637,16 +643,13 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   nacos `catering-front.yml` 的 `spring.datasource.url: jdbc:shardingsphere:classpath:...`
   （`ShardingSphereDriver`），同文件显式 `spring.datasource.dynamic.enabled=false` 关闭
   common-mybatis 带入的 dynamic-datasource starter；
-- **`data_source_id` 的现状**：**不参与路由**，仅作为 insert 列值写入渠道流水表（记录数据
-  所在库实例）。列值仍由业务请求方在 `baseData.dataSourceId` 传入（缺失时域 ExecuteNode
-  第④步用 tenantId 从 `tenant_base_config` 缺省回填，显式传入优先——三域收口后无独立前置
-  节点），经 Feign 拦截器透传落到 Entity 的 `data_source_id` 列。该列值【应当】与
-  `sys_tenant.resourceConfig` 同值同格式（均为 `ds_N`）——这是数据治理约定，**代码不做一致性
-  校验**：两处漂移不会导致路由失败，只会造成列值记录与实际路由不符；
-- **Capability 执行语义（2026-08-31 起）**：交易 Capability 在 execute 第一段做
-  `data-source-id 权威值回填`——`slot.tenantBaseInfo.dataSourceId`（租户配置权威值）非空时，
-  `data.dataSourceId` 空则回填、非空且不一致抛 `TENANT_BANK_CONFIG_MISMATCH`（防止写行携带
-  漂移的库标识）；落库列值因此恒为权威值或调用方与权威一致的值；
+- **`data_source_id` 的现状**：**不参与路由**，仅作为渠道流水持久化、审计和实例标识字段。
+  Transaction/Query 在 `FrontTenantPackNode` 中以 `TenantBaseInfo.dataSourceId` 为权威值：请求为空则
+  回填，请求非空但不一致则抛 `TENANT_BANK_CONFIG_MISMATCH`；银行 Capability 不得重复实现该逻辑。
+  中信专项业务由 `FrontSpecialTenantPack` 在配置值非空时执行回填/冲突核对。物理路由仍只依赖
+  `tenant_id → sys_tenant.resourceConfig → ds_N`，不得把两类字段混为分库键；
+- **表声明策略（2026-08-31 起）**：dev/uat/prod 仅声明 10 张 `!SHARDING` 业务表，禁止恢复
+  `!SINGLE` 或 `ds_0.*`。未声明业务表不得静默落入默认库；
 - **查询/更新免显式分片键（2026-08-29，提交 `7ae51dd6`）**：渠道 Capability 查询/更新
   wrapper 的 `.eq(DATA_SOURCE_ID, ...)` 条件已全部移除，路由依赖插件注入的 `tenant_id`；
   INSERT 仍由 entity 列值覆盖。此前 2026-08-27 的"WHERE 均含 data_source_id"约束已被本条
@@ -682,8 +685,10 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 
 #### 3.10.3 FeignClient 拦截器（通用，4 个必要参数自动传递）
 
-4 个必要参数（tenantId/clientId/platformCode/dataSourceId）由 `catering-common-feign` 的
-拦截器链自动传递和注入。引入依赖后还必须确保发送拦截器、接收拦截器和
+4 个上下文字段（tenantId/clientId/platformCode/dataSourceId）由 `catering-common-feign` 的
+拦截器链负责传递和注入。该公共拦截器是传输层能力，不承担 Front 业务阻断；Transaction/Query 由
+`FrontTenantPackNode` 强制要求 Header tenantId 存在并与 Slot/request 一致，中信专项由
+`FrontSpecialTenantPack` 执行相同约束。引入依赖后还必须确保发送拦截器、接收拦截器和
 `BaseDataRequestBodyAdvice` 均已被 Spring 显式注册，不得仅依赖业务应用的包扫描范围：
 
 ```text
@@ -1415,18 +1420,18 @@ ContractKeys 或补写未启用分支。
 
 ## 11. 提交前检查表
 
-> **当前源码快照（2026-08-29，`limeng_front@cead0222`，仅静态核验）**：
+> **当前源码快照（2026-08-31，`limeng_front@dbd9fad5`）**：
 > `FrontCapability` 枚举 21 项；银行 Capability 实现类 29 个（12 / 6 / 11）；
 > LiteFlow 链 21 条（8 / 3 / 10）；标准 API 20 个（8 交易 / 5 查询 / 7 账户维护）。
-> 已知未闭环差异：去白名单孤儿链、Query/Account 查询 null 处理、平安 Sender 结构化失败事件、
-> web-test Authorization Header 日志。以下检查项描述目标口径，不能用勾选代替源码证据。
+> 租户准备、专项 Pack 和分库配置已有对应回归测试。以下检查项仍必须以当前源码为证据，不能用勾选代替核验。
 
 ### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
 
 - [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
-- [ ] clientId/platformCode/dataSourceId 缺失时由域 ExecuteNode 第④步用 tenantId 从
-      `tenant_base_config` 缺省回填（三域收口后调用方最少只需传 tenantId + 业务必填字段）；
-      显式传入优先；回填后仍缺失（dataSourceId/platformCode）按 INVALID_REQUEST 中断；
+- [ ] Transaction/Query 的 Header tenantId 必填且与 Slot/request 一致；缺失或冲突在
+      `FrontTenantPackNode` 中中断，中信专项由 `FrontSpecialTenantPack` 中断；
+- [ ] Transaction/Query 的 dataSourceId 以 `tenant_base_config` 为权威：缺失时由
+      `FrontTenantPackNode` 回填，显式值不一致时按 `TENANT_BANK_CONFIG_MISMATCH` 中断；
 - [ ] `FeignRequestInterceptor`（common-feign 发送端）逐个解析 4 个值：header 优先，
       header 缺失时从 `RequestContext` 补齐；非 Web/Feign 异步线程不得因没有
       `HttpServletRequest` 就提前返回；
@@ -1460,8 +1465,8 @@ ContractKeys 或补写未启用分支。
 ### D. 请求对象与上下文
 
 - [ ] 对外请求固定 `baseData + specialData` 两段（JSON：`{"baseData":{},"specialData":{}}`）；
-- [ ] 内部只使用两层 Slot：Base 及 Trans/Query/Account 三个直接子类；所属域 ExecuteNode 调用 Loader
-      将 `accountConfig` 写入同一 Slot，不存在业务 Context 转换；
+- [ ] 内部只使用两层 Slot：Base 及 Trans/Query/Account 三个直接子类；Transaction/Query 由
+      `frontTenantPack` 将 `TenantBaseInfo` 写入 Slot，Account 保持现有 ExecuteNode 配置加载；
 - [ ] `specialData` 与 `accountSpecialData` 完全分离，不共享引用、不 `putAll`、不互相覆盖；
 - [ ] `specialData` 不含 tenantId/platformCode/frontSsn/channelNo/bizFunc/mchntId/appId/appKey/url/密钥；
 - [ ] **specialData 的 key 用银行协议原始名**（如 outAcctNo/inAcctNo/USER_D_NM），和 word 文档一致，禁止自定义；
@@ -1495,8 +1500,8 @@ ContractKeys 或补写未启用分支。
 
 - [ ] `frontTransExecute/frontQueryExecute/frontAccountExecute` 三个节点注册唯一，21 条链引用可达；
       当前 `chainFrontAccountUnwhiteName` 无 API/AppService 调用，未处理前不得勾选“无悬空引用”；
-- [ ] 交易 8 条链固定 `THEN(frontTransExecute)`，查询 3 条固定 `THEN(frontQueryExecute)`，账户 10 条固定
-      `THEN(frontAccountExecute)`；
+- [ ] 交易 8 条链固定 `THEN(frontTenantPack, frontTransExecute)`，查询 3 条固定
+      `THEN(frontTenantPack, frontQueryExecute)`，账户 10 条固定 `THEN(frontAccountExecute)`；
 - [ ] 每个 ExecuteNode 只执行本域 Registry 选中的 Capability，不按 capability 再分派；
 - [ ] 交易链不设置公共重复交易检查节点；`CiticTransferCapability` 使用固定 Mapper 检查；
 - [ ] 业务异常 `markBusinessFail` + `setIsEnd(true)`，不 throw；
