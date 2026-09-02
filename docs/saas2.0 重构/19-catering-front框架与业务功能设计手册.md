@@ -75,7 +75,8 @@ FrontBaseSlot
 - 禁止统一宽接口、`FrontBaseSlot + instanceof`、统一 Registry 或通用 ExecuteNode。
 
 `FrontTenantPackNode` 对 Transaction/Query 执行 Header、Slot、请求 `tenantId` 一致性校验，加载
-`TenantBaseInfo`，并按租户配置权威值回填或核对 `dataSourceId`。ExecuteNode 取得 Slot 后只完成本域路由和
+`TenantBaseInfo`，并按与分片路由同源的权威值（`TenantDataSourceMappingCache`，形如 `ds_N`，
+2026-09-02 起）回填或核对 `dataSourceId`。ExecuteNode 取得 Slot 后只完成本域路由和
 Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完整边界见 31 号设计。
 
 ## 4. 业务能力矩阵
@@ -174,8 +175,10 @@ Account：FrontAccountExecuteNode
 → TenantBankConfigLoader
 ```
 
-Loader 先查询 tenant base，再按 `supportBankConfig` 获取当前银行账户配置，并直接扁平组装
-`TenantBankAccountConfig`。只保留 `loadTenantBaseInfo` 和 `loadBankAccountConfig` 两个公共方法。
+Loader 先查询 tenant base（`clientId/platformCode/supportBankConfig`；`dataSourceId` 自 2026-09-02
+起改由 `TenantDataSourceMappingCache.resolve` 取得，与分片路由同源），再按 `supportBankConfig`
+获取当前银行账户配置，并直接扁平组装 `TenantBankAccountConfig`。只保留 `loadTenantBaseInfo` 和
+`loadBankAccountConfig` 两个公共方法。
 
 缺失 tenant、配置模板、银行配置或分库数据源时立即失败；不得默认使用其他租户、`ds_0` 或第一数据源。
 禁止恢复 Provider、AssemblerRouter、Assembler、抽象配置父类或配置 Context。
@@ -301,7 +304,8 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 
 分片键为 `tenant_id`，由 MyBatis-Plus 多租户插件注入路由值，SQL 免显式分片键；
 算法按 `tenant_id` 查进程内 `TenantDataSourceMappingCache` 得 `ds_x`（详见 05 §3.10.1）：
-- **INSERT**：仍写 `data_source_id` 列值（entity.setDataSourceId，仅作实例标识记录，不参与路由）；
+- **INSERT**：仍写 `data_source_id` 列值（entity.setDataSourceId，仅作实例标识记录，不参与路由；
+  列值 2026-09-02 起与路由同源，形如 `ds_N`）；
 - **SELECT/UPDATE**：不再要求 `.eq(DATA_SOURCE_ID, ...)` 显式条件（2026-08-29 FR-6 已移除），
   路由由插件注入的 `tenant_id` 精确保证；
 - **保障**：`tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失或目标 `ds_x` 不在可用列表时

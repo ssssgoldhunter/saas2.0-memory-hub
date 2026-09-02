@@ -65,7 +65,7 @@ private final FrontTransApi frontTransApi;
 | `tenantId` | String | 是 | 租户标识；Header 是强制权威值，缺失时在进入交易能力前失败 |
 | `clientId` | String | 否 | 调用客户端标识 缺失时 Front 从 `tenant_base_config` 回填 |
 | `platformCode` | String | 否 | `zxegj` 中信；`pajzb` 平安。缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
-| `dataSourceId` | String | 否 | 数据源实例标识；以 `tenant_base_config` 为权威，缺失时回填，显式值不一致时失败；不参与物理分库路由 |
+| `dataSourceId` | String | 否 | 数据源实例标识（形如 `ds_N`）；以分片映射缓存（`sys_tenant.resourceConfig`）为权威，缺失时回填，显式值不一致时失败；不参与物理分库路由（2026-09-02 起不再取 `tenant_base_config`） |
 
 正常 Feign Web 调用由 `catering-common-feign` 自动转发并注入到 `baseData`。该拦截器只负责传输，
 `frontTenantPack` 会再次强制校验 Header、Slot、请求 `tenantId` 一致性。异步线程或定时任务没有
@@ -75,7 +75,7 @@ private final FrontTransApi frontTransApi;
 
 1. 确认租户已配置目标银行，并能提供正确 `platformCode`。
 2. 最少准备 Header `tenantId` 和请求 `tenantId/storeId`，且两个 tenantId 必须一致；`clientId/platformCode/dataSourceId`
-   可省略，由 `frontTenantPack` 从租户基础配置准备，其中 `dataSourceId` 显式值与配置冲突时请求失败。
+   可省略，由 `frontTenantPack` 从租户基础配置准备，其中 `dataSourceId` 显式值与权威值（分片映射缓存，`ds_N`）冲突时请求失败。
 3. 准备业务唯一号、主子订单号、金额和日期时间。
 4. 从账户/企业/绑卡等上游 check 结果取得标准账户要素。
 5. 每笔请求新建 `FrontSpecialDataAssembler` 并生成 `specialData`。
@@ -102,7 +102,7 @@ private final FrontTransApi frontTransApi;
 | `platformCode` | String | 是 | Header 自动注入 | 银行平台编码：`zxegj` / `pajzb` |
 | `tenantId` | String | 是 | Header 自动注入 | 租户标识 |
 | `clientId` | String | 是 | Header 自动注入 | 客户端标识 |
-| `dataSourceId` | String | 是 | `frontTenantPack` 按租户配置回填/核对 | 渠道流水记录字段，不是分库键；物理路由使用 `tenant_id` |
+| `dataSourceId` | String | 是 | `frontTenantPack` 按分片映射缓存同源值（`ds_N`）回填/核对 | 渠道流水记录字段，不是分库键；物理路由使用 `tenant_id` |
 | `storeId` | String | 是 | 业务请求 | 发起本次请求的业务门店 ID，不等同于收付款门店 |
 
 ### 3.3 `BaseTransactionBusinessData` 全字段
@@ -135,7 +135,7 @@ private final FrontTransApi frontTransApi;
     "tenantId": "10001",
     "clientId": "consume-service",
     "platformCode": "zxegj",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001",
     "bizRequestNo": "REQ202608190001",
     "bizSystemCode": "CONSUME",
@@ -629,7 +629,7 @@ if (result.getFrontStatus() != FrontTransactionStatus.SUCCESS) {
 ```
 
 Feign 上下文负责传递公共字段；Header tenantId 必须存在且与请求一致，dataSourceId 由
-`frontTenantPack` 按租户配置回填/核对。异步场景必须先建立正确上下文，不能只填请求体。
+`frontTenantPack` 按分片映射缓存同源值（`ds_N`）回填/核对。异步场景必须先建立正确上下文，不能只填请求体。
 
 ---
 

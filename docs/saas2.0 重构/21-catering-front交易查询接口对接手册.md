@@ -61,7 +61,7 @@ private final FrontQueryApi frontQueryApi;
 | `clientId` | String | 否 | 客户端标识，由 Header/Feign 上下文注入 缺失时 Front 从 `tenant_base_config` 回填 |
 | `capability` | String | 是 | **被查交易的原交易能力**：TRANSFER / CONSUME / REFUND / WITHDRAW / RECHARGE（2026-08-26 裁决；Front 内部路由能力不出现在 baseData） |
 | `platformCode` | String | 否 | `zxegj` / `pajzb`，由 Header/Feign 上下文注入；缺失时 Front 用 tenantId 从 `tenant_base_config` 回填（2026-08-20 起） |
-| `dataSourceId` | String | 否 | 数据源实例标识；Query 域以 `tenant_base_config` 为权威，缺失时回填、不一致时失败；物理分库只按 `tenant_id` |
+| `dataSourceId` | String | 否 | 数据源实例标识（形如 `ds_N`）；Query 域以分片映射缓存（`sys_tenant.resourceConfig`）为权威，缺失时回填、不一致时失败；物理分库只按 `tenant_id`（2026-09-02 起不再取 `tenant_base_config`） |
 | `storeId` | String | 是 | 发起本次查询的业务门店 ID |
 
 ### 2.3 查询对接步骤
@@ -237,7 +237,7 @@ FrontRequest<AccountStatusQueryData> → R<AccountStatusResult>
     "tenantId": "10001",
     "clientId": "query-service",
     "platformCode": "zxegj",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001"
   },
   "specialData": {
@@ -320,7 +320,7 @@ FrontRequest<AccountBalanceQueryData> → R<AccountBalanceResult>
     "tenantId": "10001",
     "clientId": "query-service",
     "platformCode": "zxegj",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001",
     "accountScope": "FUNCTIONAL_ACCOUNT"
   },
@@ -408,7 +408,7 @@ FrontRequest<TransStatusQueryData> → R<TransStatusResult>
     "tenantId": "10001",
     "clientId": "query-service",
     "platformCode": "pajzb",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001",
     "capability": "WITHDRAW",
     "transDate": "20260819",
@@ -529,7 +529,7 @@ FrontRequest<PlatformDetailQueryData> → TableDataInfo<PlatformTransDetailItem>
     "tenantId": "10001",
     "clientId": "query-service",
     "platformCode": "pajzb",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001",
     "pageNo": 1,
     "pageSize": 20
@@ -641,7 +641,7 @@ FrontRequest<AccountDetailQueryData> → TableDataInfo<AccountTransDetailItem>
     "tenantId": "10001",
     "clientId": "query-service",
     "platformCode": "zxegj",
-    "dataSourceId": "2",
+    "dataSourceId": "ds_2",
     "storeId": "20001",
     "pageNo": 1,
     "pageSize": 50

@@ -28,7 +28,7 @@
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@dbd9fad5`（租户准备/专项 Pack/分库安全实现） | 修改前必须以当前分支代码重新核验 |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@e3e21604`（特殊能力模型收口 `citic/file` + dataSourceId 同源改造） | 修改前必须以当前分支代码重新核验 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -186,7 +186,7 @@ codegraph status               # 索引状态
 - `catering-common-core`：`R`、Front 错误码、`FrontException` 和 Front 公共配置 key；
 - `catering-front`：Controller、Application Service、LiteFlow、能力注册路由、银行 Capability、配置加载、统一异常和日志；
 - 8 个交易 API、5 个查询 API、7 个账户维护 API，共 20 个标准 Front API；另有中信不明来款
-  3 个专项 API；
+  3 个专项 API 和中信文件上下传 8 个专项 API；
 - 每个 API 方法在服务内部固定自己的 `FrontCapability`，调用方不能传入或覆盖；最终按
   Transaction、Query、Account 三个执行域分别使用强类型 Capability 接口和 Registry，复合键重复时启动失败；
 - 当前 21 条 LiteFlow 链分别只有 `frontTransExecute`、`frontQueryExecute`、
@@ -208,6 +208,12 @@ codegraph status               # 索引状态
 - 中信不明来款专项能力已落地：独立 `CiticUnidentifiedRemittanceApi` 提供列表、统一处理和状态查询，
   固定使用 `2033/2025/2023/2087 + chnlNo=0010`；请求/返回全字段强类型、无 `specialData`，
   仅复用租户上下文注入、`tenant_base_config`、`TenantBankConfigLoader` 和统一 Gateway/Sender；
+- 中信文件上下传专项能力已落地（2026-09-02 收口命名）：`CiticFrontFileProcessApi`（`api.citic` 包）
+  提供 8 个端点——文件上传（601/616）、801 回盘下载、通用对账文件下载、对账文件信息查询、
+  单张凭证下载（bizFunc=02）、批量凭证申请（14）、凭证状态查询（73）、批量凭证下载（01）；
+  请求/响应模型为 `model.{request,response}.citic.file.Citic*`（原 `Bas*` 已全部改名迁移）；
+  由 `CiticFrontFileProcessController` + `application/citic/CiticFrontFileProcessApplicationService`
+  + `channel/citic/file/CiticFileProcessChannel` 实现，不进 LiteFlow 三域编排；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含
@@ -403,7 +409,7 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 | web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization`（`WebTestHeaderLogInterceptor`） | 业务 payload 可明文，认证凭证必须排除 |
 | 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
 | 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader` 注释仍引用不存在的 `TenantResolveNode`；ExecuteNode 注释仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
-| 文件接口无实现 | `FrontFileProcessApi` 4 个方法（queryCheckFileInfo/fileDownload/fileUpload/fileDownload801）在 catering-front 无 Controller 实现，`catering-routing` 仍经 Feign 调用，`@Tag` 误写为"渠道交易查询对外接口"，未入本 Wiki §8 API 清单 | 补实现并入册，或明确为遗留接口归档；不得静默保留 |
+| 文件接口无实现 | **已解决（2026-09-02 确认）**：已实现为 `api.citic.CiticFrontFileProcessApi`（8 端点，含 4 个凭证端点）+ `controller/citic/CiticFrontFileProcessController` + `application/citic` + `channel/citic/file`；请求/响应模型从 `Bas*` 全部收口为 `model.{request,response}.citic.file.Citic*` | 已按"补实现并入册"路径关闭（见 §8 清单） |
 | 平台收付款 Mapper 列重复 | `FrontCiticPlatformPay/PlatformReceiveTransactionMapper` 的 `Base_Column_List` 中 `data_source_id` 出现两次（2026-08-07 `045ab653` 引入） | 列清单去重；凡引用该 `<sql>` 的查询需回归验证 |
 | ShardingSphere SQL 日志 | dev/uat/prod 三份 `shardingsphere-config-*.yaml` 均为 `props.sql-show: true` | 生产环境关闭或降级该开关，避免全量 SQL 明文（含租户/金额）进日志 |
 

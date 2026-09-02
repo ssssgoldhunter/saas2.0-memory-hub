@@ -13,6 +13,8 @@
   账户状态/余额明确保留挡板，不再作为待实现项）；
 - `CLOSED`：平安退款代码、DDL 和文档已完成静态验收，并于 2026-08-19 经用户确认关闭；
 - `DEFERRED`：report 报表库跨实例重复交易补查，用户明确暂时不做。
+- `PENDING-CONFIRM`：TODO-004 catering-system 启动报错（Nacos import 缺 `.yml` 后缀），
+  2026-09-02 已诊断，修复方案待用户确认后实施。
 
 ## TODO-001 平安查询 Capability 逐接口核对和接入（CLOSED）
 
@@ -113,3 +115,21 @@
 - 暂缓约束：不主动开发 Provider、Mapper、Feign 或 report 查询逻辑；不因此重新打开
   `FRONT-P1-012`。
 - 恢复条件：只有用户未来明确要求重新接入 report 跨实例查重时再开发。
+
+## TODO-004 catering-system 启动报错：Nacos import dataId 缺 `.yml` 后缀
+
+- 状态：`PENDING-CONFIRM`（2026-09-02 已诊断并向用户给出修复方案，未经确认未改代码）
+- 现象：catering-system 启动抛 `BeanDefinitionStoreException`，`@MapperScan("${mybatis-plus.mapperPackage}")`
+  占位符无法解析（`catering-common-mybatis` 的 `MybatisPlusConfiguration`）。
+- 根因：`catering-modules/catering-system/src/main/resources/application.yml` 的
+  `spring.config.import` 写的是 `optional:nacos:application-common` / `optional:nacos:${spring.application.name}`，
+  是全仓 13 个模块中唯一不带 `.yml` 后缀的。spring-cloud-alibaba 2025.0.0.0 的
+  `NacosConfigDataLocationResolver.dataIdFor` 按 URI 字面量取 dataId、不补 `file-extension`
+  （反编译确认；`suffixFor` 只决定内容解析格式），因此拉取的 dataId 在 Nacos 中不存在，
+  `optional:` 静默跳过 → `application-common.yml` 的 `mybatis-plus.mapperPackage` 缺失。
+- 附带发现：该文件第二段 `spring.nacos.config.file-extension: yml` 是双重无效——
+  属性前缀经 SPI（`SpringCloudNacosPropertiesPrefixProvider`）钉死为 `spring.cloud.nacos`，
+  该键绑定不到；且机制上 `file-extension` 也不参与 dataId 拼接，建议一并删除。
+- 修复方案（与 front 等 12 个模块对齐）：import 行补 `.yml` 后缀并删除无效段；
+  修复后还需确认 Nacos `saas` 命名空间存在 `catering-system.yml`（数据源在其专属配置中，
+  `datasource.yml` import 处于注释状态）。

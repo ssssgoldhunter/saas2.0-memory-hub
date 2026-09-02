@@ -643,11 +643,15 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   nacos `catering-front.yml` 的 `spring.datasource.url: jdbc:shardingsphere:classpath:...`
   （`ShardingSphereDriver`），同文件显式 `spring.datasource.dynamic.enabled=false` 关闭
   common-mybatis 带入的 dynamic-datasource starter；
-- **`data_source_id` 的现状**：**不参与路由**，仅作为渠道流水持久化、审计和实例标识字段。
-  Transaction/Query 在 `FrontTenantPackNode` 中以 `TenantBaseInfo.dataSourceId` 为权威值：请求为空则
-  回填，请求非空但不一致则抛 `TENANT_BANK_CONFIG_MISMATCH`；银行 Capability 不得重复实现该逻辑。
-  中信专项业务由 `FrontSpecialTenantPack` 在配置值非空时执行回填/冲突核对。物理路由仍只依赖
-  `tenant_id → sys_tenant.resourceConfig → ds_N`，不得把两类字段混为分库键；
+- **`data_source_id` 的现状（2026-09-02 起与路由同源）**：**不参与路由判定**（路由键仍为
+  `tenant_id`），仅作为渠道流水持久化、审计和实例标识字段，但取值与物理路由**同源同值**：
+  `TenantBankConfigLoader.loadTenantBaseInfo` 经 `TenantDataSourceMappingCache.resolve(tenantId)`
+  取得（`sys_tenant.resourceConfig`，形如 `ds_N`），不再读取 `tenant_base_config` 的
+  `data_source_id`（残留值与缓存不一致仅 WARN 观测）；映射不可用抛 `FrontException`，不回退
+  config 旧值。Transaction/Query 在 `FrontTenantPackNode` 中以 `TenantBaseInfo.dataSourceId`
+  为权威值：请求为空则回填，请求非空但不一致则抛 `TENANT_BANK_CONFIG_MISMATCH`；银行
+  Capability 不得重复实现该逻辑。中信专项业务由 `FrontSpecialTenantPack` 执行回填/冲突核对。
+  不得把该字段混为分库键；
 - **表声明策略（2026-08-31 起）**：dev/uat/prod 仅声明 10 张 `!SHARDING` 业务表，禁止恢复
   `!SINGLE` 或 `ds_0.*`。未声明业务表不得静默落入默认库；
 - **查询/更新免显式分片键（2026-08-29，提交 `7ae51dd6`）**：渠道 Capability 查询/更新
@@ -665,7 +669,8 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 | 类 | 模块 | 职责 |
 |---|---|---|
 | `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法：按 `tenant_id` 查进程内映射返回 `ds_x`，全分支 fail-fast、零 IO |
-| `TenantDataSourceMappingCache` | catering-front `sharding` | tenantId → 数据源名进程内缓存（TTL 懒加载 + single-flight + 启动预热），唯一向算法注入回调的组件 |
+| `TenantDataSourceMappingCache` | catering-front `sharding` | tenantId → 数据源名进程内缓存（TTL 懒加载 + single-flight + 启动预热），唯一向算法注入回调的组件；2026-09-02 起同时是 `data_source_id` 列值的权威来源 |
+| `TenantBankConfigLoader` | catering-front `config` | 租户/银行配置加载；`loadTenantBaseInfo` 的 `dataSourceId` 经 `TenantDataSourceMappingCache.resolve` 取得（同路由源），映射不可用抛 `FrontException` |
 
 > 历史沿革（仅作追溯，不作当前依据）：①最初设想"分片键 `tenant_id` + 算法查配置中心
 > `tenant_base_config` 解析"（`ShardingAlgorithmInjector` 方案，未实施）；②2026-08-27 前实际
@@ -1430,8 +1435,10 @@ ContractKeys 或补写未启用分支。
 - [ ] `BaseRequest`（common-core）含 4 个字段（tenantId/clientId/platformCode/dataSourceId），由拦截器自动注入；
 - [ ] Transaction/Query 的 Header tenantId 必填且与 Slot/request 一致；缺失或冲突在
       `FrontTenantPackNode` 中中断，中信专项由 `FrontSpecialTenantPack` 中断；
-- [ ] Transaction/Query 的 dataSourceId 以 `tenant_base_config` 为权威：缺失时由
+- [ ] Transaction/Query 的 dataSourceId 以分片映射缓存为权威（与路由同源，形如 `ds_N`）：
+      `TenantBankConfigLoader` 经 `TenantDataSourceMappingCache.resolve` 取得；缺失时由
       `FrontTenantPackNode` 回填，显式值不一致时按 `TENANT_BANK_CONFIG_MISMATCH` 中断；
+      映射不可用时 `loadTenantBaseInfo` 抛 `FrontException`；
 - [ ] `FeignRequestInterceptor`（common-feign 发送端）逐个解析 4 个值：header 优先，
       header 缺失时从 `RequestContext` 补齐；非 Web/Feign 异步线程不得因没有
       `HttpServletRequest` 就提前返回；
