@@ -217,7 +217,9 @@ codegraph status               # 索引状态
   单张凭证下载（bizFunc=02）已于 2026-09-03 改造为 front 自查定位：契约收敛为
   `frontSsn + capability + specialData`，`CiticReceiptElementLocator#locate` 为全能力唯一要素路由
   （六渠道能力查 SUCCESS 渠道行；RECHARGE 查通知表 trans_platform_notify_zx；TI 经 24 接口
-  翻页比对 JJ02+MCHNT_ORDER_ID 取 REQ_JRN）；能力→凭证 TRANS_TYPE 映射见 32 号交付文档；
+  翻页比对 JJ02+MCHNT_ORDER_ID 取 REQ_JRN）；能力→凭证 TRANS_TYPE 映射见 32/33 号文档；
+  2026-09-03 UAT 验证通过（五类渠道能力）；注意钱包应答键大小写按接口不同（2041/2042 驼峰、
+  其余大写），26 提现应答无 USER_SSN 键、凭证下载自动经 74 补号回填；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含
