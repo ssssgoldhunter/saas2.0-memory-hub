@@ -214,6 +214,10 @@ codegraph status               # 索引状态
   请求/响应模型为 `model.{request,response}.citic.file.Citic*`（原 `Bas*` 已全部改名迁移）；
   由 `CiticFrontFileProcessController` + `application/citic/CiticFrontFileProcessApplicationService`
   + `channel/citic/file/CiticFileProcessChannel` 实现，不进 LiteFlow 三域编排；
+  单张凭证下载（bizFunc=02）已于 2026-09-03 改造为 front 自查定位：契约收敛为
+  `frontSsn + capability + specialData`，`CiticReceiptElementLocator#locate` 为全能力唯一要素路由
+  （六渠道能力查 SUCCESS 渠道行；RECHARGE 查通知表 trans_platform_notify_zx；TI 经 24 接口
+  翻页比对 JJ02+MCHNT_ORDER_ID 取 REQ_JRN）；能力→凭证 TRANS_TYPE 映射见 32 号交付文档；
 - 平安 `platformPay/platformReceive` 已明确为 `UNSUPPORTED`；
 - 所有交易基础对象已包含来源业务系统、业务交易逻辑类型、业务主记录 ID 和业务子记录 ID；
 - 渠道流水 DDL 已按“银行 + 交易业务”拆为中信 6 张、平安 4 张，每张表均含

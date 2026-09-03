@@ -118,6 +118,7 @@
   `limeng_front@e3e21604`，含 tenant_id 分片切换 + 中信特殊能力模型收口 + dataSourceId 同源改造）；
   记忆库 `saas2.0-memory-hub`。
 - 当前 API：8 个交易 + 5 个查询 + 7 个账户维护，共 20 个标准 Front API；另有中信不明来款
+- 中信单张凭证下载已改造为 front 自查定位（2026-09-03，详见 `docs/saas2.0 重构/32-中信单张凭证下载改造交付.md`）：契约=frontSsn + capability + specialData；能力→凭证 TRANS_TYPE 映射=TRANSFER/CONSUME→06、REFUND→07、WITHDRAW→04、PLATFORM_PAY→12、PLATFORM_RECEIVE→13、RECHARGE→05 转账入金、TI→03 清分入金（TI 已加入 FrontCapability，通用能力）；RECHARGE 不传 frontSsn，按 specialData.bizOrderNo（充值表 transNo）查通知表 trans_platform_notify_zx（frsc_senum→notify_ssn/trans_dt，front 自建只读实体）；TI 不传 frontSsn，经 24 接口翻页比对 TRANS_TYPE=JJ02 + MCHNT_ORDER_ID 取 REQ_JRN；普通六能力按 SUCCESS 渠道行取 bank_user_ssn/bank_trans_date；新错误码 F300002/F300003；web-test receipt-test.html 已同步；代码未提交。
   3 个专项 API（`CiticUnidentifiedRemittanceApi`）和中信文件上下传 8 个专项 API
   （`CiticFrontFileProcessApi`，请求/响应模型已从 `Bas*` 收口为
   `model.{request,response}.citic.file.Citic*`）。当前 `FrontCapability` 枚举 21 项，
