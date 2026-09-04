@@ -459,6 +459,20 @@ whiteName                  // opType 区分加白/去白
 withdraw
 ```
 
+文件处理方法（`com.chinaums.front.api.citic.CiticFrontFileProcessApi`，`/front/trans` 前缀，
+不进 LiteFlow 三域，由 `application/citic` + `channel/citic/file` 实现）：
+
+```text
+fileUpload                  // 601/616 文件上传通知
+fileDownload801             // 801 回盘下载通知
+fileDownload                // 通用对账文件下载通知
+queryCheckFileInfo          // 对账文件信息查询
+receiptDownload             // 单张凭证下载（bizFunc=02，front 自查定位，对接见 33 号手册）
+batchReceiptApply           // 批量凭证申请（14）
+receiptStatusQuery          // 凭证文件处理状态查询（73）
+batchReceiptDownload        // 批量凭证文件下载（01，MSG）
+```
+
 具体方法与旧 Front、mdl API/Service/Handle/银行实现类的历史对应关系，可参考
 [04-front-service完整重构实施方案](04-front-service完整重构实施方案.md)；当前实现定位必须以
 API → Application Service → 域 ExecuteNode → Registry → 银行 Capability 的源码调用链为准。
