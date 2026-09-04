@@ -132,6 +132,22 @@ Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完
 - 请求/返回使用全字段强类型 DTO，不使用 `specialData`；
 - 通过 `FrontSpecialTenantPack` 统一完成专项租户准备并取得 `FrontSpecialProcessContext`，再复用 Gateway 和中信 common。
 
+### 4.5 中信文件上下传与凭证下载专项
+
+`CiticFrontFileProcessApi`（8 端点：文件上传 601/616、801 回盘下载、对账文件下载/信息查询、
+单张凭证下载、批量凭证申请/状态查询/批量下载）。与 4.4 同属专项 Channel：
+
+- 不进入三域 Registry/LiteFlow；调用链 `Controller → CiticFrontFileProcessApplicationService
+  → CiticFileProcessChannel → BankWalletGateway`；
+- 通过 `FrontSpecialTenantPack` 完成租户准备（header/body tenantId 校验、缺省回填、银行账户配置）；
+- **单张凭证下载（bizFunc=02）为 front 自查定位**：调用方只传 `frontSsn + capability`
+  （充值/TI 传 `specialData`），`CiticReceiptElementLocator#locate` 为全能力唯一要素路由——
+  六渠道能力查 SUCCESS 渠道行；充值查通知表 trans_platform_notify_zx；TI 经 24 接口翻页比对；
+  提现缺银行流水时自动经 74 状态查询补号并回填渠道行；
+- 钱包应答键大小写按接口不统一（2041/2042 驼峰、其余大写、26 提现无 USER_SSN 键），
+  解析口径见 02 号接口能力汇总；
+- 对接文档：33 号对接手册；改造交付：32 号。
+
 ## 5. 对外请求和返回
 
 通用能力请求继续使用：
