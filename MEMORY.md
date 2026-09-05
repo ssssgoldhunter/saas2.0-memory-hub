@@ -115,8 +115,8 @@
 ### 5.3 saas2.0 / cateringsass（当前主战场：多银行渠道 Front 重构）
 
 - 代码：`cateringsass/catering-modules/catering-front`（2026-09-05 复核基线
-  `limeng_front@66d7df9d`，含 tenant_id 分片切换 + 中信特殊能力模型收口 + dataSourceId 同源改造
-  + 入账登记/单凭证下载；工作区另有待提交的日志补齐改动）；
+  `limeng_front@aa3dc5db`，含 tenant_id 分片切换 + 特殊能力模型收口 + dataSourceId 同源改造
+  + 入账登记/单凭证下载 + 日志补齐 `94bf7481`；测试待用户执行）；
   记忆库 `saas2.0-memory-hub`。
 - 当前 API：8 个交易 + 5 个查询 + 8 个账户维护（含 depositReg），共 21 个标准 Front API；
   另有中信不明来款 3 个专项 API（`CiticUnidentifiedRemittanceApi`）和中信文件上下传 8 个专项 API
@@ -147,7 +147,7 @@
   web-test 记录 Authorization Header、
   平台收付款两个 Mapper `Base_Column_List` 重复 `data_source_id` 列、三环境 sharding
   `sql-show=true`（含 prod）等静态差异，不能写成已全部达标。
-- 入口与链路日志补齐（2026-08-30 设计，代码待提交）：`FrontTraceFilter` 把请求头 `reqId`
+- 入口与链路日志补齐（2026-08-30 设计，代码随 `94bf7481` 提交，测试待用户执行）：`FrontTraceFilter` 把请求头 `reqId`
   （缺省生成 `ex_` 前缀）写入 MDC，`FrontLogJsonUtils` 每条结构化日志自动带 `traceId`，
   logback 模式输出 `[%X{REQ_ID}]`；`FrontInvocationLogAspect` 切点扩到含 citic 子包的全部
   Controller，请求/响应/失败三类事件带 tenantId/bizOrderNo/bizSubOrderNo 等定位字段；

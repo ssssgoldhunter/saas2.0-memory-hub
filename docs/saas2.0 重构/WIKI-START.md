@@ -28,7 +28,7 @@
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@66d7df9d`（2026-09-05 静态复核，含 dataSourceId 同源改造、单凭证下载、入账登记；工作区另有待提交的日志补齐改动） | 修改前必须以当前分支代码重新核验 |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@aa3dc5db`（2026-09-05 复核 + 日志补齐；代码 `94bf7481`、文档同步 `aa3dc5db`，均未测试） | 修改前必须以当前分支代码重新核验 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -238,7 +238,7 @@ codegraph status               # 索引状态
   `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
   非业务凭证禁止进入日志。当前中信 Sender 已有三类事件，平安 Sender 通信异常路径尚无结构化
   `wallet_request_failed`，不能写成两家均已达标；
-- 入口与链路日志（2026-08-30 设计、改动待提交）：`FrontTraceFilter` 把请求头 `reqId`
+- 入口与链路日志（2026-08-30 设计，代码随 `94bf7481` 提交，测试待用户执行）：`FrontTraceFilter` 把请求头 `reqId`
   （缺省自动生成 `ex_` 前缀）写入 MDC，logback 模式输出 `[%X{REQ_ID}]`，
   `FrontLogJsonUtils` 每条结构化日志自动携带 `traceId`；
   `FrontInvocationLogAspect` 切点扩展到 `controller` 包全部 Controller（含 citic 子包文件/不明来款入口），
