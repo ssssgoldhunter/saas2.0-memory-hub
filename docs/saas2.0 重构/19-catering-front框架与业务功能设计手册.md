@@ -3,7 +3,7 @@
 > 状态：current-design / implemented
 > 更新日期：2026-08-31
 > 历史迁移起点：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
-> 当前源码基线：`limeng_front@dbd9fad5`
+> 当前源码基线：`limeng_front@66d7df9d`（2026-09-05 复核）
 > 结构权威：01、05、28、29 号文档
 
 本文供维护 `catering-front`、增加银行或实现能力时使用。它只描述现行三域扁平框架和已确认业务；
@@ -299,11 +299,12 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
 - 28/29 历史迁移的既有 API/Controller/DTO 未改变；新增账户维护能力允许按新契约增加 API/DTO。
 - Slot 为 Base + Trans/Query/Account 两层。
 - 三个强类型接口、三个 Registry、三个 ExecuteNode。
-- 当前 `FrontCapability` 枚举 21 项；其中 `RECHARGE` 暂无 Front API/银行实现。银行 Capability
-  实现类 29 个，按 12/6/11 归域。
-- 当前 21 条链按 8/3/10 归域：交易和交易查询是 `frontTenantPack + 域 ExecuteNode` 两节点串行链，
+- 当前 `FrontCapability` 枚举 23 项；其中 `RECHARGE`、`TI` 暂无交易 Front API/交易实现（TI 凭证下载已落地）。
+  银行 Capability 实现类 30 个，按 12/6/12 归域（账户 12 = 中信 10 + 平安挡板 2）。
+- 当前 22 条链按 8/3/11 归域：交易和交易查询是 `frontTenantPack + 域 ExecuteNode` 两节点串行链，
   账户是 `frontAccountExecute` 单节点链。
-- 标准 API 20 个（8 交易 / 5 查询 / 7 账户维护），中信不明来款专项 API 3 个。
+- 标准 API 21 个（8 交易 / 5 查询 / 8 账户维护，含 depositReg），中信不明来款专项 API 3 个、
+  中信文件上下传专项 API 8 个。
 - 账户状态/余额只在 Account 域。
 - Capability 主流程可在一个类中顺序读完。
 - 旧 Context/Router/Dispatch/Handle、统一 Registry、Provider/Assembler 零残留。

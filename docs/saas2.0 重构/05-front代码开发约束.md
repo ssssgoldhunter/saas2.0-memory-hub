@@ -1425,9 +1425,9 @@ ContractKeys 或补写未启用分支。
 
 ## 11. 提交前检查表
 
-> **当前源码快照（2026-08-31，`limeng_front@dbd9fad5`）**：
-> `FrontCapability` 枚举 21 项；银行 Capability 实现类 29 个（12 / 6 / 11）；
-> LiteFlow 链 21 条（8 / 3 / 10）；标准 API 20 个（8 交易 / 5 查询 / 7 账户维护）。
+> **当前源码快照（2026-09-05，`limeng_front@66d7df9d`）**：
+> `FrontCapability` 枚举 23 项；银行 Capability 实现类 30 个（12 / 6 / 12）；
+> LiteFlow 链 22 条（8 / 3 / 11）；标准 API 21 个（8 交易 / 5 查询 / 8 账户维护）。
 > 租户准备、专项 Pack 和分库配置已有对应回归测试。以下检查项仍必须以当前源码为证据，不能用勾选代替核验。
 
 ### A. 4 个必要参数（tenantId / clientId / platformCode / dataSourceId）
@@ -1505,7 +1505,7 @@ ContractKeys 或补写未启用分支。
 
 ### F. LiteFlow 编排
 
-- [ ] `frontTransExecute/frontQueryExecute/frontAccountExecute` 三个节点注册唯一，21 条链引用可达；
+- [ ] `frontTenantPack/frontTransExecute/frontQueryExecute/frontAccountExecute` 四个节点注册唯一，22 条链引用可达；
       当前 `chainFrontAccountUnwhiteName` 无 API/AppService 调用，未处理前不得勾选“无悬空引用”；
 - [ ] 交易 8 条链固定 `THEN(frontTenantPack, frontTransExecute)`，查询 3 条固定
       `THEN(frontTenantPack, frontQueryExecute)`，账户 10 条固定 `THEN(frontAccountExecute)`；

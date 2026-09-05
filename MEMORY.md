@@ -114,18 +114,20 @@
 
 ### 5.3 saas2.0 / cateringsass（当前主战场：多银行渠道 Front 重构）
 
-- 代码：`cateringsass/catering-modules/catering-front`（2026-09-02 核验基线
-  `limeng_front@e3e21604`，含 tenant_id 分片切换 + 中信特殊能力模型收口 + dataSourceId 同源改造）；
+- 代码：`cateringsass/catering-modules/catering-front`（2026-09-05 复核基线
+  `limeng_front@66d7df9d`，含 tenant_id 分片切换 + 中信特殊能力模型收口 + dataSourceId 同源改造
+  + 入账登记/单凭证下载；工作区另有待提交的日志补齐改动）；
   记忆库 `saas2.0-memory-hub`。
-- 当前 API：8 个交易 + 5 个查询 + 7 个账户维护，共 20 个标准 Front API；另有中信不明来款
-- 中信单张凭证下载已改造为 front 自查定位（2026-09-03 UAT 验证通过，详见 `docs/saas2.0 重构/32-中信单张凭证下载改造交付.md` 与 `33-...凭证下载接口对接手册.md`）：契约=frontSsn + capability + specialData（充值传 bizOrderNo=充值表 transNo；TI 传 acctNo/transDt/bizOrderNo）；能力→凭证 TRANS_TYPE=TRANSFER/CONSUME→06、REFUND→07、WITHDRAW→04、PLATFORM_PAY→12、PLATFORM_RECEIVE→13、RECHARGE→05、TI→03（TI 已入 FrontCapability，通用能力）；**钱包应答键大小写按接口不同**：27/26/23/74 应答为大写 USER_SSN/USER_TRANS_DT，2041/2042 为驼峰 userSsn/userTransDt（BANK_WIRE_* 常量仅用于 2041/2042 应答解析）；26 提现应答无 USER_SSN 键（流水在 queryId 返回），提现凭证下载缺 bank_user_ssn 时自动经 74 状态查询补号并回填渠道行；充值/TI 上游能力未接入（充值入金走银行通知、TI 交易侧待设计），链路已就绪；web-test 首页凭证下载 tab（自动下载 PDF + 确认弹窗）；代码未提交。
-  3 个专项 API（`CiticUnidentifiedRemittanceApi`）和中信文件上下传 8 个专项 API
+- 当前 API：8 个交易 + 5 个查询 + 8 个账户维护（含 depositReg），共 21 个标准 Front API；
+  另有中信不明来款 3 个专项 API（`CiticUnidentifiedRemittanceApi`）和中信文件上下传 8 个专项 API
   （`CiticFrontFileProcessApi`，请求/响应模型已从 `Bas*` 收口为
-  `model.{request,response}.citic.file.Citic*`）。当前 `FrontCapability` 枚举 21 项，
-  银行 Capability 实现类 29 个（Transaction 12 / Query 6 / Account 11），LiteFlow 链 21 条
-  （8 / 3 / 10）。枚举中的 `RECHARGE` 当前没有对应 Front API 或银行 Capability 实现，
-  不能用枚举数量推导已落地 API 数。
-- 架构：Controller → Application Service → 单节点 LiteFlow → 域 ExecuteNode → 域 Registry
+  `model.{request,response}.citic.file.Citic*`）。当前 `FrontCapability` 枚举 23 项，
+  银行 Capability 实现类 30 个（Transaction 12 / Query 6 / Account 12），LiteFlow 链 22 条
+  （8 / 3 / 11）。枚举中的 `RECHARGE`、`TI` 当前没有对应交易 Front API 或交易 Capability 实现
+  （TI 凭证下载部分已落地），不能用枚举数量推导已落地 API 数。
+- 中信单张凭证下载已改造为 front 自查定位（2026-09-03 UAT 验证通过，详见 `docs/saas2.0 重构/32-中信单张凭证下载改造交付.md` 与 `33-...凭证下载接口对接手册.md`）：契约=frontSsn + capability + specialData（充值传 bizOrderNo=充值表 transNo；TI 传 acctNo/transDt/bizOrderNo）；能力→凭证 TRANS_TYPE=TRANSFER/CONSUME→06、REFUND→07、WITHDRAW→04、PLATFORM_PAY→12、PLATFORM_RECEIVE→13、RECHARGE→05、TI→03（TI 已入 FrontCapability，通用能力）；**钱包应答键大小写按接口不同**：27/26/23/74 应答为大写 USER_SSN/USER_TRANS_DT，2041/2042 为驼峰 userSsn/userTransDt（BANK_WIRE_* 常量仅用于 2041/2042 应答解析）；26 提现应答无 USER_SSN 键（流水在 queryId 返回），提现凭证下载缺 bank_user_ssn 时自动经 74 状态查询补号并回填渠道行；充值/TI 上游能力未接入（充值入金走银行通知、TI 交易侧待设计），链路已就绪；web-test 首页凭证下载 tab（自动下载 PDF + 确认弹窗）；代码未提交。
+- 架构：Controller → Application Service → LiteFlow（交易/查询为 `frontTenantPack + 域 ExecuteNode`
+  两节点，账户单节点）→ 域 Registry
   `(BankCode, FrontCapability)` → 银行 Capability → `BankWalletGateway` → 最终 `BankWalletSender`；
   中信编码 `zxegj`、平安编码 `pajzb`。旧 Context、Router、Dispatch、Handle 和统一 Registry
   均为历史术语，不得作为当前实现模板。
@@ -145,6 +147,12 @@
   web-test 记录 Authorization Header、
   平台收付款两个 Mapper `Base_Column_List` 重复 `data_source_id` 列、三环境 sharding
   `sql-show=true`（含 prod）等静态差异，不能写成已全部达标。
+- 入口与链路日志补齐（2026-08-30 设计，代码待提交）：`FrontTraceFilter` 把请求头 `reqId`
+  （缺省生成 `ex_` 前缀）写入 MDC，`FrontLogJsonUtils` 每条结构化日志自动带 `traceId`，
+  logback 模式输出 `[%X{REQ_ID}]`；`FrontInvocationLogAspect` 切点扩到含 citic 子包的全部
+  Controller，请求/响应/失败三类事件带 tenantId/bizOrderNo/bizSubOrderNo 等定位字段；
+  四个 Flow 节点以 `process→doProcess` 包装抛出点，校验/配置类 `FrontException` 中断时输出
+  `flow_interrupted`（含 Slot 定位字段）后原样抛出。
 - 完成状态只以 `docs/saas2.0 重构/12-front-implementation-issues/` 为准（OPEN / FIXED_PENDING_REVIEW /
   CLOSED / DEFERRED）；平安交易状态与两类明细、退款边界均已按历史任务关闭，账户状态/余额固定保留
   `ADAPTER_NOT_READY` 挡板；report 跨实例补查为 `DEFERRED`（见 `13-front后续待办.md`）。

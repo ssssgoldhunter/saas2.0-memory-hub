@@ -28,7 +28,7 @@
 
 | 用途 | 路径 / 分支 | 规则 |
 |---|---|---|
-| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@e3e21604`（特殊能力模型收口 `citic/file` + dataSourceId 同源改造） | 修改前必须以当前分支代码重新核验 |
+| SaaS 代码仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/cateringsass`。历史基线：`limeng_front_restruct@0dd983a7`；当前核验基线：`limeng_front@66d7df9d`（2026-09-05 静态复核，含 dataSourceId 同源改造、单凭证下载、入账登记；工作区另有待提交的日志补齐改动） | 修改前必须以当前分支代码重新核验 |
 | 记忆体仓库 | `/Users/limeng/workspaces/IdeaProjects_saas_dep/saas2.0-memory-hub`，分支 `main` | 架构、映射和约束的知识库 |
 | 中信真退款最新参考 | `/Users/limeng/workspaces/IdeaProjects_lsym_uat/slhy`，分支 `lsym_20260625_limeng_refundTask` | 参考 `ZxRefundRequest + zxRefund + bizFunc=23` 真实调用和 reserve 字段，不复制旧请求来源及敏感日志 |
 | 中信不明来款专项协议 | `saas2.0-memory-hub/docs/中信E管家产品V2_不明来账_客户钱包应用平台_接口文档-内部集成平台.doc` | 本专项能力最终协议基线；交易码 `2033/2025/2023/2087`，不得与综合文档 `24/123` 混用 |
@@ -175,25 +175,28 @@ codegraph status               # 索引状态
 
 **数量口径（历史基线与当前源码分列）**：
 - 28/29 号历史基线：22 个银行 Capability 实现类、13 条链（交易 8 / 查询 3 / 账户 2）；
-- 当前源码（`limeng_front@dbd9fad5`）：`FrontCapability` 枚举 21 项，
-  **银行 Capability 实现类 29 个、LiteFlow 链 21 条**——实现类分布为交易 12 / 查询 6 / 账户 11
-  （账户 11 = 中信 9 + 平安挡板 2）；
-  链分布 8 交易 / 3 查询 / 10 账户（交易/查询先执行 `frontTenantPack`，账户保持单节点；
-  账户 10 = 既有状态/余额查询 2 + 账户维护 8）。
-  枚举中的 `RECHARGE` 当前没有 Front API 或银行 Capability 实现，不能按枚举项数推导 API 数。
+- 当前源码（`limeng_front@66d7df9d`，2026-09-05 静态复核）：`FrontCapability` 枚举 23 项，
+  **银行 Capability 实现类 30 个、LiteFlow 链 22 条**——实现类分布为交易 12 / 查询 6 / 账户 12
+  （账户 12 = 中信 10 + 平安挡板 2）；
+  链分布 8 交易 / 3 查询 / 11 账户（交易/查询先执行 `frontTenantPack`，账户保持单节点；
+  账户 11 = 既有状态/余额查询 2 + 账户维护 8 + 入账登记 depositReg 1）。
+  枚举中的 `RECHARGE`、`TI` 当前没有交易 Front API 或交易 Capability 实现（TI 的凭证下载部分已落地），
+  不能按枚举项数推导 API 数。
 
 - `catering-api-front`：API、请求响应对象、常量和枚举；
 - `catering-common-core`：`R`、Front 错误码、`FrontException` 和 Front 公共配置 key；
 - `catering-front`：Controller、Application Service、LiteFlow、能力注册路由、银行 Capability、配置加载、统一异常和日志；
-- 8 个交易 API、5 个查询 API、7 个账户维护 API，共 20 个标准 Front API；另有中信不明来款
-  3 个专项 API 和中信文件上下传 8 个专项 API；
+- 8 个交易 API、5 个查询 API、8 个账户维护 API（含 depositReg 入账登记），共 21 个标准 Front API；
+  另有中信不明来款 3 个专项 API 和中信文件上下传 8 个专项 API；
 - 每个 API 方法在服务内部固定自己的 `FrontCapability`，调用方不能传入或覆盖；最终按
   Transaction、Query、Account 三个执行域分别使用强类型 Capability 接口和 Registry，复合键重复时启动失败；
-- 当前 21 条 LiteFlow 链分别只有 `frontTransExecute`、`frontQueryExecute`、
-  `frontAccountExecute` 一个节点；交易 8 条、查询 3 条、账户 10 条；
+- 当前 22 条 LiteFlow 链：交易 8 条、查询 3 条为 `THEN(frontTenantPack, frontXxxExecute)` 两节点链
+  （租户准备前置），账户 11 条仍为 `frontAccountExecute` 单节点；
 - `FrontBaseSlot` 只承载公共字段，`FrontTransSlot`、`FrontQuerySlot`、`FrontAccountSlot` 直接继承 Base，
   继承深度固定为两层；
-- 三个 ExecuteNode 分别完成 Slot 读取、租户配置加载、本域 Registry 路由、Capability 调用和结果/异常回填；
+- `frontTenantPack` 完成请求头/Slot tenantId 校验、租户基础配置加载与 dataSourceId 同源核对；
+  三个域 ExecuteNode 分别完成本域 Registry 路由、Capability 调用和结果/异常回填（账户域单节点，
+  租户准备在 ExecuteNode 内完成）；
 - 租户配置调用链固定为 `域 ExecuteNode → TenantBankConfigLoader → RemoteConfigServiceClient`；
 - 银行账户配置固定为两次配置接口查询：先用 `support_bank_config` 动态解析模板 key，再在当前
   `tenantId` 上下文中用该 key 查询用户银行配置；`configVersion/config_version` 已废弃且禁止恢复；
@@ -235,6 +238,14 @@ codegraph status               # 索引状态
   `appKey`、私钥、签名材料、签名/认证 Header、`Authorization`、`Cookie`、完整银行 URL 等
   非业务凭证禁止进入日志。当前中信 Sender 已有三类事件，平安 Sender 通信异常路径尚无结构化
   `wallet_request_failed`，不能写成两家均已达标；
+- 入口与链路日志（2026-08-30 设计、改动待提交）：`FrontTraceFilter` 把请求头 `reqId`
+  （缺省自动生成 `ex_` 前缀）写入 MDC，logback 模式输出 `[%X{REQ_ID}]`，
+  `FrontLogJsonUtils` 每条结构化日志自动携带 `traceId`；
+  `FrontInvocationLogAspect` 切点扩展到 `controller` 包全部 Controller（含 citic 子包文件/不明来款入口），
+  请求/响应/失败三类事件携带 tenantId/platformCode/dataSourceId/storeId/bizOrderNo/bizSubOrderNo
+  定位字段，状态查询另带 `frontSsn`；四个 Flow 节点以 `process→doProcess` 包装抛出点，
+  校验/配置类 `FrontException` 中断时输出 `flow_interrupted`（含 Slot 全部定位字段）后原样抛出，
+  `TenantBankConfigLoader` 的异常随节点包装自然覆盖；
 - 三域注册【历史迁移已实施完成】：当时 13 条链使用单一域节点，22 个银行 Capability 实现类按
   Transaction 12、Query 6、Account 4 归域；当前账户维护增量后的数量见本节开头；银行代码按
   `channel/{bank}/{transaction|query|account}` 分组；
@@ -391,9 +402,10 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 1. 阅读顺序：本 WIKI → 19 → 28 → 29 → 30（历史参照）→ 当前活动 Issue → 当前源码核对未完成项；
 2. 新增能力一律走三域结构：`channel/{bank}/{domain}/` 能力类 implements 对应域强类型接口，
    Registry 自动收集即完成路由；银行代码按 `channel/{bank}/{transaction|query|account}` 分组；
-   当前源码实况：银行 Capability 实现类 29 个（交易 12/查询 6/账户 11，账户 11=中信 9+平安挡板 2）、
-   链 21（8 交易/3 查询/10 账户）——历史基线 22/13 见 §4 数量口径；
-3. 三个 ExecuteNode 各自直接读取 Slot、调用 Loader、Registry 和 Capability，不增加抽象父节点或嵌套流程；
+   当前源码实况：银行 Capability 实现类 30 个（交易 12/查询 6/账户 12，账户 12=中信 10+平安挡板 2）、
+   链 22（8 交易/3 查询/11 账户）——历史基线 22/13 见 §4 数量口径；
+3. frontTenantPack 与三个 ExecuteNode 各自直接读取 Slot、调用 Loader、Registry 和 Capability，
+   不增加抽象父节点或嵌套流程；
 4. 银行 Capability 保持校验、组装、持久化和结果映射可读展开；钱包发送统一经 Gateway/Sender；
 5. 禁止复活 Context、Handle、BankSupport、Router、Dispatch 或多层 Wallet Client；
 6. 最终发送端记录完整明文请求/响应 body；Capability 不重复打印钱包报文，认证凭证不得入日志；
@@ -414,7 +426,7 @@ Application Service 负责构造本域 Slot 并执行原 chain id；ExecuteNode 
 | 平安通信失败日志 | 普通 error 日志存在，但没有结构化 `wallet_request_failed` | 最终 Sender 统一输出发送/响应/失败三类事件 |
 | web-test Header 日志 | `test_feign_headers` 当前会记录 `Authorization`（`WebTestHeaderLogInterceptor`） | 业务 payload 可明文，认证凭证必须排除 |
 | 请求入口日志 | Controller Aspect 与 Application Service 都会输出完整 Front 请求 | 明文允许；若要求单一入口日志，需单独确定保留层级 |
-| 代码注释 | `front-flow.xml` 头注释仍写 13 条链；`TenantBankConfigLoader` 注释仍引用不存在的 `TenantResolveNode`；ExecuteNode 注释仍以 `data_source_id` 为"分片 SQL"口径；个别 Gateway/Sender 注释仍使用 Handle/旧 Registry | 注释应与 21 条链、tenant_id 分片和三域 Capability 结构一致 |
+| 代码注释 | `front-flow.xml` 头注释与 `TenantResolveNode` 引用已修复；账户 ExecuteNode 注释仍以 `data_source_id` 为"分片 SQL"口径；`RoutingBankWalletGateway` 注释仍引用 `TransactionHandleRegistry` 旧术语 | 注释应与 22 条链、tenant_id 分片和三域 Capability 结构一致 |
 | 文件接口无实现 | **已解决（2026-09-02 确认）**：已实现为 `api.citic.CiticFrontFileProcessApi`（8 端点，含 4 个凭证端点）+ `controller/citic/CiticFrontFileProcessController` + `application/citic` + `channel/citic/file`；请求/响应模型从 `Bas*` 全部收口为 `model.{request,response}.citic.file.Citic*` | 已按"补实现并入册"路径关闭（见 §8 清单） |
 | 平台收付款 Mapper 列重复 | `FrontCiticPlatformPay/PlatformReceiveTransactionMapper` 的 `Base_Column_List` 中 `data_source_id` 出现两次（2026-08-07 `045ab653` 引入） | 列清单去重；凡引用该 `<sql>` 的查询需回归验证 |
 | ShardingSphere SQL 日志 | dev/uat/prod 三份 `shardingsphere-config-*.yaml` 均为 `props.sql-show: true` | 生产环境关闭或降级该开关，避免全量 SQL 明文（含租户/金额）进日志 |
@@ -457,6 +469,7 @@ updateAccountInfo
 acctClose
 whiteName                  // opType 区分加白/去白
 withdraw
+depositReg                 // 入账登记
 ```
 
 文件处理方法（`com.chinaums.front.api.citic.CiticFrontFileProcessApi`，`/front/trans` 前缀，
