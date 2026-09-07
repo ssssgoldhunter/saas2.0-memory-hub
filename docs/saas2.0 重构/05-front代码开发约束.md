@@ -14,8 +14,8 @@
 > 适用模块：`catering-api-front`、`catering-front` 及其使用的 `catering-common-core`
 > 约束级别：后续 Front 代码开发必须遵守
 
-> **2026-08-31 最终实现校准（优先于本文历史迁移段落）**：交易 8 条和交易查询 3 条链固定为
-> `THEN(frontTenantPack, frontTransExecute/frontQueryExecute)`，账户 10 条链保持
+> **2026-09-07 当前实现校准（优先于本文历史迁移段落）**：交易 8 条和交易查询 3 条链固定为
+> `THEN(frontTenantPack, frontTransExecute/frontQueryExecute)`，账户 11 条链保持
 > `THEN(frontAccountExecute)`。`FrontTenantPackNode` 统一校验 Header/Slot/request tenantId、加载
 > `TenantBaseInfo` 并按配置权威值回填或核对 dataSourceId。中信不明来款和文件处理使用非 LiteFlow 的
 > `FrontSpecialTenantPack`。完整约束见 [31-catering-front租户准备与分库安全设计](31-catering-front租户准备与分库安全设计.md)。
@@ -89,7 +89,7 @@
    `FrontFlowExecutor` 返回 `null` 时，Application Service 负责构造非空的 `INTERNAL_ERROR` 失败页。
    **禁止引入 `FrontPageResult` 等分页中间承接对象**（2026-08-19 用户裁决，
    原内部承接层废除）。
-6. LiteFlow 节点遇可预期业务失败时写 Slot 后中断；非 LiteFlow 路径抛 `FrontException`；
+6. 域 ExecuteNode 捕获 Capability 阶段业务失败后写 Slot 并中断；Pack/前置配置和路由阶段异常继续抛出；
    系统异常继续抛出，由 `FrontExceptionHandler` 收口。
 7. 不支持、未接入和结果未知必须显式表达。`FrontFlowExecutor` 内部允许返回 `null`，但三个
    Application Service 必须立即判断并转换为失败响应；Controller 和最终 API 禁止返回 `null` 或模拟成功。
@@ -231,8 +231,9 @@ Feign/API 接口
 → 银行或钱包平台
 ```
 
-LiteFlow 业务失败写 Slot 并主动结束；非 LiteFlow 业务异常和系统异常沿调用栈抛出，由
-`FrontExceptionHandler` 转换为 `R<FrontBaseResult>`。
+LiteFlow Capability 阶段业务失败写 Slot 并主动结束；Pack/前置准备和未被捕获的系统异常沿异常链收口。
+中信专项 Application Service 自行捕获异常并返回失败 R/分页，不统一经过 `FrontExceptionHandler`；
+只有继续向 Web 层抛出的异常由统一异常处理器转换，具体返回边界见 19、27、33 号。
 
 ### 3.1 Controller
 
@@ -627,8 +628,8 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   fail-closed（`tenant_id = NULL` 进而导致路由失败），该兜底禁止绕过或关闭；
 - **分片算法**：`TenantDataSourceShardingAlgorithm`（CLASS_BASED, STANDARD），流程为：
   1. 取 SQL 的 `tenant_id` 值；空白 → 抛 `IllegalStateException`；
-  2. 经静态回调读取 `TenantDataSourceMappingCache`（进程内缓存，算法类自身零 IO）；
-     回调未注入或映射缺失 → 抛 `IllegalStateException`；
+  2. 经静态回调调用 `TenantDataSourceMappingCache.resolve`；命中未过期值时读内存，未命中/过期时
+     同步远程加载（同租户 single-flight）。回调未注入，或加载失败且没有旧映射时抛 `IllegalStateException`；
   3. 目标 `ds_x` 不在 `availableTargetNames` → 抛 `IllegalStateException`；否则返回 `ds_x`；
 - **映射权威源**：`sys_tenant.resourceConfig`（经 `RemoteTenantServiceClient.queryByTenantId /
   queryList` 获取，合法值形如 `ds_N`）。缓存 TTL 默认 15 分钟（配置项
@@ -636,8 +637,9 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
   single-flight 懒加载；刷新失败保留旧值并按 5 分钟短 TTL 重试；启动经
   `SmartInitializingSingleton` 用 `queryList()` 预热，非法条目不入缓存、预热失败不阻断启动
   （运行期由算法 fail-fast 兜底）；
-- **失败策略**：`tenant_id` 为空、映射缺失、`resourceConfig` 为 `default`/空/不在可用数据源
-  列表时必须立即抛异常终止 SQL；禁止默认进入 `ds_0`、第一个数据源或任何形式的默认库回退
+- **失败策略**：`tenant_id` 为空、没有可用映射或返回目标不在可用数据源列表时终止 SQL。
+  远程映射缺失/非法或查询失败时，若已有旧缓存值，现有实现保留旧值并按 5 分钟 TTL 再试；
+  因此配置源变更不会立即使所有请求失败。禁止默认进入 `ds_0`、第一个数据源或任何形式的默认库回退
   （databatch 版算法的 `DEFAULT_DS` 兜底禁止照抄）；
 - **配置位置**：`resources/shardingsphere-config-${profile}.yaml`（dev/uat/prod）；加载入口为
   nacos `catering-front.yml` 的 `spring.datasource.url: jdbc:shardingsphere:classpath:...`
@@ -668,7 +670,7 @@ catering-front 的 10 张渠道流水表与业务表绑定，分布在多个物�
 
 | 类 | 模块 | 职责 |
 |---|---|---|
-| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法：按 `tenant_id` 查进程内映射返回 `ds_x`，全分支 fail-fast、零 IO |
+| `TenantDataSourceShardingAlgorithm` | catering-front `sharding` | STANDARD 分片算法：按 `tenant_id` 调 resolve 返回 `ds_x`；命中读内存，缺失/过期可能同步远程加载；无映射或目标不可用才失败 |
 | `TenantDataSourceMappingCache` | catering-front `sharding` | tenantId → 数据源名进程内缓存（TTL 懒加载 + single-flight + 启动预热），唯一向算法注入回调的组件；2026-09-02 起同时是 `data_source_id` 列值的权威来源 |
 | `TenantBankConfigLoader` | catering-front `config` | 租户/银行配置加载；`loadTenantBaseInfo` 的 `dataSourceId` 经 `TenantDataSourceMappingCache.resolve` 取得（同路由源），映射不可用抛 `FrontException` |
 
@@ -1110,7 +1112,7 @@ catering-common-core
 
 ### 7.1 何时抛出 `FrontException`
 
-以下可预期业务失败在非 LiteFlow 路径必须抛出 `FrontException`；LiteFlow 节点按 §7.3 写 Slot 后中断：
+以下可预期业务失败使用 `FrontException`；是否转写 Slot 由所处阶段决定，见 §7.3：
 
 - 银行不支持；
 - 能力不支持；
@@ -1153,7 +1155,9 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 
 ### 7.3 LiteFlow 链内节点的业务异常中断
 
-三个域 ExecuteNode 遇到 §7.1 所列的可预期业务失败时，采用中断流程方式：
+准备阶段与能力执行阶段分别收口：`frontTenantPack` 和三个 ExecuteNode 的 `process→doProcess` 包装
+只捕获向外抛出的 `FrontException`，记录 `flow_interrupted` 后原样抛出。Capability 调用内层捕获的
+`FrontException` 不经过该包装，由所属域 ExecuteNode 采用以下方式中断流程：
 
 1. 把 `FrontErrorCode` 的 `code/msg` 写入当前域 Slot 的 `frontRespCode/frontRespDesc`；
 2. 调用 `this.setIsEnd(true)`（LiteFlow 视为用户主动结束，`response.isSuccess` 仍为 `true`）；
@@ -1168,7 +1172,7 @@ throw new FrontException(FrontErrorCode.INVALID_REQUEST, "可公开的错误说�
 `switch(capability)`。
 
 系统级异常（NPE、数据库连接、JSON 解析等非业务错误）不写业务失败 Slot，继续 throw，由
-`FrontExceptionHandler` 收口。`FrontException` 保留用于非 LiteFlow 路径；若具体 Capability 在本域
+`FrontExceptionHandler` 收口。租户准备、路由/配置和非 LiteFlow 专项路径均可抛 `FrontException`；若具体 Capability 在本域
 ExecuteNode 调用期间抛出 `FrontException`，该节点必须只捕获该类型并转写 Slot，其他异常继续抛出。
 
 ### 7.4 禁止事项
@@ -1232,6 +1236,14 @@ ExecuteNode 调用期间抛出 `FrontException`，该节点必须只捕获该类
 - 租户完整银行配置；
 - `appKey`、私钥、签名原文（调用控制值，不进入报文日志）；
 - `Authorization`、Cookie、签名头或完整银行 URL。
+
+已提交日志增量（94bf7481，排查手册见 19 §10.1/§10.2）：
+
+- Controller 切面含 citic 子包，记录 front_request_received/front_response_returning/front_request_failed；
+- 正常返回失败对象仍是 front_response_returning；front_request_failed 仅表示方法抛出异常；
+- 四个 Flow 节点对向外抛出的 FrontException 记录 flow_interrupted，不替代 Capability 内层业务中断日志；
+- metadata 使用强类型字段提取，不将专项 payload 全字段提升到 metadata；入口 metadata 是回填前快照；
+- FrontLogJsonUtils 从 MDC 取 traceId，logback 输出 REQ_ID；异步及跨服务透传须单独核验。
 
 日志异常级别：
 
@@ -1425,7 +1437,7 @@ ContractKeys 或补写未启用分支。
 
 ## 11. 提交前检查表
 
-> **当前源码快照（2026-09-05，`limeng_front@66d7df9d`）**：
+> **当前源码快照（2026-09-07，`limeng_front@aa3dc5db`，静态复核）**：
 > `FrontCapability` 枚举 23 项；银行 Capability 实现类 30 个（12 / 6 / 12）；
 > LiteFlow 链 22 条（8 / 3 / 11）；标准 API 21 个（8 交易 / 5 查询 / 8 账户维护）。
 > 租户准备、专项 Pack 和分库配置已有对应回归测试。以下检查项仍必须以当前源码为证据，不能用勾选代替核验。
@@ -1492,7 +1504,7 @@ ContractKeys 或补写未启用分支。
 - [ ] 未解析银行返回 `BANK_NOT_SUPPORTED`，银行下未注册能力返回 `CAPABILITY_NOT_SUPPORTED`，不维护
       额外能力状态表；
 - [ ] Capability 只实现 `BankTransCapability/BankQueryCapability/BankAccountCapability` 之一，不继承业务父类；
-      配置由所属域 ExecuteNode 调用具体 Loader 加载；
+      基础配置由交易/查询 Pack 或 Account ExecuteNode 加载；银行账户配置仍由各域 ExecuteNode 调用 Loader 加载；
 - [ ] 平安账户状态/余额保留明确挡板，平安平台收付款继续不注册；
 - [ ] 三个 ExecuteNode 分别调用本域 Registry 选中的 Capability，不存在统一 Registry、BankRouteNode、
       Router/Dispatch 或 `switch(capability)`；
@@ -1508,10 +1520,10 @@ ContractKeys 或补写未启用分支。
 - [ ] `frontTenantPack/frontTransExecute/frontQueryExecute/frontAccountExecute` 四个节点注册唯一，22 条链引用可达；
       当前 `chainFrontAccountUnwhiteName` 无 API/AppService 调用，未处理前不得勾选“无悬空引用”；
 - [ ] 交易 8 条链固定 `THEN(frontTenantPack, frontTransExecute)`，查询 3 条固定
-      `THEN(frontTenantPack, frontQueryExecute)`，账户 10 条固定 `THEN(frontAccountExecute)`；
+      `THEN(frontTenantPack, frontQueryExecute)`，账户 11 条固定 `THEN(frontAccountExecute)`；
 - [ ] 每个 ExecuteNode 只执行本域 Registry 选中的 Capability，不按 capability 再分派；
 - [ ] 交易链不设置公共重复交易检查节点；`CiticTransferCapability` 使用固定 Mapper 检查；
-- [ ] 业务异常 `markBusinessFail` + `setIsEnd(true)`，不 throw；
+- [ ] Capability 阶段 FrontException 转写失败 Slot 并 setIsEnd；Pack/前置配置与路由异常记录后沿异常链收口；
 - [ ] 系统异常 throw 走 `FrontExceptionHandler` 收口；
 - [ ] 持久化（INIT/SENDING/响应更新）在 Capability 主流程中直接可见，不需要独立链节点或 BankSupport。
 
@@ -1544,8 +1556,8 @@ ContractKeys 或补写未启用分支。
 - [ ] ShardingSphere STANDARD 模式，分片键 `tenant_id`，算法 `TenantDataSourceShardingAlgorithm`；
 - [ ] 算法按 `tenant_id` 查进程内 `TenantDataSourceMappingCache` 得 `ds_x`（映射权威源
       `sys_tenant.resourceConfig`，见 §3.10.1）；
-- [ ] `tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失/`resourceConfig` 非法或目标 `ds_x`
-      不存在时明确失败，不默认路由到 `ds_0`/第一个数据源；
+- [ ] tenant_id 为空或返回目标不在可用列表时立即失败；远程映射缺失/非法/加载失败且已有旧值时
+      保留 5 分钟，没有旧值时失败；不默认路由到 ds_0/第一个数据源；
 - [ ] 本阶段不验收 `shardingsphere-config-{dev,uat,prod}.yaml` 的连接配置加密和安全加固；后续部署任务单独处理；
 - [ ] `FrontDataSourceHelper` 已废弃不存在，Capability 无数据源切换代码；
 - [ ] 10 张表 `PARTITION BY LINEAR KEY (tenant_id, store_id) PARTITIONS 30`（内置于 09-final）；

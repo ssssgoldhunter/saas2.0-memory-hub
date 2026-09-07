@@ -1,9 +1,9 @@
 # Catering Front 框架与业务功能设计手册
 
 > 状态：current-design / implemented
-> 更新日期：2026-08-31
+> 更新日期：2026-09-07
 > 历史迁移起点：`limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
-> 当前源码基线：`limeng_front@66d7df9d`（2026-09-05 复核）
+> 当前源码基线：`limeng_front@aa3dc5db`（2026-09-07 静态复核，含日志提交 `94bf7481`；本次未运行测试）
 > 结构权威：01、05、28、29 号文档
 
 本文供维护 `catering-front`、增加银行或实现能力时使用。它只描述现行三域扁平框架和已确认业务；
@@ -55,7 +55,7 @@ Capability → BankWalletGateway.post → BankWalletSender
 ```
 
 API 入口和 chain id 不变。交易 8 条和交易查询 3 条链先执行统一租户准备组件，再进入本域 ExecuteNode；
-账户 10 条链仍只包含 `frontAccountExecute`。业务逻辑继续在银行 Capability 内扁平展开。
+账户 11 条链仍只包含 `frontAccountExecute`。业务逻辑继续在银行 Capability 内扁平展开。
 
 ## 3. Slot、接口和 Registry
 
@@ -76,8 +76,8 @@ FrontBaseSlot
 
 `FrontTenantPackNode` 对 Transaction/Query 执行 Header、Slot、请求 `tenantId` 一致性校验，加载
 `TenantBaseInfo`，并按与分片路由同源的权威值（`TenantDataSourceMappingCache`，形如 `ds_N`，
-2026-09-02 起）回填或核对 `dataSourceId`。ExecuteNode 取得 Slot 后只完成本域路由和
-Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完整边界见 31 号设计。
+2026-09-02 起）回填或核对 `dataSourceId`。ExecuteNode 取得 Slot 后补 clientId/platformCode 缺省值、解析 BankCode、
+加载银行账户配置，再进行本域路由和 Capability 调用；Account 域还自行加载基础配置。完整边界见 31 号设计。
 
 ## 4. 业务能力矩阵
 
@@ -106,7 +106,7 @@ Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完
 
 共 6 个银行 Capability。Query 域不包含账户状态和账户余额。
 
-### 4.3 Account：11 个实现
+### 4.3 Account：12 个实现
 
 | 能力 | 中信 | 平安 | 结果 |
 |---|---|---|---|
@@ -119,9 +119,26 @@ Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完
 | accountClose | 支持 | 不注册 | `R<AccountBaseResult>` |
 | accountWhiteName | 支持 | 不注册 | `R<AccountBaseResult>`；`opType` 区分加白/去白 |
 | accountWithdraw | 支持 | 不注册 | `R<AccountBaseResult>`；区别于 Transaction withdraw |
+| accountDepositReg | 支持 | 不注册 | `R<AccountBaseResult>`；自定义摘要入金规则维护，bizFunc=44 |
 
-共 11 个银行 Capability：中信 9 个，平安 2 个挡板。账户维护新增 7 个公开 API；
+共 12 个银行 Capability：中信 10 个，平安 2 个挡板。账户维护 8 个公开 API（含 depositReg）；
 当前 XML 另有 `chainFrontAccountUnwhiteName`，但没有独立 API/AppService 调用，见 §13 当前差异。
+
+### 4.3.1 自定义摘要入金规则维护
+
+`FrontAccountApi.depositReg`：POST `/front/v1/accounts/deposit-reg`，请求
+`FrontRequest<AccountBusinessData>`，返回 `R<AccountBaseResult>`。属于 Account 域，
+注册 ACCOUNT_DEPOSIT_REG，中信 Capability 调用 update-acct-info，bizFunc=44、chnlNo=0010，不产生渠道流水。
+
+| specialData 字段 | 当前实现要求 | 银行映射 |
+|---|---|---|
+| bankAccountCode | 非空 | SM2 加密后放 acctNo |
+| opType | 非空，当前不额外校验枚举 | reserve.opType |
+| depositType | 非空，当前不额外校验枚举 | reserve.depositType |
+| depositReg | 非空 | reserve.depositReg |
+| chnlNum | 可选，非空透传 | reserve.chnlNum |
+
+当前实现不校验 depositType 与 chnlNum 的联动必填；该能力已提交，不能把规则透传写成完整业务规则校验。
 
 ### 4.4 中信不明来款专项
 
@@ -139,7 +156,8 @@ Capability 调用；Account 域维持现有 ExecuteNode 配置加载路径。完
 
 - 不进入三域 Registry/LiteFlow；调用链 `Controller → CiticFrontFileProcessApplicationService
   → CiticFileProcessChannel → BankWalletGateway`；
-- 通过 `FrontSpecialTenantPack` 完成租户准备（header/body tenantId 校验、缺省回填、银行账户配置）；
+- 通过 `FrontSpecialTenantPack` 校验 Header/body tenantId，回填/核对 clientId/platformCode/dataSourceId 并加载银行账户配置；
+  仅单张凭证 Application Service 额外提供 body tenantId 缺失时的 Header 回填；Pack 本身不回填 tenantId；
 - **单张凭证下载（bizFunc=02）为 front 自查定位**：调用方只传 `frontSsn + capability`
   （充值/TI 传 `specialData`），`CiticReceiptElementLocator#locate` 为全能力唯一要素路由——
   六渠道能力查 SUCCESS 渠道行；充值查通知表 trans_platform_notify_zx；TI 经 24 接口翻页比对；
@@ -268,7 +286,39 @@ Loader 先查询 tenant base（`clientId/platformCode/supportBankConfig`；`data
 当前源码事实：中信 Sender 已提供发送、响应和失败三类结构化事件；平安 Sender 的通信异常路径
 只有普通 error 日志，尚无结构化 `wallet_request_failed`。`catering-web-test` 的
 `test_feign_headers` 当前还会记录 `Authorization`，与认证凭证排除规则冲突。业务验证码属于业务
-payload，按用户裁决允许明文，不再列入禁止项。以上均是待后续明确授权后修正的代码差异。
+payload，按用户裁决允许明文，不再列入禁止项。中信 `CiticFileProcessChannel.queryCheckFileInfo` 仍在
+Channel 层打印完整 response，与统一 Sender 报文日志目标有差异。以上为本次只读确认的现状，未修改代码。
+
+### 10.1 已提交入口与链路日志（94bf7481）
+
+`FrontInvocationLogAspect` 覆盖 `com.chinaums.front.controller..*Controller` 的 public 方法，包含
+`citic` 子包。事件的含义以方法执行结果为准：
+
+| 事件 | 触发点 | 排查含义 |
+|---|---|---|
+| `front_request_received` | Controller 方法执行前 | 已进入切面；此前参数绑定/校验失败时不保证产生此事件 |
+| `front_response_returning` | Controller 正常返回对象 | 失败 R/分页也记录此事件，必须再检查返回业务码 |
+| `front_request_failed` | 异常从 Controller 方法抛出 | FrontException 记 WARN 与 errorCode；其他异常记 ERROR 和堆栈，随后原样抛出 |
+| `flow_interrupted` | 四个 Flow 节点的 doProcess 向外抛出 FrontException | 记 WARN，携带可取得的 Slot 定位字段和异常消息，随后原样抛出 |
+
+域 ExecuteNode 在调用 Capability 时捕获的 FrontException 仍记录业务中断日志、写失败 Slot 并结束链，
+不经过外层 flow_interrupted；非 FrontException 也不由该包装记录为 flow_interrupted。
+中信专项不运行 Flow 节点，由 Controller 切面和各专项 Application Service/Channel 承接日志。
+
+入口 metadata 在调用前提取一次，Pack 后续回填的数据不会自动刷新这份 metadata。普通交易提取订单号；
+状态查询另提取 frontSsn。专项字段不通过反射展开：凭证请求的 frontSsn/capability 和
+specialData.bizOrderNo 应从完整 payload 查阅，不能假定其已成为独立 metadata 字段。
+
+### 10.2 追踪与联调检查
+
+FrontTraceFilter 调用 LogUtil.addReqTrace() 写 MDC REQ_ID。能取得请求上下文时优先使用
+Header reqId；未提供时使用已有 MDC 标识或生成 ex_ 标识，过滤器异常兜底也生成 ex_。请求结束清除 MDC。
+FrontLogJsonUtils 在 MDC 有值时附加 JSON traceId，logback 的控制台模式输出 `[%X{REQ_ID}]`。
+现有实现不能作为所有异步线程或上下游服务自动透传的保证。
+
+排查时先用实际日志的 traceId/REQ_ID 关联入口、节点和 Sender，再结合租户、订单号及返回业务码。
+校验失败在发送前结束时，缺少钱包日志不代表日志丢失；front_response_returning 也不代表业务成功。
+日志增量已经提交，运行时覆盖和关联仍需联调验证，本次文档同步未执行测试。
 
 ## 11. 新银行开发
 
@@ -325,8 +375,11 @@ Spring 注入列表会让 Capability 自描述注册到对应 Registry。不得�
   列值 2026-09-02 起与路由同源，形如 `ds_N`）；
 - **SELECT/UPDATE**：不再要求 `.eq(DATA_SOURCE_ID, ...)` 显式条件（2026-08-29 FR-6 已移除），
   路由由插件注入的 `tenant_id` 精确保证；
-- **保障**：`tenant_id` 缺失（无租户上下文 fail-closed）、映射缺失或目标 `ds_x` 不在可用列表时
-  立即失败，禁止默认路由。
+- **保障**：tenant_id 为空或返回目标不在 availableTargetNames 时立即失败；映射刷新失败但已有旧值时
+  保留旧值 5 分钟，没有旧值时失败，禁止默认路由。
+- **充值凭证部署差异**：RECHARGE 凭证定位通过 FrontTransPlatformNotifyZxMapper 查询 `trans_platform_notify_zx`，但仓库
+三套分片配置仍只声明原 10 张渠道流水表，未声明该通知表且没有 SINGLE 兜底。实际部署规则和表可达性
+待确认，不能据定位代码已提交推定该分支已完成分库验收。
 
 
 ## 附录：最终约束清单（持续有效）

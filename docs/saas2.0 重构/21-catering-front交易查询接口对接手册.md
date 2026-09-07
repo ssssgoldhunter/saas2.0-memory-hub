@@ -1,7 +1,7 @@
 # Catering Front 交易查询接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-31
+> 核验日期：2026-09-07（代码 aa3dc5db，静态核验）
 > 适用对象：调用 `catering-front` 查询能力的业务上游开发人员
 > 覆盖范围：当前 `FrontQueryApi` 的 5 个接口（3 个 Query 域 + 2 个 Account 域）及完整请求、返回字段
 > 不覆盖：银行 Capability 开发和交易发起；分别见 19、20 号手册
@@ -781,6 +781,10 @@ if (page.getTotalPage() != null && pageNo < page.getTotalPage()) {
 
 ---
 
+日志排查见 19 §10：状态查询可通过 metadata.frontSsn 和订单号定位，再用实际 traceId/REQ_ID 关联。
+失败分页也可能记录 front_response_returning，必须检查分页 code。示例 ds_2 仅表示格式，实际值以租户
+映射和部署数据源为准；Query 可省略 dataSourceId 交给 Pack 回填，Account 仍走现有 ExecuteNode 路径。
+
 ## 14. 联调检查表
 
 - [ ] 使用 `FrontQueryApi` 当前 DTO，没有使用旧 `TransactionDetailItem/FrontPageResult`。
@@ -796,4 +800,4 @@ if (page.getTotalPage() != null && pageNo < page.getTotalPage()) {
 - [ ] 业务金额按分读取，没有再次乘 100。
 - [ ] 先判断 `code`，再消费 `rows`；未用 `total` 代替本页行数。
 - [ ] `S/P/F/null` 四种状态均有处理分支。
-- [ ] 未记录查询请求或返回中的账号、姓名、卡号、会员号和完整 specialData。
+- [ ] 业务 payload 按明文要求记录；钱包报文统一由 Sender 输出，密钥和认证凭证不入日志。

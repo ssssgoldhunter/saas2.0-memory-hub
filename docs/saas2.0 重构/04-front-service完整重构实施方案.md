@@ -5,8 +5,8 @@
 > 实施起点：`cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
 > 最终设计：[28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)
 > 可执行任务：[29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
-> 最终实现校准（2026-08-31）：本文的 13 条单节点链仅是历史安排；当前 21 条链及租户准备/分库结构
-> 以 19、31 号文档和 `limeng_front@dbd9fad5` 为准。
+> 当前实现索引（2026-09-07）：本文的 13 条单节点链及 2026-08-31 的 21 条链均为历史快照；
+> 当前 `limeng_front@aa3dc5db` 为 22 条链（Transaction 8 / Query 3 / Account 11），实现与租户准备/分库结构以 19、31 号文档为准。
 
 本文是 28/29 号三域迁移的历史实施安排，22 个实现类 / 13 条链不是当前源码数量；当前状态以
 WIKI-START §4、§7.1 和 19 号手册为准。旧版大 Handle、业务 Context、Router/Dispatch、

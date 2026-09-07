@@ -200,7 +200,7 @@ mvn spring-boot:run -Dmaven.repo.local=/Users/limeng/shares/m2saas
 | `tenantId` | `tenant-id` | 租户ID | 配置系统 |
 | `clientId` | `client-id` | 客户端ID（请求缺失时 setupContext 自动补全并随 header 发送） | 配置系统 |
 | `platformCode` | `platform-code` | 银行平台编码（2026-08-20 起只用于组装输入与日志对照，不进 header/baseData，front 从 tenant_base_config 回填） | 配置系统 |
-| `dataSourceId` | `data-source-id` | 数据源ID（同上，front 从 tenant_base_config 回填） | 配置系统 |
+| `dataSourceId` | `data-source-id` | 本地测试配置展示值；Front 最终 dataSourceId 来自 resourceConfig 映射缓存（ds_N） | 租户分片映射 |
 | `selfDealType` | `self-deal-type` | 自营交易类型(中信) | zx_bank_config |
 | `selfFundType` | `self-fund-type` | 自营资金类型(中信) | zx_bank_config |
 | `defaultRole` | `default-role` | 默认角色(中信) | zx_bank_config |
@@ -259,12 +259,15 @@ catering-front (实际业务服务)
 浏览器双独立区域展示（请求区渲染后不变；应答区独立更新，各自复制）
 ```
 
+2026-09-07 同步：本地配置示例的 0/1 不是 Front 物理路由输入；显式传 dataSourceId 时必须使用
+映射缓存返回的 ds_N 且一致。运行排查用实际 traceId/REQ_ID，入口/返回/失败事件含义见 19 §10。
+
 ## 7. 后台实现
 
 > 最小调用方形态（2026-08-20 用户要求）：web-test 调 front 的 header 只封装
 > `tenantId + clientId` 两字段；请求体 baseData 只带 `tenantId/storeId` 等业务字段，
-> 不填 platformCode/dataSourceId——Transaction/Query 由 `frontTenantPack` 从
-> `tenant_base_config` 缺省回填（见 19 号手册）。specialData 组装仍按开发手册两步
+> 不填 platformCode/dataSourceId——Transaction/Query 的 platformCode 由域 ExecuteNode 从
+> `tenant_base_config` 回填，dataSourceId 由 frontTenantPack 按 resourceConfig 映射缓存（ds_N）准备（见 19/31 号）。specialData 组装仍按开发手册两步
 > 调用：先调 `/assemble/special-data`（本地 `FrontSpecialDataAssembler`，组装输入的
 > platformCode/dataSourceId 来自本地租户配置），确认后再发起交易/查询。
 

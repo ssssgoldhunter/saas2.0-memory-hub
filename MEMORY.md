@@ -114,7 +114,7 @@
 
 ### 5.3 saas2.0 / cateringsass（当前主战场：多银行渠道 Front 重构）
 
-- 代码：`cateringsass/catering-modules/catering-front`（2026-09-05 复核基线
+- 代码：`cateringsass/catering-modules/catering-front`（2026-09-07 文档静态复核基线
   `limeng_front@aa3dc5db`，含 tenant_id 分片切换 + 特殊能力模型收口 + dataSourceId 同源改造
   + 入账登记/单凭证下载 + 日志补齐 `94bf7481`；测试待用户执行）；
   记忆库 `saas2.0-memory-hub`。
@@ -125,7 +125,7 @@
   银行 Capability 实现类 30 个（Transaction 12 / Query 6 / Account 12），LiteFlow 链 22 条
   （8 / 3 / 11）。枚举中的 `RECHARGE`、`TI` 当前没有对应交易 Front API 或交易 Capability 实现
   （TI 凭证下载部分已落地），不能用枚举数量推导已落地 API 数。
-- 中信单张凭证下载已改造为 front 自查定位（2026-09-03 UAT 验证通过，详见 `docs/saas2.0 重构/32-中信单张凭证下载改造交付.md` 与 `33-...凭证下载接口对接手册.md`）：契约=frontSsn + capability + specialData（充值传 bizOrderNo=充值表 transNo；TI 传 acctNo/transDt/bizOrderNo）；能力→凭证 TRANS_TYPE=TRANSFER/CONSUME→06、REFUND→07、WITHDRAW→04、PLATFORM_PAY→12、PLATFORM_RECEIVE→13、RECHARGE→05、TI→03（TI 已入 FrontCapability，通用能力）；**钱包应答键大小写按接口不同**：27/26/23/74 应答为大写 USER_SSN/USER_TRANS_DT，2041/2042 为驼峰 userSsn/userTransDt（BANK_WIRE_* 常量仅用于 2041/2042 应答解析）；26 提现应答无 USER_SSN 键（流水在 queryId 返回），提现凭证下载缺 bank_user_ssn 时自动经 74 状态查询补号并回填渠道行；充值/TI 上游能力未接入（充值入金走银行通知、TI 交易侧待设计），链路已就绪；web-test 首页凭证下载 tab（自动下载 PDF + 确认弹窗）；代码未提交。
+- 中信单张凭证下载已改造为 front 自查定位（2026-09-03 UAT 验证通过，详见 `docs/saas2.0 重构/32-中信单张凭证下载改造交付.md` 与 `33-...凭证下载接口对接手册.md`）：契约=frontSsn + capability + specialData（充值传 bizOrderNo=充值表 transNo；TI 传 acctNo/transDt/bizOrderNo）；能力→凭证 TRANS_TYPE=TRANSFER/CONSUME→06、REFUND→07、WITHDRAW→04、PLATFORM_PAY→12、PLATFORM_RECEIVE→13、RECHARGE→05、TI→03（TI 已入 FrontCapability，通用能力）；**钱包应答键大小写按接口不同**：27/26/23/74 应答为大写 USER_SSN/USER_TRANS_DT，2041/2042 为驼峰 userSsn/userTransDt（BANK_WIRE_* 常量仅用于 2041/2042 应答解析）；26 提现应答无 USER_SSN 键（流水在 queryId 返回），提现凭证下载缺 bank_user_ssn 时自动经 74 状态查询补号并回填渠道行；充值/TI 上游能力未接入（充值入金走银行通知、TI 交易侧待设计），定位实现已提交；充值通知表未在仓库分片规则声明，部署可达性待确认；web-test 首页凭证下载 tab（自动下载 PDF + 确认弹窗）；代码已随 `530ef727` 提交并包含于 `aa3dc5db`；历史 UAT 记录见 32 号，不代表充值/TI 或最新日志增量已经通过测试。
 - 架构：Controller → Application Service → LiteFlow（交易/查询为 `frontTenantPack + 域 ExecuteNode`
   两节点，账户单节点）→ 域 Registry
   `(BankCode, FrontCapability)` → 银行 Capability → `BankWalletGateway` → 最终 `BankWalletSender`；
@@ -220,6 +220,9 @@
 ---
 
 ## 更新记录
+
+- 2026-09-07：按 `limeng_front@aa3dc5db` 静态复核开发约束、框架/租户设计、业务手册和项目副本；
+  凭证下载改为已提交，补齐日志事件边界与缓存刷新行为。本次未运行编译、测试或 UAT。
 
 - 2026-09-04：中信单张凭证下载改造收口（front 自查定位 + 钱包应答键大小写修复 + 提现 74 补号），
   UAT 验证通过；新增 32 号交付文档、33 号凭证下载对接手册；19/02 号手册与 WIKI-START 已对齐。

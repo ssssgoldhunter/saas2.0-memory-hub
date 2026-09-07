@@ -5,8 +5,8 @@
 > 代码起点：`cateringsass/limeng_front_restruct@0dd983a72cc7def2d60f6f35aefcc1c1160864d2`
 > 结构裁决：[28-cateringfront结构简化改造方案](28-cateringfront结构简化改造方案.md)
 > 实施计划：[29-cateringfront全量扁平化迁移-plan](29-cateringfront全量扁平化迁移-plan.md)
-> 银行能力落地：本文 §16（中信）、§17（平安）已并入原 02/03 接口能力汇总，飞书主文档自洽完整。
-> 最终实现校准：2026-08-31 的租户准备、专项 Pack 与分库安全结构以 31 号设计为准。
+> 银行能力附录：§16（中信）、§17（平安）保留迁移时的历史映射，不代表当前能力覆盖或字段契约；当前能力见 02/03、19/20/21、27/33 号文档。
+> 当前实现校准（2026-09-07）：以 `limeng_front@aa3dc5db` 为基线；现状见 19 号手册，租户准备、专项 Pack 与分库安全见 31 号设计。
 
 本文描述 28/29 号迁移时的目标结构和 22 个实现类 / 13 条链历史基线；当前账户维护增量后的
 源码数量、状态和差异以 WIKI-START §4、§7.1 及 19 号手册为准。旧 `FrontFlowContext → BankRequestContext → Handle`、
@@ -65,8 +65,9 @@ Front 面向内部业务系统提供统一的多银行交易、交易查询和�
 |---|---|
 | API/Controller | 定义并透传外部契约，不包含银行判断 |
 | Application Service | 固定当前 capability，创建本域 Slot，执行原 chain id，转换最终返回 |
-| LiteFlow | 每条链只挂一个本域 ExecuteNode |
-| ExecuteNode | 公共校验、租户配置加载、BankCode 解析、本域 Registry 路由、异常写 Slot |
+| LiteFlow | 交易/查询先执行 frontTenantPack，再进入本域 ExecuteNode；账户保持单节点 |
+| FrontTenantPackNode | 交易/查询 Header/Slot tenantId 校验、基础配置加载、dataSourceId 回填/核对 |
+| ExecuteNode | 补 clientId/platformCode、解析 BankCode、加载银行账户配置、本域路由与能力执行；账户域还自行加载基础配置 |
 | Registry | 按 `(BankCode, FrontCapability)` 返回本域强类型 Capability |
 | Capability | 校验、组报文、流水处理、调用钱包、响应判断和结果映射 |
 | Gateway/Sender | 统一发送入口、按银行选择 Sender、签名/HTTP/超时和最终报文日志 |
@@ -89,6 +90,7 @@ com.chinaums.front
 │  │  ├─ FrontQuerySlot
 │  │  └─ FrontAccountSlot
 │  ├─ node/
+│  │  ├─ FrontTenantPackNode
 │  │  ├─ FrontTransExecuteNode
 │  │  ├─ FrontQueryExecuteNode
 │  │  └─ FrontAccountExecuteNode
@@ -142,7 +144,7 @@ FrontBaseSlot
 - `FrontAccountSlot`：账户状态、账户余额的请求和结果。
 
 一次调用只创建一个域 Slot。禁止新增 `FrontFlowContext`、`BankRequestContext`、银行 Slot 或能力级 Slot。
-ExecuteNode 使用 LiteFlow v2.16.X 无参 `getFirstContextBean()` 获取当前 Slot，再显式校验所属域类型。
+ExecuteNode 使用无参 `getFirstContextBean()` 获取当前 Slot，再显式校验所属域类型；当前根 POM 的 `liteflow.version` 为 `2.12.1`。
 
 ## 5. 三域注册模型
 
@@ -207,13 +209,13 @@ interface BankAccountCapability {
 
 ## 6. LiteFlow 规则
 
-当前 21 个 chain id 保持不变：
+当前 22 个 chain id 保持不变：
 
 | 域 | 数量 | 节点 |
 |---|---:|---|
 | Transaction | 8 | `THEN(frontTenantPack, frontTransExecute)` |
 | Query | 3 | `THEN(frontTenantPack, frontQueryExecute)` |
-| Account | 10 | `THEN(frontAccountExecute)` |
+| Account | 11 | `THEN(frontAccountExecute)` |
 
 Transaction/Query 使用一个统一 `frontTenantPack` 完成租户准备，再进入所属域 ExecuteNode；Account 保持
 单节点链。Pack 不拆银行业务步骤，Capability 仍保持扁平。
@@ -239,13 +241,20 @@ FrontRequest
 
 ## 8. 租户配置
 
-调用链固定为：
+当前调用链（aa3dc5db）为：
 
 ```text
-域 ExecuteNode
-→ TenantBankConfigLoader
-→ RemoteConfigServiceClient
+Transaction / Query：FrontTenantPackNode 加载 base → 域 ExecuteNode 加载 bank account config → Registry
+Account：FrontAccountExecuteNode 加载 base + bank account config → Registry
+中信专项：FrontSpecialTenantPack 加载 base + bank account config → FrontSpecialProcessContext
+
+配置加载均经过 TenantBankConfigLoader
+base.dataSourceId → TenantDataSourceMappingCache.resolve(tenantId) → sys_tenant.resourceConfig
+其余租户基础配置 / 银行账户配置 → RemoteConfigServiceClient
 ```
+
+Transaction/Query 的域 ExecuteNode 仍负责缺省 clientId/platformCode 回填、银行解析及账户配置加载，
+不是仅调用 Registry。映射缓存刷新与旧值保留窗口见 31 号，不得把整个调用链理解为无 I/O 的本地查表。
 
 Loader 是具体类，只保留：
 
@@ -290,7 +299,8 @@ Loader 直接查询并扁平组装中信/平安配置。禁止恢复
 - 重复检查固定使用当前表的 `tenantId + bizOrderNo + bizSubOrderNo`。
 - 状态按 `INIT → SENDING → 最终状态` 更新；超时或结果不明进入 `UNKNOWN`，不得自动重发资金交易。
 - 分库键是 `tenant_id`（进程内租户映射缓存路由，2026-08-29 起；`data_source_id` 仅作 insert
-  列值记录实例）；`tenant_id` 缺失、映射缺失或目标数据源不存在时立即失败，不得兜底到 `ds_0`。
+  列值记录实例）；tenant_id 为空或返回目标不在可用列表时立即失败。远程映射缺失/非法/加载失败
+  且已有旧值时保留 5 分钟，没有旧值时失败，不得兜底到 ds_0；完整行为见 31 号。
 - 本结构增量不修改 10 张表、Entity、VO、Mapper、XML、DDL 或分片规则。
 
 ## 12. 中信不明来款专项
@@ -319,7 +329,7 @@ CiticUnidentifiedRemittanceApi
 3. 一个最终 BankWalletSender；
 4. 该银行真实支持的三域 Capability 实现。
 
-不修改 API、Controller、三个 Application Service、21 条 chain id、三个 Registry、三个 ExecuteNode 或其他银行代码。
+不修改 API、Controller、三个 Application Service、22 条 chain id、三个 Registry、三个 ExecuteNode 或其他银行代码。
 只有新能力的数据和状态形态无法由现有三种 Slot 准确承载，并经用户明确批准后，才允许增加第四执行域。
 
 ## 14. 结构验收
@@ -327,8 +337,8 @@ CiticUnidentifiedRemittanceApi
 - API/Controller/DTO 零结构变化。
 - Slot 为 Base + Trans/Query/Account 两层。
 - 强类型 Capability 接口、Registry、ExecuteNode 各 3 个。
-- 22 个通用能力归域为 12/6/4。
-- 21 条链归域为 8/3/10；交易/查询为租户 Pack + 域 ExecuteNode，账户为单节点。
+- 当前银行 Capability 实现类 30 个，归域为 12/6/12；22 个、12/6/4 为历史迁移基线。
+- 22 条链归域为 8/3/11；交易/查询为租户 Pack + 域 ExecuteNode，账户为单节点。
 - 账户状态/余额只注册 Account 域。
 - 业务 Context、Router、Dispatch、Handle 父类、统一 Registry、Provider/Assembler 链为 0。
 - 钱包发送出口只有 Gateway/Sender；完整明文 body 只在 Sender 出现一次。
@@ -355,7 +365,10 @@ CiticUnidentifiedRemittanceApi
 > 本编并入原《02-中信银行接口能力汇总》《03-平安银行接口能力汇总》，是 §5.1 落地映射的字段级依据。
 > 源 Word 协议（中信 v4.7、平安 v5.5）仍为字段长度、条件必填、错误码全集、示例报文的最终基线。
 
-## 16. 中信银行接口能力落地
+## 16. 中信银行接口能力落地（历史附录）
+
+> 以下为迁移时快照，其中“当前”仅指当时。账户维护、73 文件状态查询、专项凭证等后续已实现能力，
+> 以及实际类名/路由与字段契约，以 02、19、27、33 号当前文档为准；不得将本附录直接用作新开发清单。
 
 > 银行编码：中信（`platformCode=zxegj`）；钱包渠道号：`0010`。
 > 源文档：`中信E管家产品客户钱包应用平台_接口文档-内部集成平台v4.7.doc`
@@ -439,7 +452,7 @@ Sender 唯一记录完整明文钱包请求/响应 body，不做字段脱敏；�
 | `process`（实时清分） | `/recharge` | `2023/0010`，`operateType=2` | 额外必填 `registerType/userId` |
 | `queryStatus` | `/query-trans-status` | `2087/0010` | `oriTransSsn/oriTransDate` 取列表 `transJrno/transDate` |
 
-租户数据复用公共能力：直接请求 DTO 继承 `BaseRequest`，四公共字段由 Header/Feign 注入，缺失用 `tenant_base_config` 回填；银行账户配置由 `TenantBankConfigLoader` 加载；调用方不能传 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo`。`2087.oriTransSsn/oriTransDate` 取列表 `transJrno/transDate`，不得改用处理接口返回的 `frontSsn`。客户账（`accountType=0`）时 `bankNo/acctSeq/acctTransNo/finTransFlag` 均必填；内部账（`1`）不要求这四项。
+租户数据复用公共能力：直接请求 DTO 继承 `BaseRequest`，Header tenantId 必须存在且与请求一致；`FrontSpecialTenantPack` 经 Loader 加载基础/银行配置，clientId/platformCode 缺失时从 `tenant_base_config` 回填，dataSourceId 取自 `sys_tenant.resourceConfig` 映射缓存，显式值与有效配置冲突时拒绝；调用方不能传 `appId/appKey/url/mchntId/mchntMbrId/bizFunc/chnlNo`。`2087.oriTransSsn/oriTransDate` 取列表 `transJrno/transDate`，不得改用处理接口返回的 `frontSsn`。客户账（`accountType=0`）时 `bankNo/acctSeq/acctTransNo/finTransFlag` 均必填；内部账（`1`）不要求这四项。
 
 **`specialData` 边界**（仅通用交易/查询 API；不明来款专项用全字段强类型 DTO）：可放中信特有可选字段、明细查询业务日期与当前银行交易类型、登记簿明细 `accountType`、分润扩展、特殊登记簿属性、文档允许的银行扩展备注。不得放：`bizFunc`/`chnlNo`/`mchntId`/`mchntMbrId`、银行地址/密钥/签名加密算法、`frontSsn`、银行 `TRANS_DATE/PAGE`、已具跨银行公共语义的提现类型与手续费承担方式。
 
@@ -458,7 +471,9 @@ Sender 唯一记录完整明文钱包请求/响应 body，不做字段脱敏；�
 9. 旧代码中的 `null`、模拟成功和硬编码仅能作为结构参考，不能作为银行能力证明。
 10. 文件/预清分/实时预付暂不进首期；中信不明来款已作为专项独立实现，不得重新并入通用框架。
 
-## 17. 平安银行接口能力落地
+## 17. 平安银行接口能力落地（历史附录）
+
+> 以下为迁移时快照，其中“当前”仅指当时。当前三域路由、支持范围和字段契约见 03、19、20、21 号文档。
 
 > 银行编码：平安（`platformCode=pajzb`）；钱包渠道号：`0001`。
 > 源文档：`客户钱包应用平台_接口文档-平安项目(总)v5.5.doc`

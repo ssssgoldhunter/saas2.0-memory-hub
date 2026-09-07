@@ -7,9 +7,9 @@
 > Capability 迁移到所属域的强类型接口、Slot 参数和 Registry；不得跳过任何能力。迁移只调整框架归属，
 > 不重写已经完成的银行业务逻辑，也不恢复已删除旧结构。
 >
-> 最终实现校准（2026-08-31）：本计划中的 13 条单节点是当时迁移终态，不是当前链表达式；当前为
-> 21 条链，Transaction/Query 使用 `frontTenantPack + 域 ExecuteNode`，Account 使用单节点。
-> 租户准备与分库安全以 31 号设计为准。
+> 当前实现索引（2026-09-07）：本计划中的 13 条单节点及 2026-08-31 的 21 条链均为历史快照；
+> `limeng_front@aa3dc5db` 为 22 条链（Transaction 8 / Query 3 / Account 11），Transaction/Query 使用
+> `frontTenantPack + 域 ExecuteNode`，Account 使用单节点。当前实现及租户准备/分库安全见 19、31 号文档。
 
 **Goal:** API、银行业务和扁平 Capability 不变，将单一执行入口收口为交易、查询、账户三个强类型执行域。
 

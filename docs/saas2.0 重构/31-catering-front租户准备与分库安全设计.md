@@ -1,8 +1,8 @@
 # Catering Front 租户准备与分库安全设计
 
 > 状态：current / implemented
-> 核验日期：2026-09-02
-> 代码基线：`limeng_front@e3e21604`
+> 核验日期：2026-09-07（静态核验）
+> 代码基线：`limeng_front@aa3dc5db`
 > 适用范围：`catering-front` 交易、交易查询及中信专项业务
 
 ## 1. 最终结论
@@ -19,8 +19,8 @@
    以缓存为准。请求为空时回填；请求非空但与该值不一致时抛出 `TENANT_BANK_CONFIG_MISMATCH`。
    该字段用于持久化、审计和实例标识，不是物理分库键。映射不可用时 `loadTenantBaseInfo` 抛
    `FrontException`（与"租户基础配置不存在"区分，不吞成 null）。
-5. 物理分库链路固定为 `tenant_id → sys_tenant.resourceConfig → ds_N`。映射缺失、格式非法或目标数据源
-   不存在时直接失败，不允许落到默认库。`data_source_id` 列值与该链路取值同源，消除双配置源漂移。
+5. 物理分库链路固定为 `tenant_id → sys_tenant.resourceConfig → ds_N`。无可用映射或返回目标不在可用列表时失败，不允许落到默认库。
+   远程映射缺失/非法或加载失败但已有旧缓存值时保留旧值 5 分钟，随后再试；该策略不是默认库回退。`data_source_id` 列值与该链路取值同源，消除双配置源漂移。
 
 ## 2. 普通交易与交易查询路径
 
@@ -51,7 +51,7 @@ Query API
 4. 将请求 `dataSourceId` 按该权威值回填或校验一致性；
 5. 不做银行路由、不组银行报文、不访问钱包、不替代 Capability。
 
-账户域的 10 条链仍为 `THEN(frontAccountExecute)`。账户状态、余额和账户维护保持 Account 域现有配置加载
+账户域的 11 条链仍为 `THEN(frontAccountExecute)`。账户状态、余额和账户维护保持 Account 域现有配置加载
 与路由逻辑，不能在文档中描述为已经接入 `frontTenantPack`。
 
 ## 3. 中信专项路径
@@ -77,9 +77,17 @@ CiticUnidentifiedRemittanceApplicationService / CiticFrontFileProcessApplication
 - `TenantDataSourceShardingAlgorithm` 从进程内 `TenantDataSourceMappingCache` 取得映射；映射源为
   `sys_tenant.resourceConfig`，规范值为 `ds_N`。
 - dev/uat/prod 的 ShardingSphere 配置只声明 10 张 `!SHARDING` 业务表；不得恢复 `!SINGLE` 或 `ds_0.*`。
-- 未声明的业务表、缺失租户映射、非法数据源名或不可用目标数据源都应失败，不能静默落入 `ds_0`。
+- 未声明业务表、无可用租户映射或返回目标不在可用数据源中时失败，不能静默落入 `ds_0`。
+- 缓存命中且未过期时读内存；未命中/过期时 resolve 可能同步 Feign 查询，按租户 single-flight。
+  刷新失败若已有旧值则继续使用并重置 5 分钟 TTL，没有旧值才抛异常；不能宣称路由全程零 IO。
 - 范围分片仍按现有实现返回全部可用目标名。本次代码没有改变该行为；业务主路径必须通过精确
   `tenant_id` 条件执行，禁止把范围分片描述为已收口。
+
+### 4.1 充值凭证的部署核验项
+
+RECHARGE 凭证定位通过 FrontTransPlatformNotifyZxMapper 查询 `trans_platform_notify_zx`，但仓库
+三套分片配置仍只声明原 10 张渠道流水表，未声明该通知表且没有 SINGLE 兜底。实际部署规则和表可达性
+待确认，不能据定位代码已提交推定该分支已完成分库验收。
 
 ## 5. 开发约束
 

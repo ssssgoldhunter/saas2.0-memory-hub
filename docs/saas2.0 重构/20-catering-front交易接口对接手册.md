@@ -1,7 +1,7 @@
 # Catering Front 交易接口对接手册
 
 > 状态：current / verified-against-source
-> 核验日期：2026-08-31
+> 核验日期：2026-09-07（代码 aa3dc5db，静态核验）
 > 适用对象：调用 `catering-front` 的业务上游开发人员
 > 覆盖范围：当前 `FrontTransApi` 已定义的 8 个交易接口
 > 不覆盖：银行 Capability 开发、账户查询、交易查询；这些内容分别见 19、21 号手册
@@ -75,7 +75,8 @@ private final FrontTransApi frontTransApi;
 
 1. 确认租户已配置目标银行，并能提供正确 `platformCode`。
 2. 最少准备 Header `tenantId` 和请求 `tenantId/storeId`，且两个 tenantId 必须一致；`clientId/platformCode/dataSourceId`
-   可省略，由 `frontTenantPack` 从租户基础配置准备，其中 `dataSourceId` 显式值与权威值（分片映射缓存，`ds_N`）冲突时请求失败。
+   可省略：frontTenantPack 加载基础配置并回填/核对 dataSourceId，域 ExecuteNode 再回填 clientId/platformCode；
+   dataSourceId 显式值与分片映射缓存权威值冲突时失败。
 3. 准备业务唯一号、主子订单号、金额和日期时间。
 4. 从账户/企业/绑卡等上游 check 结果取得标准账户要素。
 5. 每笔请求新建 `FrontSpecialDataAssembler` 并生成 `specialData`。
@@ -633,6 +634,10 @@ Feign 上下文负责传递公共字段；Header tenantId 必须存在且与请�
 
 ---
 
+日志排查见 19 §10：入口 metadata 为配置回填前快照，字段为空不等于后续 Pack 未加载。
+用实际 traceId/REQ_ID 关联调用；front_response_returning 只说明返回对象，仍须检查 R/Front 业务码。
+示例中的 ds_2 仅表示格式，实际值须匹配租户映射和部署数据源，也可省略交给 Pack 回填。
+
 ## 14. 错误处理与重试规范
 
 | 场景 | 处理 |
@@ -658,7 +663,7 @@ Feign 上下文负责传递公共字段；Header tenantId 必须存在且与请�
 - [ ] 需要子订单号的接口已填写 `bizSubOrderNo`。
 - [ ] specialData 由每次新建的 Assembler 生成，或严格使用本文原始 key 白名单。
 - [ ] 未传 `bizFunc/chnlNo/path/appKey/stlAcctNo` 等 Front 内部值。
-- [ ] 调用方业务日志未记录账号、卡号、姓名、手机号、验证码、证件号、密钥或完整 specialData；
+- [ ] 业务 payload 按明文要求记录；钱包报文统一由 Sender 输出，密钥和认证凭证不入日志；
       Front 最终 Sender 的完整明文钱包 body 日志属于服务内部既定口径，不要求上游复制。
 - [ ] 同时判断 `R.code`、`frontRespCode` 和 `frontStatus`。
 - [ ] 已保存 `frontSsn/frontQueryId`。
