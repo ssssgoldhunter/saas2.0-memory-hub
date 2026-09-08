@@ -564,7 +564,7 @@ FrontRequest<AccountDetailQueryData> → TableDataInfo<AccountTransDetailItem>
 | `acctNo` | String | 必填 | 必填 | 被查用户/见证子账户号 |
 | `mchntMbrId` | String | 不使用 | Assembler 必填 | 平安会员编号；6073 当前 Query Capability 不消费，但标准组装器保留 |
 | `transDate` | String | 必填 | 必填 | 单日 `yyyyMMdd` |
-| `transType` | String | 必填 | 必填 | 对外只允许 `04` 提现手续费 |
+| `transType` | String | 必填 | 必填 | `04` 提现手续费 / `98` 全部明细 / `99` 全部汇总；**98/99 仅中信支持**（2026-09-08 放开），平安 6073 无「全部」类查询、传 98/99 返回 `CAPABILITY_NOT_SUPPORTED` |
 | `accountType` | String | 选填 | 忽略且不输出 | 中信映射银行 `registerAttr` |
 
 `accountType` 允许值：
@@ -595,12 +595,12 @@ FrontRequest<AccountDetailQueryData> → TableDataInfo<AccountTransDetailItem>
 | `mchntMbrId` | String | 响应壳 `MCHNT_ID` | 租户配置 `stlAcctNo` | 平台账号 |
 | `bankAccountCode` | String | 响应壳 `USER_ID` | `subAcctNo` 解密 | 被查账户 ID |
 | `userName` | String | 行 `USER_NAME` | `subAcctName` 解密 | 用户名称 |
-| `transType` | String | 固定回填 `04` | 固定回填 `04` | 提现手续费 |
-| `bizOrderNo` | String | `MCHNT_ORDER_ID` | 按 `tenantId + bankQueryId(frontSeqNo)` 回查提现渠道表 | 平安查不到时为空 |
+| `transType` | String | 04 查询固定回填 `04`；98/99 查询回填银行原始 `TRANS_TYPE`（JJ02/JJ08 等） | 固定回填 `04` | 98/99 行类型混合，见 2026-09-08 裁决 |
+| `bizOrderNo` | String | `MCHNT_ORDER_ID` | 按 `tenantId + bankQueryId(frontSeqNo)` 回查提现渠道表 | 平安查不到时为空；99 汇总行可能为空 |
 | `bizSubOrderNo` | String | `MCHNT_ORDER_SUB_ID` | 同上 | 可空 |
 | `bankMemberCode` | String | 当前空字符串 | `tranNetMemberCode` | 可空 |
 | `frontTransSsn` | String | `REQ_JRN` | `frontSeqNo` | 渠道/银行明细流水 |
-| `fee` | Long | `TRANS_AMT` 元×100 | `commission` 分直传 | 人民币分 |
+| `fee` | Long | `TRANS_AMT` 元×100 | `commission` 分直传 | 人民币分；**手续费语义仅在 04 查询下成立**，98/99 行该字段承载银行交易金额，业务不得按手续费消费 |
 | `transDate` | String | `TRANS_DT` | `tranDate` | `yyyyMMdd` |
 | `transTime` | String | `TRANS_TM` | `tranTime` | `HHmmss` |
 | `specialData` | JSONObject | 白名单字段 | 白名单字段 | 默认 `{}` |

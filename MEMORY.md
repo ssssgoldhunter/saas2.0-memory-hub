@@ -114,6 +114,8 @@
 
 ### 5.3 saas2.0 / cateringsass（当前主战场：多银行渠道 Front 重构）
 
+- 文档同步规则（用户 2026-09-07 确认）：后续只更新 `saas2.0-memory-hub`；不修改
+  `cateringsass` 代码仓库内的 `docs/`、README 等文档副本，由用户手动复制，除非当次明确授权。
 - 代码：`cateringsass/catering-modules/catering-front`（2026-09-07 文档静态复核基线
   `limeng_front@aa3dc5db`，含 tenant_id 分片切换 + 特殊能力模型收口 + dataSourceId 同源改造
   + 入账登记/单凭证下载 + 日志补齐 `94bf7481`；测试待用户执行）；
@@ -158,7 +160,9 @@
   `ADAPTER_NOT_READY` 挡板；report 跨实例补查为 `DEFERRED`（见 `13-front后续待办.md`）。
 - 关键结论：中信退款真退款 `/refund + bizFunc=23`（参考 lsym UAT `lsym_20260625_limeng_refundTask`）；
   平安 `platformPay/platformReceive = UNSUPPORTED`；中信明细查询固定 `bizFunc=25/chnlNo=0010`（资金账户）、
-  `bizFunc=24/chnlNo=0010`（登记簿），不支持跨日。
+  `bizFunc=24/chnlNo=0010`（登记簿），不支持跨日。登记簿明细 24 对外交易类型 2026-09-08 起为
+  `04/98/99`（98 全部明细 / 99 全部汇总仅中信生效，行 transType 回填银行原值、fee 手续费语义仅 04
+  成立；平安 6073 无「全部」类查询、Capability 内仍仅接受 04，见 17 号 spec §0.1 补充裁决）。
 - 中信不明来款是独立特殊能力：最终协议基线为《中信E管家产品V2_不明来账》，固定
   `2033` 列表、`2025` 退款、`2023` 重新匹配/实时清分、`2087` 状态查询及 `chnlNo=0010`；
   请求/返回全字段强类型且无 `specialData`，不进入三域 Registry/LiteFlow，只复用租户注入、配置加载
@@ -220,6 +224,11 @@
 ---
 
 ## 更新记录
+
+- 2026-09-08：登记簿明细查询（24）对外交易类型放开 98/99（仅中信；平安 6073 维持仅 04、Capability 内
+  拒绝）。改动：`AccountDetailType` 枚举、`CiticTransDetailCapability` 行 transType 回填逻辑
+  （98/99 回填银行原值）、web-test 下拉框、API/DTO 描述；文档联动 10/17/21 号。未编译未测试（无授权），
+  代码在 cateringsass `uat` 分支工作区未提交。
 
 - 2026-09-07：按 `limeng_front@aa3dc5db` 静态复核开发约束、框架/租户设计、业务手册和项目副本；
   凭证下载改为已提交，补齐日志事件边界与缓存刷新行为。本次未运行编译、测试或 UAT。

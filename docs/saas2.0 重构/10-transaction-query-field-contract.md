@@ -201,11 +201,16 @@ payAcctNo / payAcctName / remark / frontSeqNo / bankMemberCode` + `specialData`�
 
 ## 5. 中信登记簿交易明细
 
-> **2026-08-19 对外契约重构（17 号 spec）**：对外类型枚举收窄为 `AccountDetailType`（仅 04 提现手续费），
+> **2026-08-19 对外契约重构（17 号 spec）**：对外类型枚举收窄为 `AccountDetailType`，
 > 返回 `TableDataInfo<AccountTransDetailItem>`（11 主字段 + specialData，fee=commission 单位分、空/0 返回 0
 > 不过滤）；`TableDataInfo` 新增 `totalPage`（中信按 TOTAL_PAGE×50 估算）；请求对象拆分为
 > `AccountDetailQueryData`。平安侧 04→6073（queryFlag=2 + functionFlag 当日/历史 + tranStatus=0 过滤 +
 > frontSeqNo 按 `tenantId + bankQueryId` 查原提现渠道表补订单号）。字段映射见 17 号 §0.9/§1.2/§1.3。
+>
+> **2026-09-08 用户裁决**：`AccountDetailType` 对外放开 `04/98/99`——98 全部明细、99 全部汇总仅中信 24
+> 支持（平安 6073 无「全部」类查询，Capability 内固定仅接受 04，其余值返回
+> `CAPABILITY_NOT_SUPPORTED`）；98/99 查询的行 `transType` 回填银行原始 `TRANS_TYPE`（04 查询仍统一
+> 回填 04），`fee` 的手续费语义仅在 04 查询下成立。
 
 ### 5.1 平安 6073 流水关联契约（2026-08-19 裁决）
 
@@ -247,7 +252,7 @@ chnlNo  = 0010
 |---|---|---|
 | `acctNo` | 是 | 待查询用户/子账户业务标识；Capability 按银行协议加密后映射顶层 `acctNo` |
 | `transDate` | 是 | 单个交易日，`yyyyMMdd` |
-| `transType` | 是 | 对外仅 `04`（`AccountDetailType` 枚举；01/02/03/05/06/98/99 在 Capability 协议层保留不对外） |
+| `transType` | 是 | `04/98/99`（`AccountDetailType` 枚举，2026-09-08 放开 98/99；01/02/03/05/06 在 Capability 协议层保留不对外；98/99 仅中信生效） |
 | `accountType` | 否 | `01/12/13/17`，映射 `registerAttr` |
 
 交易类型：`01` 入金分账、`02` 交易划转、`03` 提现、`04` 提现手续费、`05` 提现退汇、`06` 渠道
@@ -266,7 +271,8 @@ chnlNo  = 0010
 | Capability 生成流水 | `laasSsn` |
 
 每条返回的 `REQ_JRN/REGISTER_SSN/MCHNT_ID/C_D_FLAG/CUR_AMT/GOAC/OANM/DIGEST` 等银行差异字段进入该条 `AccountTransDetailItem.specialData`（`CUR_AMT` 原值 + `currentAmountCent` 换算值均保留）。
-中信 TRANS_AMT（元）×100 精确转分为 `fee`。
+中信 TRANS_AMT（元）×100 精确转分为 `fee`；`fee` 的手续费语义仅在 04 查询下成立，98/99 行该字段承载
+银行交易金额，业务不得按手续费消费。
 
 ## 6. 单日和分页约束
 
