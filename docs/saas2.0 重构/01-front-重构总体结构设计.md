@@ -192,9 +192,9 @@ interface BankAccountCapability {
 | 域 | FrontCapability | 中信（`zxegj`/`0010`） | 平安（`pajzb`/`0001`） |
 |---|---|---|---|
 | Transaction | `transfer` | `bizFunc=27` 支付 `21000050` 已实现 | `bizFunc=01` 会员间交易-不验证 `6034` 已实现 |
-| Transaction | `consume` | `bizFunc=27` 支付 `21000050` 已实现（与 transfer 同接口，业务语义区分） | `bizFunc=01` `6034` 已实现 |
+| Transaction | `consume` | `bizFunc=27` 支付 `21000050` 已实现（与 transfer 同接口，业务语义区分） | `bizFunc=01`·`6034` 已实现 |
 | Transaction | `refund` | `bizFunc=23` 退款 `21000051` 已实现（真退款） | `bizFunc=02` 会员间直接支付退款 已实现 |
-| Transaction | `withdraw` | `bizFunc=26` 智能提现 `21000014` 已实现 | `bizFunc=01` `6033` / `36` 支持手续费 `6085` 已实现 |
+| Transaction | `withdraw` | `bizFunc=26` 智能提现 `21000014` 已实现 | `bizFunc=01`·`6033` / `36` 支持手续费 `6085` 已实现 |
 | Transaction | `platformPay` | `bizFunc=2041` 平台付款 `21000047` 已实现 | **UNSUPPORTED**（无等价接口，不注册） |
 | Transaction | `platformReceive` | `bizFunc=2042` 平台收款 `21000048` 已实现 | **UNSUPPORTED**（无等价接口，不注册） |
 | Transaction | `transferAuth` | — 中信无此能力 | `bizFunc=45` 会员间交易-验证短信动态码 `6101` 已实现 |
@@ -410,35 +410,35 @@ Sender 唯一记录完整明文钱包请求/响应 body，不做字段脱敏；�
 
 ### 16.4 接口能力总览
 
-账户类（当前 Front 范围）：`/query-acct-info` `bizFunc=35` 交易资金账户余额 `21000036`（是）、`36` 公共登记簿余额 `21000035`（是）、`46` 用户余额 `22000006`（是）、`2058` 用户状态查询 `22000001`（是）；其余（`26` 用户注册、`21/27` 绑卡、`22` 解绑、`15/16` 信息变更、`23` 绑卡关系、`21` 注销）均为后续。
+账户类（当前 Front 范围）：`/query-acct-info`·`bizFunc=35` 交易资金账户余额 `21000036`（是）、`36` 公共登记簿余额 `21000035`（是）、`46` 用户余额 `22000006`（是）、`2058` 用户状态查询 `22000001`（是）；其余（`26` 用户注册、`21/27` 绑卡、`22` 解绑、`15/16` 信息变更、`23` 绑卡关系、`21` 注销）均为后续。
 
-交易类：`/transfer` `27` 支付 `21000050`（消费/普通转账）、`2041` 平台付款 `21000047`、`2042` 平台收款 `21000048`、`44` 实时预付 `22000007`（暂不纳入首期）；`/withdrawal` `26` 智能提现 `21000014`（提现）；`/refund` `23` 退款 `21000051`（退款）、`2025` 不明来款退款（专项，已实现）；`/recharge` `2023` 不明来款重新匹配/实时清分（专项，已实现）；`/rechg-after-pay` `25/30/31` 平台预清分（后续）、`/rechg-after-pay-verify` `01` 预清分核销（后续）；`/recharge` `24` 综合文档不明来账（本专项不采用）。
+交易类：`/transfer`·`27` 支付 `21000050`（消费/普通转账）、`2041` 平台付款 `21000047`、`2042` 平台收款 `21000048`、`44` 实时预付 `22000007`（暂不纳入首期）；`/withdrawal`·`26` 智能提现 `21000014`（提现）；`/refund`·`23` 退款 `21000051`（退款）、`2025` 不明来款退款（专项，已实现）；`/recharge`·`2023` 不明来款重新匹配/实时清分（专项，已实现）；`/rechg-after-pay`·`25/30/31` 平台预清分（后续）、`/rechg-after-pay-verify`·`01` 预清分核销（后续）；`/recharge`·`24` 综合文档不明来账（本专项不采用）。
 
-查询类：`/query-trans-status` `74` 用户交易状态查询 `21000010`（是）、`2087` 不明来款单条状态（专项，已实现）、`73/85/123` 为后续或不采用；`/query-trans-details` `24` 登记簿交易明细 `21000029`（是）、`25` 交易资金账户明细 `21000039`（是）、`2033` 不明来款列表（专项，已实现）；`/query-check-file-info` `21/22` 内部户明细文件（后续）。
+查询类：`/query-trans-status`·`74` 用户交易状态查询 `21000010`（是）、`2087` 不明来款单条状态（专项，已实现）、`73/85/123` 为后续或不采用；`/query-trans-details`·`24` 登记簿交易明细 `21000029`（是）、`25` 交易资金账户明细 `21000039`（是）、`2033` 不明来款列表（专项，已实现）；`/query-check-file-info`·`21/22` 内部户明细文件（后续）。
 
-文件及辅助：`/file-upload`、`/file-download`、`/gen-auth-code` `27` 短信验证码申请 `21000062`（仅用于用户签约，不能据此认定中信支持“短信鉴权转账”）。
+文件及辅助：`/file-upload`、`/file-download`、`/gen-auth-code`·`27` 短信验证码申请 `21000062`（仅用于用户签约，不能据此认定中信支持“短信鉴权转账”）。
 
 ### 16.5 关键交易能力摘要
 
-**消费与普通转账**（`/transfer` `bizFunc=27` 产品 支付 `21000050`）：业务核心含主/子订单号、收付方编号与名称、金额（分）、日期时间、资金类型、备注、可选分润、平台自有资金标识。中信 `reserve`：`USER_D_NM`/`USER_C_NM`/`USER_C_AMT`（分）、`USER_SHARE_*`、`P_SELF_FLAG`/`P_SELF_AMT`、`BUSS_ID`/`BUSS_SUB_ID`、`TRANS_DT`/`TRANS_TM`、`FUND_TP`/`MEMO`/`laasSsn`。`transAmt` 取 `baseData.amount`（分）；`queryId`→`frontQueryId`；`USER_TRANS_DT/TM`→公共交易日期时间。当前 `USER_SHARE_*` 未实际映射，`P_SELF_FLAG/P_SELF_AMT` 固定 `N/0`。消费与转账同接口，Front 经业务类型与渠道流水区分；`bizFunc=27` 不进 `specialData`。
+**消费与普通转账**（`/transfer`·`bizFunc=27` 产品 支付 `21000050`）：业务核心含主/子订单号、收付方编号与名称、金额（分）、日期时间、资金类型、备注、可选分润、平台自有资金标识。中信 `reserve`：`USER_D_NM`/`USER_C_NM`/`USER_C_AMT`（分）、`USER_SHARE_*`、`P_SELF_FLAG`/`P_SELF_AMT`、`BUSS_ID`/`BUSS_SUB_ID`、`TRANS_DT`/`TRANS_TM`、`FUND_TP`/`MEMO`/`laasSsn`。`transAmt` 取 `baseData.amount`（分）；`queryId`→`frontQueryId`；`USER_TRANS_DT/TM`→公共交易日期时间。当前 `USER_SHARE_*` 未实际映射，`P_SELF_FLAG/P_SELF_AMT` 固定 `N/0`。消费与转账同接口，Front 经业务类型与渠道流水区分；`bizFunc=27` 不进 `specialData`。
 
-**提现**（`/withdrawal` `bizFunc=26` 产品 智能提现 `21000014`）：`acctNo`（用户/平台编号）、`cardNoEnc`（SM2 加密）、`transAmt`（分）、`remark`；`reserve`：`WITH_TYPE`（`00` 用户/`01` 平台）、`BUSS_ID`、`TRANS_DT/TM`、`FEE_TYPE`（`1` 平台/`2` 用户承担）、`WITH_ACCNAME`、`laasSsn`。平台提现只能平台承担手续费；返回含 `USER_TRANS_DT/TM`、`PWDID`、`TRANS_ID`、`WITH_CHANNEL`（本行/银联代付/二代小额/大额）。提现类型与手续费承担方式须定义为核心业务枚举，而非银行原始字符串。
+**提现**（`/withdrawal`·`bizFunc=26` 产品 智能提现 `21000014`）：`acctNo`（用户/平台编号）、`cardNoEnc`（SM2 加密）、`transAmt`（分）、`remark`；`reserve`：`WITH_TYPE`（`00` 用户/`01` 平台）、`BUSS_ID`、`TRANS_DT/TM`、`FEE_TYPE`（`1` 平台/`2` 用户承担）、`WITH_ACCNAME`、`laasSsn`。平台提现只能平台承担手续费；返回含 `USER_TRANS_DT/TM`、`PWDID`、`TRANS_ID`、`WITH_CHANNEL`（本行/银联代付/二代小额/大额）。提现类型与手续费承担方式须定义为核心业务枚举，而非银行原始字符串。
 
-**退款**（`/refund` `bizFunc=23` 产品 退款 `21000051`，真退款）：新版 `ZxRefundRequest + zxRefund` 已是真退款，旧 `ZxTransferRequest + bizFunc=27` 反向转账禁止迁移。`reserve` 关键字段：`ORI_USER_D_ID/D_NM/C_ID/C_NM`、`ORI_USER_C_AMT`、`ORI_USER_SHARE_*`（未启用）、`P_SELF_FLAG`（`N`）、`P_DEAL_AMT`（`0`）、`REFUND_BUSS_ID`（`bizOrderNo`）、`REFUND_BUSS_SUB_ID`（`bizSubOrderNo`）、`ORI_BUSS_ID/SUB_ID`（`orgBizOrderNo/orgBizSubOrderNo`）、`ORI_USER_TRANS_DT`、`TRANS_DT/TM`（`businessDate/businessTime`）、`FUND_TP`（`accountSpecialData.default_fund_type`，不得取 role）、`MEMO`（`refundReason`）、`laasSsn`。定位固定 `orgBizOrderNo+orgBizSubOrderNo`，`ORI_USER_SSN` 不使用；`ORI_USER_D_ID` 等由上游经 `specialData` 银行原始 key 提供，Front 不查本地原表补齐。支持部分退款；分润/平台出资退款需单独设计。
+**退款**（`/refund`·`bizFunc=23` 产品 退款 `21000051`，真退款）：新版 `ZxRefundRequest + zxRefund` 已是真退款，旧 `ZxTransferRequest + bizFunc=27` 反向转账禁止迁移。`reserve` 关键字段：`ORI_USER_D_ID/D_NM/C_ID/C_NM`、`ORI_USER_C_AMT`、`ORI_USER_SHARE_*`（未启用）、`P_SELF_FLAG`（`N`）、`P_DEAL_AMT`（`0`）、`REFUND_BUSS_ID`（`bizOrderNo`）、`REFUND_BUSS_SUB_ID`（`bizSubOrderNo`）、`ORI_BUSS_ID/SUB_ID`（`orgBizOrderNo/orgBizSubOrderNo`）、`ORI_USER_TRANS_DT`、`TRANS_DT/TM`（`businessDate/businessTime`）、`FUND_TP`（`accountSpecialData.default_fund_type`，不得取 role）、`MEMO`（`refundReason`）、`laasSsn`。定位固定 `orgBizOrderNo+orgBizSubOrderNo`，`ORI_USER_SSN` 不使用；`ORI_USER_D_ID` 等由上游经 `specialData` 银行原始 key 提供，Front 不查本地原表补齐。支持部分退款；分润/平台出资退款需单独设计。
 
-**平台付款**（`/transfer` `bizFunc=2041` 平台付款 `21000047`）：资金方向 平台自有资金登记簿 → 用户登记簿；平台侧由商户自有资金登记簿隐式确定，不上送平台银行账号。
+**平台付款**（`/transfer`·`bizFunc=2041` 平台付款 `21000047`）：资金方向 平台自有资金登记簿 → 用户登记簿；平台侧由商户自有资金登记簿隐式确定，不上送平台银行账号。
 
-**平台收款**（`/transfer` `bizFunc=2042` 平台收款 `21000048`）：资金方向 用户登记簿 → 平台自有资金登记簿，方向相反。
+**平台收款**（`/transfer`·`bizFunc=2042` 平台收款 `21000048`）：资金方向 用户登记簿 → 平台自有资金登记簿，方向相反。
 
-**短信验证码**（`/gen-auth-code` `bizFunc=27` `21000062`）：仅用于用户签约（`transType=01` 注册、`sigctType=01/02` 签约发送/验证），返回 `tranId`，验证上送 `tranId+veriCd`，有效期 120 秒。中信不具备“短信鉴权转账”能力，不得包装成转账验证码接口。
+**短信验证码**（`/gen-auth-code`·`bizFunc=27`·`21000062`）：仅用于用户签约（`transType=01` 注册、`sigctType=01/02` 签约发送/验证），返回 `tranId`，验证上送 `tranId+veriCd`，有效期 120 秒。中信不具备“短信鉴权转账”能力，不得包装成转账验证码接口。
 
 ### 16.6 关键查询能力摘要
 
-**交易状态查询**（`/query-trans-status` `bizFunc=74` `21000010`）：固定使用调用方提供的业务流水，不扫描本地渠道表补条件：`originalCapability`→原交易能力、`originalTransactionDate`→`oriTransDate`、`bizOrderNo`→`BUSS_ID`、`bizSubOrderNo`→`BUSS_SUB_ID`、`acctNo`→`acctNo`（加密）、`laasSsn`（Capability 生成）。原交易能力与银行字段固定映射：`TRANSFER/CONSUME/REFUND`→`BUSS_ID+BUSS_SUB_ID+TRANS_TYPE=01`；`WITHDRAW`→只上送 `BUSS_ID`。状态语义：`00` 已受理（ACCEPTED/PROCESSING）、`01` 成功（SUCCESS）、`02` 失败（FAILED）、`03` 处理中（PROCESSING）、`04` 已退款、`05` 已退汇（RETURNED）。不得只按 HTTP/钱包平台成功设 `frontStatus=SUCCESS`。
+**交易状态查询**（`/query-trans-status`·`bizFunc=74`·`21000010`）：固定使用调用方提供的业务流水，不扫描本地渠道表补条件：`originalCapability`→原交易能力、`originalTransactionDate`→`oriTransDate`、`bizOrderNo`→`BUSS_ID`、`bizSubOrderNo`→`BUSS_SUB_ID`、`acctNo`→`acctNo`（加密）、`laasSsn`（Capability 生成）。原交易能力与银行字段固定映射：`TRANSFER/CONSUME/REFUND`→`BUSS_ID+BUSS_SUB_ID+TRANS_TYPE=01`；`WITHDRAW`→只上送 `BUSS_ID`。状态语义：`00` 已受理（ACCEPTED/PROCESSING）、`01` 成功（SUCCESS）、`02` 失败（FAILED）、`03` 处理中（PROCESSING）、`04` 已退款、`05` 已退汇（RETURNED）。不得只按 HTTP/钱包平台成功设 `frontStatus=SUCCESS`。
 
-**登记簿交易明细**（`/query-trans-details` `bizFunc=24` 登记簿 `21000029`）：`acctNo`（加密映射顶层）、`transactionDate`（单日，`TRANS_DATE`）、`transactionType`（`reserve.TRANS_TYPE`）、`accountType`（可选 `registerAttr`）、`PAGE`（续查游标，每页默认 50）。`TRANS_TYPE`：`01` 入金分账/`02` 交易划转/`03` 提现/`04` 提现手续费/`05` 提现退汇/`06` 渠道来账/`98` 所有明细/`99` 所有汇总；业务系统须明确选择，禁用含义不清的“实收/所有”。`accountType`：`01` 公共调账/`12` 平台自有资金/`13` 担保/`17` 待结算手续费；旧 UAT 曾传 `00` 但 v4.7 定义为 `01/12/13/17`，联调前不得开放任意账户类型。
+**登记簿交易明细**（`/query-trans-details`·`bizFunc=24` 登记簿 `21000029`）：`acctNo`（加密映射顶层）、`transactionDate`（单日，`TRANS_DATE`）、`transactionType`（`reserve.TRANS_TYPE`）、`accountType`（可选 `registerAttr`）、`PAGE`（续查游标，每页默认 50）。`TRANS_TYPE`：`01` 入金分账/`02` 交易划转/`03` 提现/`04` 提现手续费/`05` 提现退汇/`06` 渠道来账/`98` 所有明细/`99` 所有汇总；业务系统须明确选择，禁用含义不清的“实收/所有”。`accountType`：`01` 公共调账/`12` 平台自有资金/`13` 担保/`17` 待结算手续费；旧 UAT 曾传 `00` 但 v4.7 定义为 `01/12/13/17`，联调前不得开放任意账户类型。
 
-**平台交易资金账户明细**（`/query-trans-details` `bizFunc=25` `21000039`）：`transactionDate`→`reserve.TRANS_DATE`、`transactionType`→`reserve.TRANS_TYPE`、`PAGE`（从 1 开始，每页默认 20）。`transactionType`：`01` 转账入金/`02` 退汇/`03` 支付渠道入金/`04` 提现/`05` 退款（预留）/`99` 所有。金额字段文档标注“元”，必须统一转换为分。
+**平台交易资金账户明细**（`/query-trans-details`·`bizFunc=25`·`21000039`）：`transactionDate`→`reserve.TRANS_DATE`、`transactionType`→`reserve.TRANS_TYPE`、`PAGE`（从 1 开始，每页默认 20）。`transactionType`：`01` 转账入金/`02` 退汇/`03` 支付渠道入金/`04` 提现/`05` 退款（预留）/`99` 所有。金额字段文档标注“元”，必须统一转换为分。
 
 ### 16.7 不明来款专项、specialData 边界与流水
 
@@ -514,11 +514,11 @@ Sender 唯一记录完整明文钱包请求/响应 body，不做字段脱敏；�
 
 ### 17.4 关键交易能力摘要
 
-**消费与普通转账**（`/transfer` `bizFunc=01` 会员间交易-不验证 `6034`）：`functionFlag`：`6` 直接支付 T+1、`7` 免密支付、`9` 直接支付 T+0。公共字段：转出/转入见证子账户、会员编号及户名、金额 `baseData.amount`（分，映射 `transAmt` 且含手续费）、手续费 `baseData.fee`（分，映射 `fee`，无则 0）、币种、订单号、交易类型、备注。`reserve`：`mrchCode`/`txnClientNo`/`functionFlag`/`stlAcctNo`（来自 `accountSpecialData`，SM2 加密）/`outAcctId`/`outAcctName`/`inAcctId`/`inAcctName`（加密）/`transType`/`orderId`/`orderInfo`。适配结论：消费与转账复用同一底层接口，业务类型/订单类型/渠道流水仍区分；lsym 生产 transfer 固定 `functionFlag=9`，consume 默认或 `bankChannelNo=0109` 固定 `9`、`0107` 固定 `7`；`functionFlag` 改变结算与退款语义，必须由平安 Capability 按已确认 Front 场景选择，不向业务系统透传原始值；新 Front 当前只实现 `9`，旧 `0107` 场景待重新核对；成功响应 `specialData` 默认空，后续只能白名单逐项写入，禁止整体透传 `reserve`。
+**消费与普通转账**（`/transfer`·`bizFunc=01` 会员间交易-不验证 `6034`）：`functionFlag`：`6` 直接支付 T+1、`7` 免密支付、`9` 直接支付 T+0。公共字段：转出/转入见证子账户、会员编号及户名、金额 `baseData.amount`（分，映射 `transAmt` 且含手续费）、手续费 `baseData.fee`（分，映射 `fee`，无则 0）、币种、订单号、交易类型、备注。`reserve`：`mrchCode`/`txnClientNo`/`functionFlag`/`stlAcctNo`（来自 `accountSpecialData`，SM2 加密）/`outAcctId`/`outAcctName`/`inAcctId`/`inAcctName`（加密）/`transType`/`orderId`/`orderInfo`。适配结论：消费与转账复用同一底层接口，业务类型/订单类型/渠道流水仍区分；lsym 生产 transfer 固定 `functionFlag=9`，consume 默认或 `bankChannelNo=0109` 固定 `9`、`0107` 固定 `7`；`functionFlag` 改变结算与退款语义，必须由平安 Capability 按已确认 Front 场景选择，不向业务系统透传原始值；新 Front 当前只实现 `9`，旧 `0107` 场景待重新核对；成功响应 `specialData` 默认空，后续只能白名单逐项写入，禁止整体透传 `reserve`。
 
-**短信鉴权转账**（`/transfer` `bizFunc=45` 会员间交易-验证短信动态码 `6101`；验证码 `/gen-auth-code` `bizFunc=26` `6082`）：文档证明的是“短信鉴权转账”而非“授信额度转账”；`transferAuth` 固定 `bizFunc=45/chnlNo=0001/functionFlag=9/tranType=01`；`resendTransferAuthCode` 固定 `bizFunc=26/chnlNo=0001/tranType=2`，文档无独立“重发”接口，重发语义=生成新银行流水再次调用申请接口，不上送旧 `smsIdx`；`bizFunc=26` 返回的 `smsIdx/receiveMobile` 为 SM2 密文，Capability 解密后按白名单写回 `specialData` 且不记录；`messageOrderNo/messageCheckCode` 放请求 `specialData`，由 Capability 加密；重复申请限流/有效期/旧码失效仍需联调确认。
+**短信鉴权转账**（`/transfer`·`bizFunc=45` 会员间交易-验证短信动态码 `6101`；验证码 `/gen-auth-code`·`bizFunc=26`·`6082`）：文档证明的是“短信鉴权转账”而非“授信额度转账”；`transferAuth` 固定 `bizFunc=45/chnlNo=0001/functionFlag=9/tranType=01`；`resendTransferAuthCode` 固定 `bizFunc=26/chnlNo=0001/tranType=2`，文档无独立“重发”接口，重发语义=生成新银行流水再次调用申请接口，不上送旧 `smsIdx`；`bizFunc=26` 返回的 `smsIdx/receiveMobile` 为 SM2 密文，Capability 解密后按白名单写回 `specialData` 且不记录；`messageOrderNo/messageCheckCode` 放请求 `specialData`，由 Capability 加密；重复申请限流/有效期/旧码失效仍需联调确认。
 
-**提现**（`/withdrawal`，两种用途）：`bizFunc=01` 会员提现-不验证 `6033`（直接申请提现）、`bizFunc=36` 会员提现-支持手续费 `6085`（平台手续费+短信验证）。`bizFunc=01` 关键数据：见证子账户、收款银行卡、提现金额、会员/证件/户名、资金汇总账户、平台号/客户号。`bizFunc=36` 增加：收款账号户名、市场手续费、短信指令号/验证码、可选网银签名。状态语义：同步响应=受理；最终成功需查 `query-trans-status` `bizFunc=03`；成功后仍可能退票，退票经 `query-trans-details` `bizFunc=02` 查询。
+**提现**（`/withdrawal`，两种用途）：`bizFunc=01` 会员提现-不验证 `6033`（直接申请提现）、`bizFunc=36` 会员提现-支持手续费 `6085`（平台手续费+短信验证）。`bizFunc=01` 关键数据：见证子账户、收款银行卡、提现金额、会员/证件/户名、资金汇总账户、平台号/客户号。`bizFunc=36` 增加：收款账号户名、市场手续费、短信指令号/验证码、可选网银签名。状态语义：同步响应=受理；最终成功需查 `query-trans-status`·`bizFunc=03`；成功后仍可能退票，退票经 `query-trans-details`·`bizFunc=02` 查询。
 
 **退款**（`/refund`）：`bizFunc=02` 服务 `6006/6034/6101` 直接支付（`functionFlag=6/9`），`bizFunc=06` 服务 `6163/6165/6166` 会员资金支付。`5.5` 新增免密支付 `functionFlag=7` 的退款处理未明确，支持免密消费退款前必须向银行确认。lsym 长短款调用 `transConsumeCancel`，平安 Capability 构造真 `/refund` 并固定 `bizFunc=02`，请求无 `functionFlag`；当前退款只服务内部长短款修复：业务系统提供原主子流水，Front 按 `tenantId+originalBizOrderNo+originalBizSubOrderNo` 精确查平安原转账/消费渠道表，加载原 `frontSsn`、原交易日期、原收付款账户/会员字段，完成加密、报文组装与落库；`oriTransSsn` 必须取原记录 `front_ssn`，不得取 `bank_user_ssn`；查表只补渠道协议数据，不判断累计退款金额或资格；不纳入 `bizFunc=06`、普通业务退款、分润退款或平台出资退款。
 
@@ -536,13 +536,13 @@ Sender 唯一记录完整明文钱包请求/响应 body，不做字段脱敏；�
 
 **交易状态查询**（`/query-trans-status`）：当前映射——普通转账/消费/短信鉴权转账→`bizFunc=02`、提现→`03`、充值→`04`、特定批量/冻结/补贴/分账终态→`06`。主要请求：`oriTransSsn`（原交易流水）、`oriTransDate`、部分用途要求资金汇总账户、`mrchCode`/`txnClientNo`。银行原状态：`0` 成功（SUCCESS）、`1` 失败（FAILED）、`2` 待确认（UNKNOWN/PROCESSING）、`5` 待处理（PROCESSING）、`6` 处理中（PROCESSING）；返回值非 0/1 时视为状态未明，约 5 分钟后再次查询。`bizFunc` 由原渠道流水交易类型决定；单笔状态查询由调用方传原交易 `frontSsn`→`oriTransSsn`（即原请求发给银行的 `transSsn`，存 `front_ssn`），不使用原应答 `queryId/bank_query_id` 或 `bank_user_ssn`；Front 需定义查询重试/超时/最终人工处理边界。
 
-**平台普通转账充值明细**（`/query-trans-details` `bizFunc=04` `6050`）：查会员主动转账进入资金汇总账户明细；`functionFlag=1` 当日/`2` 历史、`stlAcctNo`、`page`、`mrchCode`/`txnClientNo`。只覆盖平安平台入金一部分，不能直接等价为中信 `bizFunc=25` 所有平台交易类型。
+**平台普通转账充值明细**（`/query-trans-details`·`bizFunc=04`·`6050`）：查会员主动转账进入资金汇总账户明细；`functionFlag=1` 当日/`2` 历史、`stlAcctNo`、`page`、`mrchCode`/`txnClientNo`。只覆盖平安平台入金一部分，不能直接等价为中信 `bizFunc=25` 所有平台交易类型。
 
-**子账户时间段交易明细**（`/query-trans-details` `bizFunc=05` `6072`）：`functionFlag`（`1` 当日/`2` 历史）、`stlAcctNo`、`subAcctNo`、`queryFlag`（`1` 全部/`2` 转出/`3` 转入）、`pageNum`（每页最多 20）、`mrchCode`/`txnClientNo`；记账类型含支付/冻结/解冻/登记挂账/预支付/确认付款/退款/见证+收单。
+**子账户时间段交易明细**（`/query-trans-details`·`bizFunc=05`·`6072`）：`functionFlag`（`1` 当日/`2` 历史）、`stlAcctNo`、`subAcctNo`、`queryFlag`（`1` 全部/`2` 转出/`3` 转入）、`pageNum`（每页最多 20）、`mrchCode`/`txnClientNo`；记账类型含支付/冻结/解冻/登记挂账/预支付/确认付款/退款/见证+收单。
 
-**清分、提现和退款明细**（`/query-trans-details` `bizFunc=08` `6073`）：`queryFlag` `2` 提现及相关退款/`3` 清分充值/`4` 收款编码退款。平安原文档 v5.5 对提现用途 36 应答字段名为 `queryId`、业务含义 `FrontSeqNo（见证系统流水号）`；6073 行内对应 `frontSeqNo`，可直接关联，但不改变保存边界：`FrontSeqNo` 是平安对应答 `queryId` 的描述，非请求 `transSsn/front_ssn`。两种查询分开：单笔状态查询 `baseData.frontSsn→oriTransSsn→原请求 transSsn/front_ssn`；6073 订单补全 `recordList.frontSeqNo→原应答 queryId/bank_query_id`。不得因中信用 `USER_SSN` 就把平安 `queryId` 全局解释成 `ssn`。
+**清分、提现和退款明细**（`/query-trans-details`·`bizFunc=08`·`6073`）：`queryFlag`·`2` 提现及相关退款/`3` 清分充值/`4` 收款编码退款。平安原文档 v5.5 对提现用途 36 应答字段名为 `queryId`、业务含义 `FrontSeqNo（见证系统流水号）`；6073 行内对应 `frontSeqNo`，可直接关联，但不改变保存边界：`FrontSeqNo` 是平安对应答 `queryId` 的描述，非请求 `transSsn/front_ssn`。两种查询分开：单笔状态查询 `baseData.frontSsn→oriTransSsn→原请求 transSsn/front_ssn`；6073 订单补全 `recordList.frontSeqNo→原应答 queryId/bank_query_id`。不得因中信用 `USER_SSN` 就把平安 `queryId` 全局解释成 `ssn`。
 
-**提现退票**（`/query-trans-details` `bizFunc=02` `6048`）：关键响应原提现交易流水、见证/市场流水、退票原因/日期、退票入账流水与金额、付款账号户名银行、收款方见证子账户、业务流水号；应作为提现终态处理的一部分，而非普通明细可选字段。
+**提现退票**（`/query-trans-details`·`bizFunc=02`·`6048`）：关键响应原提现交易流水、见证/市场流水、退票原因/日期、退票入账流水与金额、付款账号户名银行、收款方见证子账户、业务流水号；应作为提现终态处理的一部分，而非普通明细可选字段。
 
 **平台交易查询与中信差异**：中信平台资金账户明细 `25` 可直接筛选 渠道实收/转账/退汇/提现/所有；平安分散在 `04`（入金）/`05`（会员交易）/`08`（提现清分部分退款）/`02`（提现退票）/`39`（银行费用）。平安 `queryPlatformTransactions` 须明确选择：只支持某些通用类型、或按通用类型调不同 `bizFunc`、或对“所有”发起多银行查询并聚合；未确定分页/排序/去重/超时规则前，不建议首期实现跨多 `bizFunc` 的“所有交易”聚合。
 
